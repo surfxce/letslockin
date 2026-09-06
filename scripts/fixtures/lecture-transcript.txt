@@ -1,0 +1,42 @@
+[00:00] Right, so today we're finishing off gene regulation in prokaryotes, and I want
+to spend most of the hour on the lac operon because it's the model everything else gets
+compared to. Make sure you know this one properly.
+
+[01:20] So E. coli would rather eat glucose than lactose. Given both, it eats the glucose
+first, and only when the glucose runs out does it start making the enzymes to handle
+lactose. That's the behaviour we're explaining.
+
+[03:05] The operon itself is three structural genes — lacZ, lacY, lacA — transcribed as
+one polycistronic message. lacZ is beta-galactosidase, which cleaves lactose into glucose
+and galactose. lacY is the permease, which is the transporter that gets lactose into the
+cell in the first place. lacA is a transacetylase and honestly you can more or less
+ignore it for the exam.
+
+[06:40] Upstream you've got the promoter and the operator. The lacI gene, which sits
+outside the operon, is constitutively expressed and makes the repressor protein. The
+repressor binds the operator and physically blocks RNA polymerase from transcribing.
+That's negative control — the default state is off.
+
+[09:15] Now here's the bit people get wrong every year. The inducer is not lactose. It's
+allolactose, which is an isomer of lactose produced as a side reaction by
+beta-galactosidase. Allolactose binds the repressor, changes its conformation, and the
+repressor lets go of the operator. So you need a little bit of beta-galactosidase around
+already for induction to get going, which is why there's always a trickle of basal
+expression.
+
+[13:50] Second layer, and this is the positive control. cAMP levels are inversely related
+to glucose. High glucose, low cAMP. Low glucose, high cAMP. cAMP binds CAP — catabolite
+activator protein, sometimes called CRP — and the cAMP-CAP complex binds just upstream of
+the promoter and recruits RNA polymerase. The lac promoter is genuinely weak on its own,
+so without CAP you get very little transcription even with the repressor gone.
+
+[18:30] So put those together and you get four states. Glucose present, lactose absent:
+repressor on, no CAP, off. Glucose present, lactose present: repressor off but no CAP, so
+you get a trickle, not full expression. Glucose absent, lactose absent: CAP bound but
+repressor still on, off. Glucose absent, lactose present: repressor off, CAP on, full
+expression. That four-way table is examinable, I'd learn it.
+
+[24:10] Quick contrast with the trp operon since it comes up. Trp is repressible rather
+than inducible — the default is on, and tryptophan acts as a corepressor that activates
+the repressor. So lac is an inducible catabolic operon, trp is a repressible anabolic one.
+Same logic, opposite sign.

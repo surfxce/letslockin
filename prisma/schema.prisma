@@ -1,0 +1,232 @@
+// Lockin — schema.
+// Note: SQLite does not support Prisma enums. Every field commented "enum" is a
+// String constrained by a TypeScript union in lib/types.ts. Keep the two in sync.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Course {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  title     String
+  examDate  DateTime?
+  weighting Float? // share of the final grade riding on the exam, 0-1
+  createdAt DateTime  @default(now())
+
+  lectures  Lecture[]
+  concepts  Concept[]
+  materials Material[]
+  papers    PastPaper[]
+}
+
+model Lecture {
+  id            String   @id @default(cuid())
+  courseId      String
+  title         String
+  deliveredOn   DateTime // weekday is derived from this, never stored
+  durationHours Float    @default(1) // x2 = default question count
+  summaryMd     String?
+  createdAt     DateTime @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials Material[]
+  concepts  Concept[]
+  questions Question[]
+  attempts  Attempt[]
+
+  @@index([courseId])
+}
+
+model Material {
+  id            String   @id @default(cuid())
+  courseId      String?
+  lectureId     String?
+  kind          String // enum: TRANSCRIPT | SLIDES | FIGURE | PAST_PAPER
+  path          String // relative to materials/; the DB never stores blobs
+  originalName  String
+  extractedText String? // parsed once at ingest, hand-correctable
+  checksum      String
+  createdAt     DateTime @default(now())
+
+  course  Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lecture Lecture?    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  papers  PastPaper[]
+
+  @@index([lectureId])
+  @@index([courseId])
+}
+
+/// The load-bearing table. Course-scoped, not lecture-scoped, so extraction can
+/// reuse an existing concept instead of minting a near-duplicate.
+model Concept {
+  id           String   @id @default(cuid())
+  courseId     String
+  lectureId    String? // where it was first introduced
+  name         String
+  definition   String
+  sourceRef    String? // slide number or transcript timestamp
+  mergedIntoId String? // set by the merge tool; excluded from all scoring
+  createdAt    DateTime @default(now())
+
+  course     Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lecture    Lecture?           @relation(fields: [lectureId], references: [id], onDelete: SetNull)
+  questions  QuestionConcept[]
+  gaps       Gap[]
+  reviews    Review[]
+  paperItems PaperItemConcept[]
+
+  @@index([courseId])
+  @@index([lectureId])
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  lectureId     String
+  stem          String
+  type          String // enum: LAQ | SAQ
+  rubric        String // JSON: model answer + mark allocation, frozen at generation
+  promptVersion String
+  createdAt     DateTime @default(now())
+
+  lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  concepts  QuestionConcept[]
+  responses Response[]
+
+  @@index([lectureId])
+}
+
+model QuestionConcept {
+  questionId String
+  conceptId  String
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  concept  Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, conceptId])
+  @@index([conceptId])
+}
+
+model Attempt {
+  id            String    @id @default(cuid())
+  lectureId     String
+  sittingDate   DateTime  @default(now())
+  closedBook    Boolean   @default(true)
+  geometricMean Float? // null until every response is marked
+  completedAt   DateTime?
+
+  lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  responses Response[]
+
+  @@index([lectureId])
+}
+
+model Response {
+  id             String    @id @default(cuid())
+  attemptId      String
+  questionId     String
+  answerText     String
+  mark           Float? // 0-10
+  rubricVersion  String?
+  rawMarkingJson String?
+  markedAt       DateTime?
+
+  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  gaps     Gap[]
+
+  @@index([attemptId])
+  @@index([questionId])
+}
+
+/// This table is the loose-leaf binder. Every row is tagged to a concept, which
+/// is what turns "did I miss this again?" into a GROUP BY.
+model Gap {
+  id         String   @id @default(cuid())
+  responseId String
+  conceptId  String
+  type       String // enum: MISSED | WRONG
+  text       String
+  createdAt  DateTime @default(now())
+
+  response Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  concept  Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
+  @@index([responseId])
+}
+
+model Review {
+  id             String    @id @default(cuid())
+  conceptId      String
+  dueOn          DateTime
+  intervalDays   Float
+  setByAttemptId String?
+  completedAt    DateTime?
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
+  @@index([dueOn])
+}
+
+model PastPaper {
+  id         String   @id @default(cuid())
+  courseId   String
+  year       Int
+  label      String? // "Semester 1", "Deferred", etc.
+  materialId String?
+  createdAt  DateTime @default(now())
+
+  course   Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  material Material?   @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  items    PaperItem[]
+
+  @@index([courseId])
+}
+
+model PaperItem {
+  id              String  @id @default(cuid())
+  paperId         String
+  stem            String
+  marksAllocated  Float?
+  questionNumber  String?
+
+  paper    PastPaper          @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  concepts PaperItemConcept[]
+
+  @@index([paperId])
+}
+
+model PaperItemConcept {
+  paperItemId String
+  conceptId   String
+
+  paperItem PaperItem @relation(fields: [paperItemId], references: [id], onDelete: Cascade)
+  concept   Concept   @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@id([paperItemId, conceptId])
+  @@index([conceptId])
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  kind          String // enum: SUMMARISE | EXTRACT_CONCEPTS | GENERATE | MARK | PARSE_PAPER
+  payload       String // JSON
+  status        String    @default("PENDING") // enum: PENDING | RUNNING | DONE | FAILED
+  attempts      Int       @default(0)
+  error         String?
+  result        String? // raw model output, kept so a bad mark is always traceable
+  promptVersion String?
+  durationMs    Int?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([status, createdAt])
+}
