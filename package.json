@@ -12,27 +12,91 @@
     "smoke": "tsx scripts/smoke.ts",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "worker": "tsx worker/index.ts"
+    "worker": "tsx worker/index.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "electron:build": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist/electron --out-extension:.js=.cjs",
+    "desktop": "npm run electron:build && next build && LOCKIN_PORT=3579 electron .",
+    "desktop:dev": "npm run electron:build && LOCKIN_DEV=1 LOCKIN_PORT=3579 electron .",
+    "dist:bundle": "esbuild worker/index.ts scripts/migrate.ts --bundle --platform=node --format=cjs --target=node22 --outdir=dist --out-extension:.js=.cjs --external:better-sqlite3 --external:@prisma/adapter-better-sqlite3 --tsconfig=tsconfig.json",
+    "dmg": "npm run electron:build && npm run dist:bundle && next build --webpack && npm run rebuild:electron && electron-builder --mac dmg",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^12.11.1",
+    "jszip": "^3.10.1",
+    "marked": "^18.0.11",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "unpdf": "^1.8.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^17.4.2",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "prisma": "^7.10.0",
     "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^4.1.11"
-  }
+  },
+  "main": "dist/electron/main.cjs",
+  "build": {
+    "appId": "app.lockin",
+    "productName": "Lockin",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "**/*",
+      "!materials/**",
+      "!release/**",
+      "!prisma/*.db*",
+      "!prisma/*.db-journal",
+      "!.next/cache/**",
+      "!.next/dev/**",
+      "!.env",
+      "!.env.*",
+      "!**/*.test.ts",
+      "!scripts/fixtures/**",
+      "!.claude/**",
+      "!node_modules/@next/swc-linux-*/**",
+      "!node_modules/@next/swc-win32-*/**",
+      "!node_modules/@img/sharp-linux*/**",
+      "!node_modules/@img/sharp-win32*/**",
+      "!node_modules/@img/sharp-libvips-linux*/**"
+    ],
+    "extraResources": [
+      {
+        "from": "prompts",
+        "to": "prompts"
+      },
+      {
+        "from": "prisma/migrations",
+        "to": "migrations"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.education",
+      "identity": null
+    },
+    "npmRebuild": false
+  },
+  "description": "Retrieval practice for lectures, scored on the geometric mean.",
+  "author": "Sandes Welagedara"
 }

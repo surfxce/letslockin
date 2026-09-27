@@ -47,3 +47,9 @@ materials/
 
 # Prisma generated client
 /lib/generated/
+
+# electron build output
+/dist/
+
+# packaged output
+/release/

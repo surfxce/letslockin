@@ -1,0 +1,114 @@
+import { readdir, readFile, stat } from "node:fs/promises";
+import path from "node:path";
+
+import { checksum, guessKind, measureHours, parseMaterial } from "@/lib/parse";
+import type { ManifestEntry } from "@/lib/llm/provider";
+
+const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx"]);
+const MAX_FILES = 120;
+const MAX_BYTES = 80 * 1024 * 1024;
+const EXCERPT_CHARS = 1400;
+const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "__pycache__", "materials"]);
+
+export interface ScannedFile {
+  absolutePath: string;
+  relativePath: string;
+  filename: string;
+  modifiedOn: Date;
+  bytes: number;
+  kindGuess: string;
+  text: string;
+  measuredHours: number | null;
+  warnings: string[];
+  checksum: string;
+}
+
+export interface ScanResult {
+  files: ScannedFile[];
+  skipped: Array<{ path: string; why: string }>;
+}
+
+/**
+ * Walks a folder, parses everything it recognises, and returns enough of each file
+ * to group them. Nothing is written and nothing is copied — this is a look, not an
+ * import, so pointing it at the wrong folder costs nothing.
+ */
+export async function scanFolder(root: string): Promise<ScanResult> {
+  const info = await stat(root).catch(() => null);
+  if (!info) throw new Error(`no such folder: ${root}`);
+  if (!info.isDirectory()) throw new Error(`not a folder: ${root}`);
+
+  const found: string[] = [];
+  const skipped: ScanResult["skipped"] = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > 4 || found.length >= MAX_FILES) return;
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        await walk(full, depth + 1);
+      } else if (entry.isFile()) {
+        if (!SUPPORTED.has(path.extname(entry.name).toLowerCase())) {
+          skipped.push({ path: path.relative(root, full), why: "unsupported file type" });
+          continue;
+        }
+        if (found.length >= MAX_FILES) {
+          skipped.push({ path: path.relative(root, full), why: `over the ${MAX_FILES}-file limit` });
+          continue;
+        }
+        found.push(full);
+      }
+    }
+  }
+  await walk(root, 0);
+
+  const files: ScannedFile[] = [];
+  for (const absolutePath of found) {
+    const st = await stat(absolutePath);
+    if (st.size > MAX_BYTES) {
+      skipped.push({ path: path.relative(root, absolutePath), why: "larger than 80MB" });
+      continue;
+    }
+    const buffer = await readFile(absolutePath);
+    try {
+      const parsed = await parseMaterial(path.basename(absolutePath), buffer);
+      if (!parsed.text.trim()) {
+        skipped.push({ path: path.relative(root, absolutePath), why: "no extractable text" });
+        continue;
+      }
+      files.push({
+        absolutePath,
+        relativePath: path.relative(root, absolutePath),
+        filename: path.basename(absolutePath),
+        modifiedOn: st.mtime,
+        bytes: st.size,
+        kindGuess: guessKind(absolutePath, parsed.text),
+        text: parsed.text,
+        measuredHours: measureHours(parsed.text),
+        warnings: parsed.warnings,
+        checksum: checksum(buffer),
+      });
+    } catch (err) {
+      skipped.push({
+        path: path.relative(root, absolutePath),
+        why: err instanceof Error ? err.message : "could not be parsed",
+      });
+    }
+  }
+
+  return { files, skipped };
+}
+
+export function toManifest(files: ScannedFile[]): ManifestEntry[] {
+  return files.map((f, index) => ({
+    index,
+    filename: f.relativePath,
+    modifiedOn: f.modifiedOn.toISOString().slice(0, 10),
+    kindGuess: f.kindGuess,
+    measuredHours: f.measuredHours,
+    excerpt: f.text.slice(0, EXCERPT_CHARS),
+  }));
+}

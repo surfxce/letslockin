@@ -20,14 +20,33 @@ model Course {
   createdAt DateTime  @default(now())
 
   lectures  Lecture[]
+  modules   Module[]
   concepts  Concept[]
   materials Material[]
   papers    PastPaper[]
 }
 
+/// A course's own division of its content — "Module 3: Gene expression". Optional,
+/// because not every course publishes one, and a lecture that fits nowhere should
+/// still be importable rather than forced into an invented bucket.
+model Module {
+  id        String   @id @default(cuid())
+  courseId  String
+  title     String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  course   Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lectures Lecture[]
+
+  @@unique([courseId, title])
+  @@index([courseId])
+}
+
 model Lecture {
   id            String   @id @default(cuid())
   courseId      String
+  moduleId      String?
   title         String
   deliveredOn   DateTime // weekday is derived from this, never stored
   durationHours Float    @default(1) // x2 = default question count
@@ -35,12 +54,14 @@ model Lecture {
   createdAt     DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module    Module?    @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   materials Material[]
   concepts  Concept[]
   questions Question[]
   attempts  Attempt[]
 
   @@index([courseId])
+  @@index([moduleId])
 }
 
 model Material {
@@ -216,7 +237,7 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: SUMMARISE | EXTRACT_CONCEPTS | GENERATE | MARK | PARSE_PAPER
+  kind          String // enum: SUMMARISE | EXTRACT_CONCEPTS | GENERATE | MARK | PARSE_PAPER | IDENTIFY
   payload       String // JSON
   status        String    @default("PENDING") // enum: PENDING | RUNNING | DONE | FAILED
   attempts      Int       @default(0)

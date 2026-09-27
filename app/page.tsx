@@ -1,69 +1,58 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
+import { createCourse } from "./actions";
+import { prisma } from "@/lib/db";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const courses = await prisma.course.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { _count: { select: { lectures: true, concepts: true } } },
+  });
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <h1>Courses</h1>
+      <p className="sub">
+        A course holds its lectures and, more importantly, one shared list of concepts —
+        which is what stops the same idea being scored three times under three names.
+      </p>
+
+      {courses.length === 0 ? (
+        <p className="empty">No courses yet. Add the one you are studying now.</p>
+      ) : (
+        <div className="rows">
+          {courses.map((c) => (
+            <Link key={c.id} className="row" href={`/courses/${c.id}`}>
+              <span>
+                <span className="name">{c.code}</span>{" "}
+                <span className="meta">{c.title}</span>
+              </span>
+              <span className="num">
+                {c._count.lectures} lecture{c._count.lectures === 1 ? "" : "s"} ·{" "}
+                {c._count.concepts} concept{c._count.concepts === 1 ? "" : "s"}
+              </span>
+            </Link>
+          ))}
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      )}
+
+      <h2>Add a course</h2>
+      <form className="stack" action={createCourse}>
+        <label className="field">
+          <span>Code</span>
+          <input name="code" placeholder="BIOL3010" required />
+        </label>
+        <label className="field">
+          <span>Title</span>
+          <input name="title" placeholder="Genetics" required />
+        </label>
+        <label className="field">
+          <span>Exam date — drives how hard the scheduler pushes as it approaches</span>
+          <input name="examDate" type="date" />
+        </label>
+        <button type="submit">Add course</button>
+      </form>
+    </>
   );
 }

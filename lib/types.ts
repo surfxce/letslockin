@@ -11,6 +11,7 @@ export const GAP_TYPES = ["MISSED", "WRONG"] as const;
 export type GapType = (typeof GAP_TYPES)[number];
 
 export const JOB_KINDS = [
+  "IDENTIFY",
   "SUMMARISE",
   "EXTRACT_CONCEPTS",
   "GENERATE",

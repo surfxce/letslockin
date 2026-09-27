@@ -3,8 +3,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ZodType } from "zod";
 
+import { promptsDir } from "@/lib/paths";
+
 import {
   ConceptListSchema,
+  LectureIdentificationSchema,
   MarkingSchema,
   PaperItemsSchema,
   QuestionSetSchema,
@@ -12,6 +15,7 @@ import {
 } from "@/lib/llm/schemas";
 import type {
   ConceptRef,
+  IdentifyLecturesInput,
   ExtractConceptsInput,
   GenerateQuestionsInput,
   LlmProvider,
@@ -20,7 +24,7 @@ import type {
   SummariseInput,
 } from "@/lib/llm/provider";
 
-const PROMPTS_DIR = path.join(process.cwd(), "prompts");
+
 
 export class ClaudeCliError extends Error {
   constructor(
@@ -163,14 +167,14 @@ export function extractJson(text: string): unknown {
 async function loadPrompt(name: string): Promise<{ text: string; version: string }> {
   // prompts/<name>.<semver>.md — the version is stamped onto every row the reply produces.
   const { readdir } = await import("node:fs/promises");
-  const files = await readdir(PROMPTS_DIR);
+  const files = await readdir(promptsDir());
   const matches = files
     .filter((f) => f.startsWith(`${name}.`) && f.endsWith(".md"))
     .sort((a, b) => compareSemver(versionOf(name, b), versionOf(name, a)));
-  if (matches.length === 0) throw new ClaudeCliError(`no prompt file for "${name}" in prompts/`);
+  if (matches.length === 0) throw new ClaudeCliError(`no prompt file for "${name}" in ${promptsDir()}`);
   const file = matches[0];
   return {
-    text: await readFile(path.join(PROMPTS_DIR, file), "utf8"),
+    text: await readFile(path.join(promptsDir(), file), "utf8"),
     version: versionOf(name, file),
   };
 }
@@ -286,6 +290,28 @@ export class ClaudeCliProvider implements LlmProvider {
         concepts: conceptTable(input.concepts),
       },
       MarkingSchema,
+    );
+  }
+
+  identifyLectures(input: IdentifyLecturesInput) {
+    const manifest = input.files
+      .map(
+        (f) =>
+          `### [${f.index}] ${f.filename}\n` +
+          `modified: ${f.modifiedOn} · looks like: ${f.kindGuess}` +
+          (f.measuredHours ? ` · transcript runs ${f.measuredHours}h` : "") +
+          `\n\n${f.excerpt}`,
+      )
+      .join("\n\n");
+    return this.call(
+      "identify-lectures",
+      {
+        manifest,
+        existingModules:
+          input.existingModules.map((m) => `- ${m.id} :: ${m.title}`).join("\n") ||
+          "(none yet)",
+      },
+      LectureIdentificationSchema,
     );
   }
 

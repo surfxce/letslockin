@@ -87,3 +87,31 @@ export const PaperItemsSchema = z.object({
   ),
 });
 export type PaperItems = z.infer<typeof PaperItemsSchema>;
+
+export const LectureIdentificationSchema = z.object({
+  lectures: z.array(
+    z.object({
+      title: z.string().min(1),
+      existingModuleId: z.string().nullable().default(null),
+      newModuleTitle: z.string().nullable().default(null),
+      deliveredOn: z.string().nullable().default(null),
+      durationHours: z.number().positive().default(1),
+      fileIndexes: z.array(z.number().int().min(0)).min(1),
+      confidence: z.enum(["high", "low"]).default("high"),
+      note: z.string().nullable().default(null),
+    }),
+  ),
+  pastPapers: z
+    .array(
+      z.object({
+        fileIndexes: z.array(z.number().int().min(0)).min(1),
+        year: z.number().int().nullable().default(null),
+        label: z.string().nullable().default(null),
+      }),
+    )
+    .default([]),
+  ignored: z
+    .array(z.object({ fileIndex: z.number().int().min(0), why: z.string() }))
+    .default([]),
+});
+export type LectureIdentification = z.infer<typeof LectureIdentificationSchema>;

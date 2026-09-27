@@ -1,5 +1,6 @@
 import type {
   ConceptList,
+  LectureIdentification,
   Marking,
   PaperItems,
   QuestionSet,
@@ -49,6 +50,22 @@ export interface MarkInput {
   concepts: ConceptRef[];
 }
 
+/** One candidate file, as the identifier sees it. */
+export interface ManifestEntry {
+  index: number;
+  filename: string;
+  modifiedOn: string;
+  kindGuess: string;
+  /** Read off the transcript's own timestamps, when it has them. Authoritative. */
+  measuredHours: number | null;
+  excerpt: string;
+}
+
+export interface IdentifyLecturesInput {
+  files: ManifestEntry[];
+  existingModules: Array<{ id: string; title: string }>;
+}
+
 export interface ParsePastPaperInput {
   paperText: string;
   concepts: ConceptRef[];
@@ -63,9 +80,13 @@ export interface ParsePastPaperInput {
  */
 export interface LlmProvider {
   readonly name: string;
+  /** Version of the prompt behind the most recent call, stamped onto the rows it produced. */
+  readonly lastPromptVersion: string;
   summarise(input: SummariseInput): Promise<Summary>;
   extractConcepts(input: ExtractConceptsInput): Promise<ConceptList>;
   generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet>;
   mark(input: MarkInput): Promise<Marking>;
   parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems>;
+  /** Groups a folder of loose files into the lectures they belong to. */
+  identifyLectures(input: IdentifyLecturesInput): Promise<LectureIdentification>;
 }
