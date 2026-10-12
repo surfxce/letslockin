@@ -60,7 +60,9 @@ function childEnv(): NodeJS.ProcessEnv {
     LOCKIN_MIGRATIONS_DIR: PACKAGED
       ? path.join(RESOURCES, "migrations")
       : path.join(ROOT, "prisma", "migrations"),
-    DATABASE_URL: `file:${path.join(DATA, "lockin.db")}`,
+    // Packaged, the database lives in the data folder. From the repo, each process
+    // reads .env, so this is the same database `npm run dev` and `prisma migrate` use.
+    ...(PACKAGED ? { DATABASE_URL: `file:${path.join(DATA, "lockin.db")}` } : {}),
     PORT: String(PORT),
     HOSTNAME: "127.0.0.1",
   };
@@ -90,10 +92,10 @@ function fork(script: string, args: string[], label: string): ChildProcess {
 }
 
 /** Runs a script to completion — used for migrations, which must finish first. */
-function runOnce(script: string, label: string): Promise<void> {
+function runOnce(script: string, args: string[], label: string): Promise<void> {
   return new Promise((resolve, reject) => {
     let stderr = "";
-    const child = fork(script, [], label);
+    const child = fork(script, args, label);
     child.stderr?.on("data", (d) => (stderr += d));
     child.on("exit", (code) =>
       code === 0
@@ -261,21 +263,14 @@ app.whenReady().then(async () => {
   try {
     // Migrations first: on a fresh machine there is no database yet, and the server
     // would fail its first query rather than create one.
+    // From the repo the migrator runs through tsx, which needs the entry as an arg:
+    // without one it opens a REPL, which exits 0 at once and migrates nothing.
     const migrate = script(
       "dist/scripts/migrate.cjs",
       path.join(ROOT, "node_modules", "tsx", "dist", "cli.mjs"),
+      [path.join(ROOT, "scripts", "migrate.ts")],
     );
-    await runOnce(
-      migrate.file,
-      "migrate",
-    ).catch(async (err) => {
-      if (PACKAGED) throw err;
-      // From the repo the migrator runs through tsx, which needs the entry as an arg.
-      await new Promise<void>((resolve, reject) => {
-        const child = fork(migrate.file, [path.join(ROOT, "scripts", "migrate.ts")], "migrate");
-        child.on("exit", (code) => (code === 0 ? resolve() : reject(err)));
-      });
-    });
+    await runOnce(migrate.file, migrate.args, "migrate");
 
     fork(
       path.join(ROOT, "node_modules", "next", "dist", "bin", "next"),
