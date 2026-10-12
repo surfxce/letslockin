@@ -44,6 +44,15 @@ npm install
 npm run desktop      # or `npm run dmg` to build a macOS installer
 ```
 
+`npm run desktop` runs the app straight from this folder; nothing is installed. To have
+Lockin in Applications, run `npm run dmg`, open the `.dmg` it puts in `release/` and drag Lockin
+into Applications. It is not signed, so the first time, right-click it and choose
+*Open*. The installed app keeps its own data in `~/Library/Application Support/Lockin`
+(database, uploaded files, downloaded models), apart from this folder's — to bring your
+lectures across, quit it and copy `prisma/lockin.db` there as `lockin.db`, along with
+the `materials` folder. `npm run dmg` rebuilds the SQLite driver for Electron; run
+`npm run rebuild:node` before using `npm run desktop` or `npm run dev` again.
+
 **In a browser**, two terminals:
 
 ```bash
