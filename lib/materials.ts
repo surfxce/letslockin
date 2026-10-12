@@ -6,8 +6,6 @@ import { checksum, guessKind, parseMaterial } from "@/lib/parse";
 import { materialsDir } from "@/lib/paths";
 import type { MaterialKind } from "@/lib/types";
 
-
-
 export interface IngestResult {
   materialId: string;
   warnings: string[];
@@ -46,8 +44,4 @@ export async function ingestFile(opts: {
   });
 
   return { materialId: material.id, warnings: parsed.warnings };
-}
-
-export async function enqueue(kind: string, payload: Record<string, unknown>) {
-  return prisma.job.create({ data: { kind, payload: JSON.stringify(payload) } });
 }

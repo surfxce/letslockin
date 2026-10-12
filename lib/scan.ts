@@ -2,12 +2,10 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { checksum, guessKind, measureHours, parseMaterial } from "@/lib/parse";
-import type { ManifestEntry } from "@/lib/llm/provider";
 
 const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx"]);
 const MAX_FILES = 120;
 const MAX_BYTES = 80 * 1024 * 1024;
-const EXCERPT_CHARS = 1400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "__pycache__", "materials"]);
 
 export interface ScannedFile {
@@ -100,15 +98,4 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   }
 
   return { files, skipped };
-}
-
-export function toManifest(files: ScannedFile[]): ManifestEntry[] {
-  return files.map((f, index) => ({
-    index,
-    filename: f.relativePath,
-    modifiedOn: f.modifiedOn.toISOString().slice(0, 10),
-    kindGuess: f.kindGuess,
-    measuredHours: f.measuredHours,
-    excerpt: f.text.slice(0, EXCERPT_CHARS),
-  }));
 }

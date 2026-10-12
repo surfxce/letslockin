@@ -43,6 +43,8 @@ next-env.d.ts
 .env
 prisma/*.db
 prisma/*.db-journal
+# Where the database lands when DATABASE_URL is unset (lib/paths.ts).
+/lockin.db*
 materials/
 
 # Prisma generated client

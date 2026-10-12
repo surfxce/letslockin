@@ -1,12 +1,14 @@
 import { ClaudeCliProvider } from "@/lib/llm/cli";
+import { FakeProvider } from "@/lib/llm/fake";
 import type { LlmProvider } from "@/lib/llm/provider";
 
 let cached: LlmProvider | undefined;
 
 /**
  * The seam. Everything else in the app depends on LlmProvider, never on an adapter.
- * `cli` runs against a personal Claude subscription; `api` (metered Anthropic SDK)
- * is what this switches to the day it runs for anyone but its author.
+ * `cli` runs against a personal Claude subscription; `fake` returns canned output for
+ * development; `api` (metered Anthropic SDK) is what this switches to the day it runs
+ * for anyone but its author.
  */
 export function getProvider(): LlmProvider {
   if (cached) return cached;
@@ -14,6 +16,9 @@ export function getProvider(): LlmProvider {
   switch (kind) {
     case "cli":
       cached = new ClaudeCliProvider();
+      return cached;
+    case "fake":
+      cached = new FakeProvider();
       return cached;
     case "api":
       throw new Error("the Anthropic SDK adapter is not built yet — set LOCKIN_PROVIDER=cli");

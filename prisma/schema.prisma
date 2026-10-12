@@ -51,6 +51,12 @@ model Lecture {
   deliveredOn   DateTime // weekday is derived from this, never stored
   durationHours Float    @default(1) // x2 = default question count
   summaryMd     String?
+  /// True while the title is a placeholder made from a filename. The first AI pass
+  /// (or a pasted summary with a heading) replaces it; editing it by hand clears this.
+  autoTitle     Boolean  @default(false)
+  /// JSON [{ what, where }]: module aims, learning objectives and admin that were
+  /// left out of the summary and questions, so the omission is visible, not silent.
+  skipped       String?
   createdAt     DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -59,6 +65,7 @@ model Lecture {
   concepts  Concept[]
   questions Question[]
   attempts  Attempt[]
+  jobs      Job[]
 
   @@index([courseId])
   @@index([moduleId])
@@ -140,6 +147,7 @@ model Attempt {
   closedBook    Boolean   @default(true)
   geometricMean Float? // null until every response is marked
   completedAt   DateTime?
+  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat)
 
   lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   responses Response[]
@@ -237,9 +245,18 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: SUMMARISE | EXTRACT_CONCEPTS | GENERATE | MARK | PARSE_PAPER | IDENTIFY
+  kind          String // enum: PREPARE | GENERATE | MARK
   payload       String // JSON
+  /// The lecture this work is for, so "what is it doing right now" is a lookup
+  /// rather than a search through payloads. Deleting the lecture drops its jobs.
+  lectureId     String?
   status        String    @default("PENDING") // enum: PENDING | RUNNING | DONE | FAILED
+  /// Higher runs first. Marking jumps the queue: someone is waiting on it.
+  priority      Int       @default(0)
+  /// What the job is doing right now, e.g. "digest" or "questions".
+  stage         String?
+  /// JSON [{ stage, startedAt, finishedAt }] — the timeline the UI shows.
+  steps         String?
   attempts      Int       @default(0)
   error         String?
   result        String? // raw model output, kept so a bad mark is always traceable
@@ -249,5 +266,15 @@ model Job {
   startedAt     DateTime?
   finishedAt    DateTime?
 
-  @@index([status, createdAt])
+  lecture Lecture? @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, createdAt])
+  @@index([lectureId])
+}
+
+/// App-wide preferences and the worker's heartbeat. Key/value, values are JSON.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

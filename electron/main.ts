@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import path from "node:path";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from "electron";
 
 const DEV = process.env.LOCKIN_DEV === "1";
 const PORT = Number(process.env.LOCKIN_PORT ?? 3579);
@@ -153,7 +153,19 @@ function buildMenu() {
   );
 }
 
-async function createWindow() {
+/** Shows the window at a page, creating it if every window was closed. */
+async function openAt(pathname: string) {
+  if (window) {
+    await window.loadURL(`http://localhost:${PORT}${pathname}`);
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  } else {
+    await createWindow(pathname);
+  }
+}
+
+async function createWindow(pathname = "/") {
   window = new BrowserWindow({
     width: 1100,
     height: 860,
@@ -179,9 +191,61 @@ async function createWindow() {
     }
   });
 
-  await window.loadURL(`http://localhost:${PORT}`);
+  await window.loadURL(`http://localhost:${PORT}${pathname}`);
   window.show();
   window.on("closed", () => (window = null));
+}
+
+// ---------------------------------------------------------------------------
+// Reminders. They come from here rather than the page so they arrive with no
+// window open — on macOS the app keeps running in the dock after its window closes.
+
+interface Due {
+  lectureId: string;
+  title: string;
+  courseCode: string;
+}
+
+const REMINDER_CHECK_MS = 5 * 60_000;
+/** lectureId → the day it was last announced, so each lecture nags once a day at most. */
+const announced = new Map<string, string>();
+/** Notifications are garbage-collected (and their click handlers lost) unless held. */
+const live = new Set<Notification>();
+
+async function checkReminders() {
+  let status: { notify: boolean; due: Due[] };
+  try {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/status`);
+    if (!res.ok) return;
+    status = await res.json();
+  } catch {
+    return; // the server is restarting; try again next round
+  }
+
+  // The dock badge is the quiet reminder; it shows whether or not notifications are on.
+  app.setBadgeCount(status.due.length);
+
+  const hour = new Date().getHours();
+  if (!status.notify || !Notification.isSupported() || hour < 8 || hour >= 22) return;
+  const today = new Date().toDateString();
+  const fresh = status.due.filter((d) => announced.get(d.lectureId) !== today);
+  if (fresh.length === 0) return;
+
+  const one = fresh.length === 1;
+  const n = new Notification({
+    title: one ? "Time to redo your LAQs" : `${fresh.length} lectures are due for LAQs`,
+    body: one
+      ? `${fresh[0].courseCode} · ${fresh[0].title}`
+      : fresh.slice(0, 3).map((d) => d.title).join(" · "),
+  });
+  live.add(n);
+  n.on("click", () => {
+    live.delete(n);
+    void openAt(one ? `/lectures/${fresh[0].lectureId}` : "/#due");
+  });
+  n.on("close", () => live.delete(n));
+  n.show();
+  for (const d of fresh) announced.set(d.lectureId, today);
 }
 
 const script = (packagedPath: string, devScript: string, devArgs: string[] = []) =>
@@ -191,6 +255,8 @@ const script = (packagedPath: string, devScript: string, devArgs: string[] = [])
 
 app.whenReady().then(async () => {
   buildMenu();
+  // Windows only shows notifications for an app with a registered id.
+  if (process.platform === "win32") app.setAppUserModelId("app.lockin");
 
   try {
     // Migrations first: on a fresh machine there is no database yet, and the server
@@ -228,6 +294,8 @@ app.whenReady().then(async () => {
 
     await waitForPort(PORT);
     await createWindow();
+    setTimeout(() => void checkReminders(), 15_000);
+    setInterval(() => void checkReminders(), REMINDER_CHECK_MS);
   } catch (err) {
     dialog.showErrorBox(
       "Lockin could not start",
@@ -254,7 +322,9 @@ function shutdown() {
   for (const child of children) child.kill("SIGTERM");
 }
 app.on("window-all-closed", () => {
-  shutdown();
+  // On macOS the app stays in the dock with its server and worker still running, so
+  // a lecture keeps preparing, a reminder can still fire, and reopening the window
+  // finds a live server rather than a dead page. Elsewhere, closing the window quits.
   if (process.platform !== "darwin") app.quit();
 });
 app.on("before-quit", shutdown);

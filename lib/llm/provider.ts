@@ -1,11 +1,4 @@
-import type {
-  ConceptList,
-  LectureIdentification,
-  Marking,
-  PaperItems,
-  QuestionSet,
-  Summary,
-} from "@/lib/llm/schemas";
+import type { Digest, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 
 /** A concept as the model sees it: enough to reuse an id, not enough to pad the prompt. */
 export interface ConceptRef {
@@ -14,18 +7,15 @@ export interface ConceptRef {
   definition: string;
 }
 
-export interface SummariseInput {
-  lectureTitle: string;
+export interface DigestInput {
+  currentTitle: string;
+  /** True when the current title came from a filename and should be replaced. */
+  titleIsPlaceholder: boolean;
   durationHours: number;
   transcript: string;
   slidesText?: string;
-}
-
-export interface ExtractConceptsInput {
-  lectureTitle: string;
-  durationHours: number;
-  transcript: string;
-  slidesText?: string;
+  /** Sections already removed before the model saw the text, so it can mention them. */
+  alreadySkipped: Array<{ what: string; where: string }>;
   /** Concepts already on the course. The model reuses these ids rather than
    *  minting near-duplicates, which is what stops mastery and yield fragmenting. */
   existingConcepts: ConceptRef[];
@@ -36,8 +26,7 @@ export interface GenerateQuestionsInput {
   transcript: string;
   slidesText?: string;
   concepts: ConceptRef[];
-  /** How many questions each concept should get, from the allocation engine.
-   *  Phase 2 passes a flat 2-per-lecture-hour; phase 5 makes it adaptive. */
+  /** How many questions each concept should get, from the allocation engine. */
   allocation: Array<{ conceptId: string; count: number }>;
   type: "LAQ" | "SAQ";
 }
@@ -50,22 +39,6 @@ export interface MarkInput {
   concepts: ConceptRef[];
 }
 
-/** One candidate file, as the identifier sees it. */
-export interface ManifestEntry {
-  index: number;
-  filename: string;
-  modifiedOn: string;
-  kindGuess: string;
-  /** Read off the transcript's own timestamps, when it has them. Authoritative. */
-  measuredHours: number | null;
-  excerpt: string;
-}
-
-export interface IdentifyLecturesInput {
-  files: ManifestEntry[];
-  existingModules: Array<{ id: string; title: string }>;
-}
-
 export interface ParsePastPaperInput {
   paperText: string;
   concepts: ConceptRef[];
@@ -74,19 +47,17 @@ export interface ParsePastPaperInput {
 /**
  * The only place in the app a model gets called.
  *
- * v1 is backed by the Claude Code CLI against a personal subscription; the
- * Anthropic SDK adapter lands when this needs to run for anyone but its author.
- * Nothing outside lib/llm/ may import an adapter directly.
+ * Backed by the Claude Code CLI against a personal subscription (`cli`), or by a
+ * canned stand-in for development and demos (`fake`). Nothing outside lib/llm/ may
+ * import an adapter directly.
  */
 export interface LlmProvider {
   readonly name: string;
   /** Version of the prompt behind the most recent call, stamped onto the rows it produced. */
   readonly lastPromptVersion: string;
-  summarise(input: SummariseInput): Promise<Summary>;
-  extractConcepts(input: ExtractConceptsInput): Promise<ConceptList>;
+  /** Title, set-aside sections, summary and concepts for one lecture, in one call. */
+  digest(input: DigestInput): Promise<Digest>;
   generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet>;
   mark(input: MarkInput): Promise<Marking>;
   parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems>;
-  /** Groups a folder of loose files into the lectures they belong to. */
-  identifyLectures(input: IdentifyLecturesInput): Promise<LectureIdentification>;
 }

@@ -1,29 +1,20 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ZodType } from "zod";
 
 import { promptsDir } from "@/lib/paths";
 
-import {
-  ConceptListSchema,
-  LectureIdentificationSchema,
-  MarkingSchema,
-  PaperItemsSchema,
-  QuestionSetSchema,
-  SummarySchema,
-} from "@/lib/llm/schemas";
+import { DigestSchema, MarkingSchema, PaperItemsSchema, QuestionSetSchema } from "@/lib/llm/schemas";
 import type {
   ConceptRef,
-  IdentifyLecturesInput,
-  ExtractConceptsInput,
+  DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
   ParsePastPaperInput,
-  SummariseInput,
 } from "@/lib/llm/provider";
-
 
 
 export class ClaudeCliError extends Error {
@@ -50,7 +41,8 @@ export function cliConfigFromEnv(): ClaudeCliConfig {
   return {
     binary: process.env.LOCKIN_CLAUDE_BIN ?? "claude",
     model: process.env.LOCKIN_MODEL ?? "claude-opus-5",
-    timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 300_000),
+    // One digest call now does what three used to, so a double lecture needs room.
+    timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000),
     extraArgs: (process.env.LOCKIN_CLI_FLAGS ?? "").split(" ").filter(Boolean),
   };
 }
@@ -72,7 +64,10 @@ function runClaude(prompt: string, cfg: ClaudeCliConfig): Promise<string> {
   ];
 
   return new Promise((resolve, reject) => {
-    const child = spawn(cfg.binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+    // Run from a neutral directory. From the repo, the CLI would load this project's
+    // CLAUDE.md, settings and hooks into every call — tokens and startup time spent
+    // on context the prompt does not need.
+    const child = spawn(cfg.binary, args, { stdio: ["pipe", "pipe", "pipe"], cwd: tmpdir() });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -231,32 +226,26 @@ export class ClaudeCliProvider implements LlmProvider {
     }
   }
 
-  summarise(input: SummariseInput) {
+  digest(input: DigestInput) {
     return this.call(
-      "summarise",
+      "digest-lecture",
       {
-        lectureTitle: input.lectureTitle,
-        durationHours: String(input.durationHours),
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-      },
-      SummarySchema,
-    );
-  }
-
-  extractConcepts(input: ExtractConceptsInput) {
-    return this.call(
-      "extract-concepts",
-      {
-        lectureTitle: input.lectureTitle,
+        currentTitle: input.currentTitle,
+        titleNote: input.titleIsPlaceholder
+          ? "(That title was made from a filename and is only a placeholder — replace it.)"
+          : "(The student chose that title. Return it unchanged unless it is plainly wrong.)",
         durationHours: String(input.durationHours),
         lowerBound: String(Math.round(8 * input.durationHours)),
         upperBound: String(Math.round(20 * input.durationHours)),
         transcript: input.transcript,
         slidesText: input.slidesText ?? "(no slides supplied)",
         existingConcepts: conceptTable(input.existingConcepts),
+        alreadySkipped: input.alreadySkipped.length
+          ? `\nThese slides were already removed before you saw them and are recorded, so do not list them again:\n` +
+            input.alreadySkipped.map((s) => `- ${s.what} (${s.where})`).join("\n")
+          : "",
       },
-      ConceptListSchema,
+      DigestSchema,
     );
   }
 
@@ -290,28 +279,6 @@ export class ClaudeCliProvider implements LlmProvider {
         concepts: conceptTable(input.concepts),
       },
       MarkingSchema,
-    );
-  }
-
-  identifyLectures(input: IdentifyLecturesInput) {
-    const manifest = input.files
-      .map(
-        (f) =>
-          `### [${f.index}] ${f.filename}\n` +
-          `modified: ${f.modifiedOn} · looks like: ${f.kindGuess}` +
-          (f.measuredHours ? ` · transcript runs ${f.measuredHours}h` : "") +
-          `\n\n${f.excerpt}`,
-      )
-      .join("\n\n");
-    return this.call(
-      "identify-lectures",
-      {
-        manifest,
-        existingModules:
-          input.existingModules.map((m) => `- ${m.id} :: ${m.title}`).join("\n") ||
-          "(none yet)",
-      },
-      LectureIdentificationSchema,
     );
   }
 

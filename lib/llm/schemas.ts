@@ -3,32 +3,24 @@ import { GAP_TYPES, QUESTION_TYPES } from "@/lib/types";
 
 /** Every model response is validated against one of these before it touches the database. */
 
-export const SummarySchema = z.object({
-  summaryMd: z.string().min(1),
-  figures: z
-    .array(
-      z.object({
-        description: z.string(),
-        sourceRef: z.string().describe("slide number or transcript timestamp"),
-        why: z.string().describe("what text cannot convey about it"),
-      }),
-    )
-    .default([]),
+const ConceptSchema = z.object({
+  /** Set when reusing a concept already on the course list; null when minting a new one. */
+  existingId: z.string().nullable().default(null),
+  name: z.string().min(1),
+  definition: z.string().min(1),
+  sourceRef: z.string().nullable().default(null),
 });
-export type Summary = z.infer<typeof SummarySchema>;
 
-export const ConceptListSchema = z.object({
-  concepts: z.array(
-    z.object({
-      /** Set when reusing a concept already on the course list; null when minting a new one. */
-      existingId: z.string().nullable().default(null),
-      name: z.string().min(1),
-      definition: z.string().min(1),
-      sourceRef: z.string().nullable().default(null),
-    }),
-  ),
+/** One pass over a lecture: its title, what was set aside, the summary and the concepts. */
+export const DigestSchema = z.object({
+  title: z.string().min(1),
+  skipped: z
+    .array(z.object({ what: z.string().min(1), where: z.string().default("") }))
+    .default([]),
+  summaryMd: z.string().min(1),
+  concepts: z.array(ConceptSchema),
 });
-export type ConceptList = z.infer<typeof ConceptListSchema>;
+export type Digest = z.infer<typeof DigestSchema>;
 
 const RubricCriterionSchema = z.object({
   point: z.string().describe("one thing a complete answer states"),
@@ -87,31 +79,3 @@ export const PaperItemsSchema = z.object({
   ),
 });
 export type PaperItems = z.infer<typeof PaperItemsSchema>;
-
-export const LectureIdentificationSchema = z.object({
-  lectures: z.array(
-    z.object({
-      title: z.string().min(1),
-      existingModuleId: z.string().nullable().default(null),
-      newModuleTitle: z.string().nullable().default(null),
-      deliveredOn: z.string().nullable().default(null),
-      durationHours: z.number().positive().default(1),
-      fileIndexes: z.array(z.number().int().min(0)).min(1),
-      confidence: z.enum(["high", "low"]).default("high"),
-      note: z.string().nullable().default(null),
-    }),
-  ),
-  pastPapers: z
-    .array(
-      z.object({
-        fileIndexes: z.array(z.number().int().min(0)).min(1),
-        year: z.number().int().nullable().default(null),
-        label: z.string().nullable().default(null),
-      }),
-    )
-    .default([]),
-  ignored: z
-    .array(z.object({ fileIndex: z.number().int().min(0), why: z.string() }))
-    .default([]),
-});
-export type LectureIdentification = z.infer<typeof LectureIdentificationSchema>;

@@ -8,261 +8,494 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/db";
 import { pickQuestions } from "@/lib/engines/attempt";
+import { geometricMean } from "@/lib/engines/geomean";
+import { fromDateInput } from "@/lib/format";
+import { groupFiles, titleFromFilename, type ProposedLecture } from "@/lib/group";
+import { clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jobs";
+import { ingestFile } from "@/lib/materials";
+import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
 import { materialsDir } from "@/lib/paths";
-import { enqueue, ingestFile } from "@/lib/materials";
+import { scoreAttemptIfMarked } from "@/lib/pipeline";
+import { scanFolder } from "@/lib/scan";
+import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
+import { questionNumbers } from "@/lib/views";
 
-export async function createCourse(formData: FormData) {
-  const code = String(formData.get("code") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const examDateRaw = String(formData.get("examDate") ?? "").trim();
-  if (!code || !title) throw new Error("course code and title are both required");
+/** What a form gets back when it stays on the page: shown next to the button. */
+export type Result = { ok: boolean; message: string } | null;
 
+const str = (fd: FormData, key: string) => String(fd.get(key) ?? "").trim();
+
+function refreshAll() {
+  revalidatePath("/", "layout");
+}
+
+function positiveHours(raw: string): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+// ---------------------------------------------------------------------------
+// Courses
+
+export async function createCourse(_prev: Result, fd: FormData): Promise<Result> {
+  const code = str(fd, "code").toUpperCase();
+  const title = str(fd, "title");
+  if (!code || !title) return { ok: false, message: "Give the course a code and a name." };
+  if (await prisma.course.findUnique({ where: { code } })) {
+    return { ok: false, message: `${code} is already here.` };
+  }
   const course = await prisma.course.create({
-    data: { code, title, examDate: examDateRaw ? new Date(examDateRaw) : null },
+    data: { code, title, examDate: fromDateInput(str(fd, "examDate")) },
   });
-  redirect(`/courses/${course.id}`);
+  refreshAll();
+  redirect(`/courses/${course.id}/import?new=1`);
 }
 
-export async function createLecture(formData: FormData) {
-  const courseId = String(formData.get("courseId"));
-  const title = String(formData.get("title") ?? "").trim();
-  const deliveredOn = String(formData.get("deliveredOn") ?? "").trim();
-  const durationHours = Number(formData.get("durationHours") ?? 1);
-  if (!title) throw new Error("lecture title is required");
-
-  const lecture = await prisma.lecture.create({
-    data: {
-      courseId,
-      title,
-      deliveredOn: deliveredOn ? new Date(deliveredOn) : new Date(),
-      durationHours: Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 1,
-    },
-  });
-  redirect(`/lectures/${lecture.id}`);
-}
-
-export async function uploadMaterial(formData: FormData) {
-  const lectureId = String(formData.get("lectureId"));
-  const kind = String(formData.get("kind") || "") as MaterialKind | "";
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) throw new Error("choose at least one file");
-
-  for (const file of files) {
-    await ingestFile({ file, lectureId, kind: kind || undefined });
-  }
-  revalidatePath(`/lectures/${lectureId}`);
-}
-
-export async function correctText(formData: FormData) {
-  const materialId = String(formData.get("materialId"));
-  const extractedText = String(formData.get("extractedText") ?? "");
-  const material = await prisma.material.update({
-    where: { id: materialId },
-    data: { extractedText },
-  });
-  revalidatePath(`/lectures/${material.lectureId}`);
-}
-
-export async function deleteMaterial(formData: FormData) {
-  const materialId = String(formData.get("materialId"));
-  const material = await prisma.material.delete({ where: { id: materialId } });
-  revalidatePath(`/lectures/${material.lectureId}`);
-}
-
-/** Queues work for the worker rather than blocking the request on a model call. */
-export async function runJob(formData: FormData) {
-  const lectureId = String(formData.get("lectureId"));
-  const kind = String(formData.get("kind"));
-  await enqueue(kind, { lectureId });
-  revalidatePath(`/lectures/${lectureId}`);
-}
-
-export async function createModule(formData: FormData) {
-  const courseId = String(formData.get("courseId"));
-  const title = String(formData.get("title") ?? "").trim();
-  if (!title) throw new Error("module title is required");
-  const count = await prisma.module.count({ where: { courseId } });
-  await prisma.module.create({ data: { courseId, title, position: count } });
-  revalidatePath(`/courses/${courseId}`);
-}
-
-export async function startImport(formData: FormData) {
-  const courseId = String(formData.get("courseId"));
-  const root = String(formData.get("root") ?? "").trim();
-  if (!root) throw new Error("give the folder a path");
-  await enqueue("IDENTIFY", { courseId, root: root.replace(/^~/, process.env.HOME ?? "~") });
-  revalidatePath(`/courses/${courseId}/import`);
-}
-
-/**
- * Applies the reviewed proposal. Everything here comes from the form the user just
- * edited, not from the model's output — the proposal is a suggestion that the review
- * screen turns into a decision.
- */
-export async function confirmImport(formData: FormData) {
-  const courseId = String(formData.get("courseId"));
-  const root = String(formData.get("root"));
-  const jobId = String(formData.get("jobId"));
-  const summarise = formData.get("summarise") === "on";
-
-  const indexes = formData
-    .getAll("include")
-    .map((v) => String(v))
-    .filter(Boolean);
-
-  const moduleCache = new Map<string, string>();
-  async function moduleIdFor(raw: string): Promise<string | null> {
-    if (!raw) return null;
-    if (!raw.startsWith("new:")) return raw;
-    const title = raw.slice(4).trim();
-    if (!title) return null;
-    const cached = moduleCache.get(title);
-    if (cached) return cached;
-    const position = await prisma.module.count({ where: { courseId } });
-    const mod = await prisma.module.upsert({
-      where: { courseId_title: { courseId, title } },
-      update: {},
-      create: { courseId, title, position },
-    });
-    moduleCache.set(title, mod.id);
-    return mod.id;
-  }
-
-  // Check every file is still where the scan found it before writing anything —
-  // a file moved between scanning and confirming should not leave half an import.
-  const planned = indexes.map((i) => ({
-    i,
-    title: String(formData.get(`title.${i}`) ?? "").trim(),
-    paths: formData.getAll(`paths.${i}`).map((v) => String(v).trim()).filter(Boolean),
-  }));
-  const missing: string[] = [];
-  for (const { paths } of planned) {
-    for (const rel of paths) {
-      await access(path.join(root, rel)).catch(() => missing.push(rel));
-    }
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      `these files are no longer at ${root}: ${missing.join(", ")}. Scan the folder again.`,
-    );
-  }
-
-  let created = 0;
-  for (const { i, title, paths } of planned) {
-    if (!title) continue;
-    const deliveredOn = String(formData.get(`date.${i}`) ?? "").trim();
-    const durationHours = Number(formData.get(`hours.${i}`) ?? 1);
-
-    const lecture = await prisma.lecture.create({
-      data: {
-        courseId,
-        moduleId: await moduleIdFor(String(formData.get(`module.${i}`) ?? "")),
-        title,
-        deliveredOn: deliveredOn ? new Date(deliveredOn) : new Date(),
-        durationHours: Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 1,
-      },
-    });
-
-    try {
-      for (const rel of paths) {
-        const abs = path.join(root, rel);
-        const buffer = await readFile(abs);
-        const file = new File([new Uint8Array(buffer)], path.basename(abs));
-        await ingestFile({ file, lectureId: lecture.id });
-      }
-    } catch (err) {
-      // A lecture with no material is worse than no lecture at all — it looks
-      // importable and every pipeline step on it fails.
-      await prisma.lecture.delete({ where: { id: lecture.id } }).catch(() => undefined);
-      throw err;
-    }
-    if (summarise) {
-      await enqueue("SUMMARISE", { lectureId: lecture.id });
-      await enqueue("EXTRACT_CONCEPTS", { lectureId: lecture.id });
-    }
-    created++;
-  }
-
-  // Keeps a finished import off the review screen next time it is opened.
-  await prisma.job.update({ where: { id: jobId }, data: { status: "DONE", error: null } })
-    .catch(() => undefined);
-
-  revalidatePath(`/courses/${courseId}`);
-  redirect(`/courses/${courseId}?imported=${created}`);
-}
-
-export async function updateCourse(formData: FormData) {
-  const id = String(formData.get("courseId"));
-  const code = String(formData.get("code") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const examDate = String(formData.get("examDate") ?? "").trim();
-  if (!code || !title) throw new Error("course code and title are both required");
+export async function updateCourse(_prev: Result, fd: FormData): Promise<Result> {
+  const id = str(fd, "courseId");
+  const code = str(fd, "code").toUpperCase();
+  const title = str(fd, "title");
+  if (!code || !title) return { ok: false, message: "A course needs a code and a name." };
+  const clash = await prisma.course.findUnique({ where: { code } });
+  if (clash && clash.id !== id) return { ok: false, message: `${code} is already another course.` };
   await prisma.course.update({
     where: { id },
-    data: { code, title, examDate: examDate ? new Date(examDate) : null },
+    data: { code, title, examDate: fromDateInput(str(fd, "examDate")) },
   });
-  revalidatePath(`/courses/${id}`);
-  redirect(`/courses/${id}/settings?saved=1`);
+  refreshAll();
+  return { ok: true, message: "Saved." };
 }
 
-export async function deleteCourse(formData: FormData) {
-  const id = String(formData.get("courseId"));
-  const confirmation = String(formData.get("confirm") ?? "").trim();
+export async function deleteCourse(_prev: Result, fd: FormData): Promise<Result> {
+  const id = str(fd, "courseId");
   const course = await prisma.course.findUniqueOrThrow({ where: { id } });
-  if (confirmation !== course.code) {
-    throw new Error(`type ${course.code} to confirm — this deletes every lecture, attempt and mark on it`);
+  if (str(fd, "confirm").toUpperCase() !== course.code) {
+    return { ok: false, message: `Type ${course.code} to confirm.` };
   }
   const lectures = await prisma.lecture.findMany({ where: { courseId: id }, select: { id: true } });
   await prisma.course.delete({ where: { id } });
   // Cascades clear the rows; the uploaded files have to go too.
-  for (const l of lectures) {
-    await rm(path.join(materialsDir(), l.id), { recursive: true, force: true });
-  }
-  revalidatePath("/");
+  for (const l of lectures) await rm(path.join(materialsDir(), l.id), { recursive: true, force: true });
+  refreshAll();
   redirect("/");
 }
 
-export async function updateLecture(formData: FormData) {
-  const id = String(formData.get("lectureId"));
-  const title = String(formData.get("title") ?? "").trim();
-  const moduleId = String(formData.get("moduleId") ?? "");
-  const deliveredOn = String(formData.get("deliveredOn") ?? "").trim();
-  const durationHours = Number(formData.get("durationHours") ?? 1);
-  if (!title) throw new Error("lecture title is required");
+export async function deleteModule(fd: FormData) {
+  // Lectures survive; they just lose the module.
+  await prisma.module.delete({ where: { id: str(fd, "moduleId") } });
+  refreshAll();
+}
+
+async function moduleIdFor(courseId: string, title: string, cache = new Map<string, string>()) {
+  const name = title.trim();
+  if (!name) return null;
+  const hit = cache.get(name.toLowerCase());
+  if (hit) return hit;
+  const existing = await prisma.module.findFirst({ where: { courseId, title: name } });
+  const mod =
+    existing ??
+    (await prisma.module.create({
+      data: { courseId, title: name, position: await prisma.module.count({ where: { courseId } }) },
+    }));
+  cache.set(name.toLowerCase(), mod.id);
+  return mod.id;
+}
+
+// ---------------------------------------------------------------------------
+// Importing a folder
+
+export interface ScanState {
+  error?: string;
+  root?: string;
+  /** Distinguishes one scan from the next, so the review form resets between them. */
+  scannedAt?: number;
+  files?: Array<{ relativePath: string; kind: string; warnings: string[]; measuredHours: number | null }>;
+  lectures?: ProposedLecture[];
+  skipped?: Array<{ path: string; why: string }>;
+  /** File indexes whose exact contents are already in this course. */
+  alreadyImported?: number[];
+}
+
+/** Reads the folder and proposes lectures. Local and instant: no model call. */
+export async function scanFolderAction(_prev: ScanState, fd: FormData): Promise<ScanState> {
+  const courseId = str(fd, "courseId");
+  const raw = str(fd, "root");
+  if (!raw) return { error: "Choose the folder your lecture files are in." };
+  const root = path.resolve(raw.replace(/^~(?=$|[\\/])/, process.env.HOME ?? "~"));
+
+  try {
+    const { files, skipped } = await scanFolder(root);
+    if (files.length === 0) {
+      return { error: `Nothing readable in ${root}. Lockin reads .vtt .srt .txt .md .pdf and .pptx.`, root };
+    }
+    const known = new Set(
+      (
+        await prisma.material.findMany({ where: { lecture: { courseId } }, select: { checksum: true } })
+      ).map((m) => m.checksum),
+    );
+    return {
+      root,
+      scannedAt: Date.now(),
+      files: files.map((f) => ({
+        relativePath: f.relativePath,
+        kind: f.kindGuess,
+        warnings: f.warnings,
+        measuredHours: f.measuredHours,
+      })),
+      lectures: groupFiles(
+        files.map((f) => ({
+          relativePath: f.relativePath,
+          kind: f.kindGuess,
+          modifiedOn: f.modifiedOn,
+          measuredHours: f.measuredHours,
+        })),
+      ),
+      skipped,
+      alreadyImported: files.flatMap((f, i) => (known.has(f.checksum) ? [i] : [])),
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err), root };
+  }
+}
+
+/**
+ * Creates the reviewed lectures, then queues them to be prepared one at a time in
+ * course order. Everything comes from the form the student just edited.
+ */
+export async function importLectures(_prev: Result, fd: FormData): Promise<Result> {
+  const courseId = str(fd, "courseId");
+  const root = path.resolve(str(fd, "root"));
+  const prepare = fd.get("prepare") === "on";
+  const rows = fd.getAll("include").map(String);
+  if (rows.length === 0) return { ok: false, message: "Tick at least one lecture to import." };
+
+  const planned = rows.map((i) => ({
+    title: str(fd, `title.${i}`),
+    proposed: str(fd, `proposed.${i}`),
+    module: str(fd, `module.${i}`),
+    date: str(fd, `date.${i}`),
+    hours: str(fd, `hours.${i}`),
+    paths: fd.getAll(`paths.${i}`).map((v) => String(v)),
+  }));
+
+  // Every file must still be where the scan found it, and inside the chosen folder,
+  // before anything is written — no half-finished imports.
+  const missing: string[] = [];
+  for (const { paths } of planned) {
+    for (const rel of paths) {
+      const abs = path.resolve(root, rel);
+      if (!abs.startsWith(root + path.sep)) return { ok: false, message: `${rel} is outside ${root}.` };
+      await access(abs).catch(() => missing.push(rel));
+    }
+  }
+  if (missing.length) {
+    return { ok: false, message: `These files have moved since the scan: ${missing.join(", ")}. Scan again.` };
+  }
+
+  const modules = new Map<string, string>();
+  const created: string[] = [];
+  for (const row of planned) {
+    const title = row.title || row.proposed || "Untitled lecture";
+    const lecture = await prisma.lecture.create({
+      data: {
+        courseId,
+        moduleId: await moduleIdFor(courseId, row.module, modules),
+        title,
+        // A title still as the scan proposed it came from a filename; the first AI
+        // pass replaces it with one written from the content.
+        autoTitle: !row.title || row.title === row.proposed,
+        deliveredOn: fromDateInput(row.date) ?? new Date(),
+        durationHours: positiveHours(row.hours),
+      },
+    });
+    try {
+      for (const rel of row.paths) {
+        const abs = path.resolve(root, rel);
+        const buffer = await readFile(abs);
+        await ingestFile({ file: new File([new Uint8Array(buffer)], path.basename(abs)), lectureId: lecture.id });
+      }
+    } catch (err) {
+      // A lecture with no material is worse than no lecture: it looks importable and
+      // every later step on it fails.
+      await prisma.lecture.delete({ where: { id: lecture.id } }).catch(() => undefined);
+      return { ok: false, message: `Stopped at "${title}": ${err instanceof Error ? err.message : err}` };
+    }
+    created.push(lecture.id);
+  }
+
+  if (prepare && (await getSettings()).mode === "auto") await queuePrepare(created);
+  refreshAll();
+  redirect(`/?course=${courseId}&imported=${created.length}`);
+}
+
+// ---------------------------------------------------------------------------
+// Lectures
+
+/** One lecture by hand: files, pasted transcript text, or both. */
+export async function createLecture(_prev: Result, fd: FormData): Promise<Result> {
+  const courseId = str(fd, "courseId");
+  const typed = str(fd, "title");
+  const pasted = String(fd.get("transcriptText") ?? "").trim();
+  const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!courseId) return { ok: false, message: "Pick a course first." };
+  if (!typed && files.length === 0 && !pasted) {
+    return { ok: false, message: "Give it a title, a file, or some transcript text." };
+  }
+
+  const fromFile = files.map((f) => titleFromFilename(f.name)).find(Boolean);
+  const lecture = await prisma.lecture.create({
+    data: {
+      courseId,
+      moduleId: await moduleIdFor(courseId, str(fd, "module")),
+      title: typed || fromFile || "Untitled lecture",
+      autoTitle: !typed,
+      deliveredOn: fromDateInput(str(fd, "deliveredOn")) ?? new Date(),
+      durationHours: positiveHours(str(fd, "durationHours")),
+    },
+  });
+  try {
+    for (const file of files) await ingestFile({ file, lectureId: lecture.id });
+    if (pasted) {
+      await ingestFile({
+        file: new File([pasted], "pasted-transcript.txt"),
+        lectureId: lecture.id,
+        kind: "TRANSCRIPT",
+      });
+    }
+  } catch (err) {
+    await prisma.lecture.delete({ where: { id: lecture.id } }).catch(() => undefined);
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+
+  if ((files.length || pasted) && fd.get("prepare") === "on" && (await getSettings()).mode === "auto") {
+    await queuePrepare([lecture.id]);
+  }
+  refreshAll();
+  redirect(`/lectures/${lecture.id}`);
+}
+
+export async function updateLecture(_prev: Result, fd: FormData): Promise<Result> {
+  const id = str(fd, "lectureId");
+  const title = str(fd, "title");
+  if (!title) return { ok: false, message: "A lecture needs a title." };
+  const lecture = await prisma.lecture.findUniqueOrThrow({ where: { id } });
   await prisma.lecture.update({
     where: { id },
     data: {
       title,
-      moduleId: moduleId || null,
-      ...(deliveredOn ? { deliveredOn: new Date(deliveredOn) } : {}),
-      durationHours: Number.isFinite(durationHours) && durationHours > 0 ? durationHours : 1,
+      autoTitle: lecture.autoTitle && title === lecture.title,
+      moduleId: await moduleIdFor(lecture.courseId, str(fd, "module")),
+      deliveredOn: fromDateInput(str(fd, "deliveredOn")) ?? lecture.deliveredOn,
+      durationHours: positiveHours(str(fd, "durationHours")),
     },
   });
-  revalidatePath(`/lectures/${id}`);
+  refreshAll();
+  return { ok: true, message: "Saved." };
 }
 
-export async function deleteLecture(formData: FormData) {
-  const id = String(formData.get("lectureId"));
+export async function deleteLecture(fd: FormData) {
+  const id = str(fd, "lectureId");
   const lecture = await prisma.lecture.delete({ where: { id } });
   await rm(path.join(materialsDir(), id), { recursive: true, force: true });
-  revalidatePath(`/courses/${lecture.courseId}`);
-  redirect(`/courses/${lecture.courseId}`);
+  refreshAll();
+  redirect(`/?course=${lecture.courseId}`);
 }
 
-export async function deleteModule(formData: FormData) {
-  const id = String(formData.get("moduleId"));
-  // Lectures survive; they fall back to Unassigned rather than being deleted with it.
-  const mod = await prisma.module.delete({ where: { id } });
-  revalidatePath(`/courses/${mod.courseId}`);
-}
-
-export async function startAttempt(formData: FormData) {
-  const lectureId = String(formData.get("lectureId"));
-  const questionIds = await pickQuestions(lectureId);
-  if (questionIds.length === 0) {
-    throw new Error("generate questions for this lecture first");
+export async function uploadMaterial(_prev: Result, fd: FormData): Promise<Result> {
+  const lectureId = str(fd, "lectureId");
+  const kind = str(fd, "kind") as MaterialKind | "";
+  const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  const pasted = String(fd.get("transcriptText") ?? "").trim();
+  if (files.length === 0 && !pasted) return { ok: false, message: "Choose a file or paste some text." };
+  const warnings: string[] = [];
+  try {
+    for (const file of files) {
+      warnings.push(...(await ingestFile({ file, lectureId, kind: kind || undefined })).warnings);
+    }
+    if (pasted) {
+      await ingestFile({ file: new File([pasted], "pasted-transcript.txt"), lectureId, kind: "TRANSCRIPT" });
+    }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
+  refreshAll();
+  return { ok: true, message: warnings.length ? `Added, with warnings: ${warnings.join(" ")}` : "Added." };
+}
+
+export async function correctText(_prev: Result, fd: FormData): Promise<Result> {
+  await prisma.material.update({
+    where: { id: str(fd, "materialId") },
+    data: { extractedText: String(fd.get("extractedText") ?? "") },
+  });
+  refreshAll();
+  return { ok: true, message: "Saved." };
+}
+
+export async function deleteMaterial(fd: FormData) {
+  await prisma.material.delete({ where: { id: str(fd, "materialId") } });
+  refreshAll();
+}
+
+// ---------------------------------------------------------------------------
+// The AI queue
+
+/** Queues lectures one at a time, in the order given. */
+export async function prepareLectures(fd: FormData) {
+  await queuePrepare(fd.getAll("lectureId").map(String), { redo: fd.get("redo") === "1" });
+  refreshAll();
+}
+
+export async function writeMoreLaqs(fd: FormData) {
+  const lectureId = str(fd, "lectureId");
+  const busy = await prisma.job.count({
+    where: { lectureId, kind: { in: ["PREPARE", "GENERATE"] }, status: { in: ["PENDING", "RUNNING"] } },
+  });
+  if (!busy) await enqueue("GENERATE", { lectureId }, lectureId);
+  refreshAll();
+}
+
+export async function clearQueueAction(fd: FormData) {
+  await clearQueue(str(fd, "lectureId") || undefined);
+  refreshAll();
+}
+
+export async function retryJobAction(fd: FormData) {
+  await retryJob(str(fd, "jobId"));
+  refreshAll();
+}
+
+// ---------------------------------------------------------------------------
+// Copy-and-paste mode: replies pasted back from an AI chat
+
+export async function saveSummary(_prev: Result, fd: FormData): Promise<Result> {
+  const lectureId = str(fd, "lectureId");
+  const parsed = parseSummary(String(fd.get("text") ?? ""));
+  if (!parsed.markdown) return { ok: false, message: "That paste is empty." };
+  const lecture = await prisma.lecture.findUniqueOrThrow({ where: { id: lectureId } });
+  await prisma.lecture.update({
+    where: { id: lectureId },
+    data: {
+      summaryMd: parsed.markdown,
+      ...(lecture.autoTitle && parsed.title ? { title: parsed.title, autoTitle: false } : {}),
+    },
+  });
+  refreshAll();
+  return { ok: true, message: "Summary saved." };
+}
+
+export async function saveLaqs(_prev: Result, fd: FormData): Promise<Result> {
+  const lectureId = str(fd, "lectureId");
+  const laqs = parseLaqs(String(fd.get("text") ?? ""));
+  if (laqs.length === 0) return { ok: false, message: "No questions found in that paste." };
+  for (const q of laqs) {
+    await prisma.question.create({
+      data: {
+        lectureId,
+        stem: q.stem,
+        type: "LAQ",
+        rubric: JSON.stringify({
+          modelAnswer: q.modelAnswer ?? "",
+          criteria: q.criteria,
+          totalMarks: 10,
+          source: "pasted",
+        }),
+        promptVersion: "pasted",
+      },
+    });
+  }
+  refreshAll();
+  return { ok: true, message: `Saved ${laqs.length} LAQ${laqs.length === 1 ? "" : "s"}.` };
+}
+
+export async function deleteQuestion(fd: FormData) {
+  await prisma.question.delete({ where: { id: str(fd, "questionId") } });
+  refreshAll();
+}
+
+/** Pasted marking for LAQs answered outside the app — in the chat, or on paper. */
+export async function logScores(_prev: Result, fd: FormData): Promise<Result> {
+  const lectureId = str(fd, "lectureId");
+  const scores = parseScores(String(fd.get("text") ?? ""));
+  if (scores.length === 0) {
+    return { ok: false, message: 'No scores found. Each needs a line like "LAQ 1: 7/10".' };
+  }
+  const numbers = await questionNumbers(lectureId);
+  if (numbers.size === 0) return { ok: false, message: "Save this lecture's LAQs first, so scores can be matched to them." };
+  const byNumber = new Map([...numbers].map(([id, n]) => [n, id]));
+  const unknown = scores.filter((s) => !byNumber.has(s.number)).map((s) => s.number);
+  const matched = scores.filter((s) => byNumber.has(s.number));
+  if (matched.length === 0) {
+    return { ok: false, message: `This lecture has LAQ 1 to LAQ ${numbers.size}; the paste mentions ${unknown.join(", ")}.` };
+  }
+
+  await prisma.attempt.create({
+    data: {
+      lectureId,
+      source: "PASTED",
+      completedAt: new Date(),
+      geometricMean: geometricMean(matched.map((s) => s.mark)),
+      responses: {
+        create: matched.map((s) => ({
+          questionId: byNumber.get(s.number)!,
+          answerText: "",
+          mark: s.mark,
+          rubricVersion: "pasted",
+          rawMarkingJson: JSON.stringify({ source: "pasted", raw: s.raw, feedback: s.feedback }),
+          markedAt: new Date(),
+        })),
+      },
+    },
+  });
+  refreshAll();
+  return {
+    ok: true,
+    message:
+      `Logged ${matched.length} score${matched.length === 1 ? "" : "s"}.` +
+      (unknown.length ? ` Ignored LAQ ${unknown.join(", ")} — not in this lecture.` : ""),
+  };
+}
+
+/** Pasted marking for an attempt answered in the app (copy-and-paste mode). */
+export async function saveAttemptScores(_prev: Result, fd: FormData): Promise<Result> {
+  const attemptId = str(fd, "attemptId");
+  const attempt = await prisma.attempt.findUniqueOrThrow({
+    where: { id: attemptId },
+    include: { responses: true },
+  });
+  const scores = parseScores(String(fd.get("text") ?? ""));
+  if (scores.length === 0) {
+    return { ok: false, message: 'No scores found. Each needs a line like "LAQ 1: 7/10".' };
+  }
+  const numbers = await questionNumbers(attempt.lectureId);
+  let saved = 0;
+  for (const s of scores) {
+    const response = attempt.responses.find((r) => numbers.get(r.questionId) === s.number);
+    if (!response) continue;
+    await prisma.response.update({
+      where: { id: response.id },
+      data: {
+        mark: s.mark,
+        rubricVersion: "pasted",
+        rawMarkingJson: JSON.stringify({ source: "pasted", raw: s.raw, feedback: s.feedback }),
+        markedAt: new Date(),
+      },
+    });
+    saved++;
+  }
+  if (!saved) return { ok: false, message: "None of those LAQ numbers are in this sitting." };
+  await scoreAttemptIfMarked(attemptId);
+  refreshAll();
+  return { ok: true, message: `Saved ${saved} mark${saved === 1 ? "" : "s"}.` };
+}
+
+// ---------------------------------------------------------------------------
+// Practising
+
+export async function startAttempt(fd: FormData) {
+  const lectureId = str(fd, "lectureId");
+  const questionIds = await pickQuestions(lectureId);
+  if (questionIds.length === 0) throw new Error("This lecture has no LAQs yet.");
   const attempt = await prisma.attempt.create({
     data: {
       lectureId,
@@ -272,25 +505,56 @@ export async function startAttempt(formData: FormData) {
   redirect(`/attempts/${attempt.id}`);
 }
 
-export async function submitAttempt(formData: FormData) {
-  const attemptId = String(formData.get("attemptId"));
-  const responses = await prisma.response.findMany({
-    where: { attemptId },
-    select: { id: true },
+/**
+ * Closed-book answers in. A blank answer scores 0, as it would in the exam — and
+ * the geometric mean means one blank zeroes the sitting, which is the point.
+ */
+export async function submitAttempt(_prev: Result, fd: FormData): Promise<Result> {
+  const attemptId = str(fd, "attemptId");
+  const attempt = await prisma.attempt.findUniqueOrThrow({
+    where: { id: attemptId },
+    include: { responses: true },
   });
+  const answers = attempt.responses.map((r) => ({ r, text: String(fd.get(`answer.${r.id}`) ?? "").trim() }));
+  if (answers.every((a) => !a.text)) return { ok: false, message: "Answer at least one question first." };
 
-  const blank: string[] = [];
-  for (const r of responses) {
-    const answerText = String(formData.get(`answer.${r.id}`) ?? "").trim();
-    if (!answerText) blank.push(r.id);
-    await prisma.response.update({ where: { id: r.id }, data: { answerText } });
+  const { mode } = await getSettings();
+  for (const { r, text } of answers) {
+    await prisma.response.update({
+      where: { id: r.id },
+      data: text
+        ? { answerText: text }
+        : {
+            answerText: "",
+            mark: 0,
+            markedAt: new Date(),
+            rawMarkingJson: JSON.stringify({ source: "blank", feedback: [{ kind: "missed", text: "Left blank." }] }),
+          },
+    });
+    if (text && mode === "auto") await enqueue("MARK", { responseId: r.id }, attempt.lectureId);
   }
-  if (blank.length === responses.length) {
-    throw new Error("answer at least one question before submitting");
-  }
+  await scoreAttemptIfMarked(attemptId);
+  refreshAll();
+  return { ok: true, message: "Submitted." };
+}
 
-  for (const r of responses) {
-    if (!blank.includes(r.id)) await enqueue("MARK", { responseId: r.id });
-  }
-  revalidatePath(`/attempts/${attemptId}`);
+// ---------------------------------------------------------------------------
+// Settings
+
+export async function setMode(fd: FormData) {
+  const mode = str(fd, "mode") === "manual" ? "manual" : "auto";
+  await setSetting("mode", mode as Mode);
+  refreshAll();
+}
+
+export async function setNotify(enabled: boolean) {
+  await setSetting("notify", enabled);
+  refreshAll();
+}
+
+export async function finishOnboarding(choice: { mode: Mode; notify: boolean }) {
+  await setSetting("mode", choice.mode);
+  await setSetting("notify", choice.notify);
+  await setSetting("onboarded", true);
+  refreshAll();
 }
