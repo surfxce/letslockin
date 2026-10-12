@@ -14,11 +14,13 @@ import { groupFiles, titleFromFilename, type ProposedLecture } from "@/lib/group
 import { clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jobs";
 import { ingestFile } from "@/lib/materials";
 import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
+import { cancelDownload, removeModel, requestDownload } from "@/lib/models";
 import { materialsDir } from "@/lib/paths";
 import { scoreAttemptIfMarked } from "@/lib/pipeline";
 import { scanFolder } from "@/lib/scan";
 import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
+import { usesAi } from "@/lib/modes";
 import { questionNumbers } from "@/lib/views";
 
 /** What a form gets back when it stays on the page: shown next to the button. */
@@ -224,7 +226,7 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
     created.push(lecture.id);
   }
 
-  if (prepare && (await getSettings()).mode === "auto") await queuePrepare(created);
+  if (prepare && usesAi((await getSettings()).mode)) await queuePrepare(created);
   refreshAll();
   redirect(`/?course=${courseId}&imported=${created.length}`);
 }
@@ -268,7 +270,7 @@ export async function createLecture(_prev: Result, fd: FormData): Promise<Result
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 
-  if ((files.length || pasted) && fd.get("prepare") === "on" && (await getSettings()).mode === "auto") {
+  if ((files.length || pasted) && fd.get("prepare") === "on" && usesAi((await getSettings()).mode)) {
     await queuePrepare([lecture.id]);
   }
   refreshAll();
@@ -531,7 +533,7 @@ export async function submitAttempt(_prev: Result, fd: FormData): Promise<Result
             rawMarkingJson: JSON.stringify({ source: "blank", feedback: [{ kind: "missed", text: "Left blank." }] }),
           },
     });
-    if (text && mode === "auto") await enqueue("MARK", { responseId: r.id }, attempt.lectureId);
+    if (text && usesAi(mode)) await enqueue("MARK", { responseId: r.id }, attempt.lectureId);
   }
   await scoreAttemptIfMarked(attemptId);
   refreshAll();
@@ -542,8 +544,40 @@ export async function submitAttempt(_prev: Result, fd: FormData): Promise<Result
 // Settings
 
 export async function setMode(fd: FormData) {
-  const mode = str(fd, "mode") === "manual" ? "manual" : "auto";
-  await setSetting("mode", mode as Mode);
+  const raw = str(fd, "mode");
+  const mode: Mode = raw === "manual" || raw === "local" ? raw : "auto";
+  await setSetting("mode", mode);
+  refreshAll();
+}
+
+// ---------------------------------------------------------------------------
+// Models on this computer
+
+/** Starts a download in the worker. When it finishes, it is linked: local mode uses it. */
+export async function downloadModel(modelId: string): Promise<Result> {
+  try {
+    await requestDownload(modelId);
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  refreshAll();
+  return { ok: true, message: "Downloading." };
+}
+
+export async function stopDownload(jobId: string) {
+  await cancelDownload(jobId);
+  refreshAll();
+}
+
+/** Switches to a model that is already downloaded. */
+export async function switchLocalModel(modelId: string) {
+  await setSetting("localModel", modelId);
+  await setSetting("mode", "local");
+  refreshAll();
+}
+
+export async function deleteLocalModel(modelId: string) {
+  await removeModel(modelId);
   refreshAll();
 }
 

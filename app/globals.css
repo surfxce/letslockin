@@ -403,7 +403,7 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .activity-pop .job .what .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity-pop .job .what .s { font-size: 12.5px; color: var(--text-soft); }
 .activity-pop .job .when { font-size: 12px; color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.activity-pop .note { font-size: 13px; color: var(--text-soft); padding: 8px; }
+.activity-pop .note { font-size: 13px; color: var(--text-soft); padding: 8px; margin: 0 0 2px; }
 .due-badge { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 14px; font-size: 13px; background: var(--t-orange-bg); color: var(--t-orange); font-weight: 500; }
 .due-badge:hover { filter: brightness(0.97); }
 
@@ -452,3 +452,33 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .answer + .answer { margin-top: 16px; }
 .answer textarea { width: 100%; min-height: 220px; margin-top: 12px; font-size: 15px; background: var(--bg); }
 .sticky-foot { position: sticky; bottom: 0; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(6px); padding: 14px 0; margin-top: 18px; border-top: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------ local model picker */
+.picker-specs { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--text-soft); margin: 0 0 14px; }
+.picker-cards { display: grid; grid-template-columns: 1fr 1.18fr 1fr; gap: 12px; align-items: center; }
+.model-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 10px; background: var(--bg); border: 1px solid var(--rule-strong); min-width: 0; }
+.model-card.recommended { padding: 22px 18px; border: 2px solid var(--accent); box-shadow: 0 6px 22px rgba(35, 131, 226, 0.16); }
+.model-card.active { border-color: var(--s-green); }
+.model-role { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
+.model-card.recommended .model-role { color: var(--accent-text); }
+.model-name { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.model-card.recommended .model-name { font-size: 20px; }
+.model-meta { font-size: 12.5px; color: var(--text-soft); margin-top: -4px; }
+.model-facts { display: flex; flex-direction: column; gap: 1px; font-size: 12.5px; color: var(--text-soft); margin-top: 4px; }
+.model-facts span:first-child { color: var(--text); font-weight: 550; }
+.model-blurb { font-size: 13px; color: var(--text-soft); margin: 4px 0 6px; line-height: 1.45; }
+.model-action { margin-top: auto; }
+.model-action .btn { width: 100%; }
+.model-progress { display: flex; flex-direction: column; gap: 6px; }
+/* .bar grows along a row; in this column that would collapse it to no height. */
+.model-progress .bar { flex: none; max-width: none; }
+.model-progress .row { flex-wrap: nowrap; gap: 8px; }
+.model-progress .row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-progress .btn { width: auto; }
+.picker-why { font-size: 13px; color: var(--text-soft); margin: 14px 0 0; }
+.picker-caution { font-size: 13px; color: var(--s-orange); margin: 6px 0 0; }
+@media (max-width: 680px) {
+  .picker-cards { grid-template-columns: 1fr; }
+  .model-card.recommended { order: -1; }
+}
+.modal.wide { width: 820px; }

@@ -6,7 +6,8 @@ import { importLectures, scanFolderAction, type ScanState } from "@/app/actions"
 import { FolderPicker } from "@/app/ui/FolderPicker";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { Icon } from "@/app/ui/Icon";
-import type { Mode } from "@/lib/settings";
+import type { Mode } from "@/lib/modes";
+import { usesAi } from "@/lib/modes";
 
 export function ImportFlow({ courseId, modules, mode }: { courseId: string; modules: string[]; mode: Mode }) {
   const [scan, scanAction, scanning] = useActionState(scanFolderAction, {} as ScanState);
@@ -203,7 +204,7 @@ function Review({
       )}
 
       <div className="sticky-foot">
-        {mode === "auto" ? (
+        {usesAi(mode) ? (
           <label className="check">
             <input type="checkbox" name="prepare" defaultChecked />
             <span>

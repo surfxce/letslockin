@@ -245,7 +245,7 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: PREPARE | GENERATE | MARK
+  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD
   payload       String // JSON
   /// The lecture this work is for, so "what is it doing right now" is a lookup
   /// rather than a search through payloads. Deleting the lecture drops its jobs.

@@ -19,7 +19,10 @@ export interface JobView {
   startedAt: string | null;
   error: string | null;
   queuePosition: number | null;
-  workerAlive: boolean;
+  /** Why a queued job is not moving, if it isn't: no worker, or offline mode with no model. */
+  waitingFor: "worker" | "model" | null;
+  /** The server's clock when it rendered this (ms), so the first render matches its HTML. */
+  renderedAt: number;
 }
 
 /** The order a PREPARE runs its stages in, so waiting ones can be shown too. */
@@ -30,7 +33,7 @@ const PLAN: Record<string, Stage[]> = { PREPARE: ["digest", "questions"], GENERA
  * started and how long it took. Ticks every second while running.
  */
 export function JobProgress({ job, lectureId }: { job: JobView; lectureId: string }) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(job.renderedAt);
   useEffect(() => {
     if (job.status !== "RUNNING") return;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -77,9 +80,18 @@ export function JobProgress({ job, lectureId }: { job: JobView; lectureId: strin
             </Submit>
           </form>
         </div>
-        {!job.workerAlive && (
+        {job.waitingFor === "worker" && (
           <p className="small" style={{ margin: "8px 0 0", color: "var(--s-orange)" }}>
             The AI worker isn&apos;t running, so nothing will start. Open the desktop app, or run <code>npm run worker</code>.
+          </p>
+        )}
+        {job.waitingFor === "model" && (
+          <p className="small" style={{ margin: "8px 0 0", color: "var(--s-orange)" }}>
+            Offline mode needs a model on this computer first.{" "}
+            <a className="link" href="/settings#local">
+              Pick one
+            </a>{" "}
+            — this lecture starts as soon as it&apos;s ready.
           </p>
         )}
       </div>
@@ -88,12 +100,19 @@ export function JobProgress({ job, lectureId }: { job: JobView; lectureId: strin
 
   const plan = PLAN[job.kind] ?? [];
   const seen = new Set(job.steps.map((s) => s.stage));
+  const current = job.steps.at(-1)?.stage;
+  // Stages still to come. One before the current stage was finished by an earlier attempt.
+  const upcoming = plan.slice(current ? plan.indexOf(current as Stage) + 1 : 0).filter((s) => !seen.has(s));
   const since = job.steps.at(-1)?.startedAt ?? job.startedAt;
+  const detail = job.steps.at(-1)?.finishedAt ? null : job.steps.at(-1)?.detail;
   return (
     <div className="progress" aria-live="polite">
       <div className="progress-head">
         <span className="dot pulse" style={{ color: "var(--accent)" }} />
-        <span>{job.stage ? STAGES[job.stage as Stage] ?? job.stage : "Starting"}…</span>
+        <span>
+          {job.stage ? STAGES[job.stage as Stage] ?? job.stage : "Starting"}
+          {detail ? ` — ${detail}` : "…"}
+        </span>
         {since && (
           <span className="small muted" style={{ fontWeight: 400 }}>
             started {clockTime(job.startedAt ?? since)} · {duration(now - new Date(since).getTime())} on this step
@@ -110,14 +129,12 @@ export function JobProgress({ job, lectureId }: { job: JobView; lectureId: strin
             </span>
           </span>
         ))}
-        {plan
-          .filter((s) => !seen.has(s))
-          .map((s) => (
-            <span key={s} className="step">
-              <span className="ring" />
-              {STAGES[s]}
-            </span>
-          ))}
+        {upcoming.map((s) => (
+          <span key={s} className="step">
+            <span className="ring" />
+            {STAGES[s]}
+          </span>
+        ))}
       </div>
     </div>
   );

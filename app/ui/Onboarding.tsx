@@ -5,13 +5,16 @@ import { useEffect, useState, useTransition } from "react";
 
 import { finishOnboarding } from "@/app/actions";
 import { Icon } from "@/app/ui/Icon";
-import type { Mode } from "@/lib/settings";
+import { ModelPicker } from "@/app/ui/ModelPicker";
+import type { Mode } from "@/lib/modes";
+import type { ModelsPayload } from "@/lib/payloads";
 
-const STEPS = 5;
+type StepKey = "intro" | "add" | "mode" | "model" | "practise" | "remind";
 
 /**
- * The first-run walkthrough: what Lockin does, end to end, in five screens. Opens by
- * itself once, and again from "How it works" (any link to #intro).
+ * The first-run walkthrough: what Lockin does, end to end. Opens by itself once, and
+ * again from "How it works" (any link to #intro). Choosing to run the AI on this
+ * computer adds a step for picking and downloading its model.
  */
 export function Onboarding({
   firstRun,
@@ -19,12 +22,14 @@ export function Onboarding({
   hasCourses,
   mode: initialMode,
   notify: initialNotify,
+  models,
 }: {
   firstRun: boolean;
   cliFound: boolean;
   hasCourses: boolean;
   mode: Mode;
   notify: boolean;
+  models: ModelsPayload;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(firstRun);
@@ -48,6 +53,9 @@ export function Onboarding({
 
   if (!open) return null;
 
+  const keys: StepKey[] = ["intro", "add", "mode", ...(mode === "local" ? (["model"] as const) : []), "practise", "remind"];
+  const key = keys[Math.min(step, keys.length - 1)];
+
   const finish = () =>
     startSaving(async () => {
       await finishOnboarding({ mode, notify });
@@ -67,9 +75,9 @@ export function Onboarding({
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="intro-title">
-      <div className="modal">
+      <div className={key === "model" ? "modal wide" : "modal"}>
         <div className="modal-body">
-          {step === 0 && (
+          {key === "intro" && (
             <>
               <div className="kicker">How Lockin works</div>
               <h2 id="intro-title">Lectures in, exam practice out</h2>
@@ -91,7 +99,7 @@ export function Onboarding({
             </>
           )}
 
-          {step === 1 && (
+          {key === "add" && (
             <>
               <div className="kicker">1 · Add your lectures</div>
               <h2 id="intro-title">Point it at a folder</h2>
@@ -113,7 +121,7 @@ export function Onboarding({
             </>
           )}
 
-          {step === 2 && (
+          {key === "mode" && (
             <>
               <div className="kicker">2 · Summary and LAQs</div>
               <h2 id="intro-title">Choose how the AI part happens</h2>
@@ -135,6 +143,19 @@ export function Onboarding({
                 </span>
               </label>
               <label className="choice">
+                <input type="radio" name="mode" checked={mode === "local"} onChange={() => setMode("local")} />
+                <span>
+                  <span className="ct">
+                    On this computer — works fully offline
+                    <span className="tag t-blue">Private · free</span>
+                  </span>
+                  <span className="cd">
+                    Download a free AI model once and everything runs on your own {models.specs.kind}, with no internet
+                    and no account. A little slower than Claude; next you&apos;ll pick a model that suits this machine.
+                  </span>
+                </span>
+              </label>
+              <label className="choice">
                 <input type="radio" name="mode" checked={mode === "manual"} onChange={() => setMode("manual")} />
                 <span>
                   <span className="ct">Copy & paste — works with any AI chat</span>
@@ -148,7 +169,20 @@ export function Onboarding({
             </>
           )}
 
-          {step === 3 && (
+          {key === "model" && (
+            <>
+              <div className="kicker">2b · Your offline model</div>
+              <h2 id="intro-title">Pick a model for this {models.specs.kind}</h2>
+              <p>
+                We recommend the one in the middle for this computer&apos;s memory and processor. Go left for speed, right
+                for quality. It downloads in the background — carry on with the tour — and links up by itself when
+                it&apos;s done.
+              </p>
+              <ModelPicker initial={models} />
+            </>
+          )}
+
+          {key === "practise" && (
             <>
               <div className="kicker">3 · Practise</div>
               <h2 id="intro-title">Read once, then answer closed book</h2>
@@ -171,7 +205,7 @@ export function Onboarding({
             </>
           )}
 
-          {step === 4 && (
+          {key === "remind" && (
             <>
               <div className="kicker">4 · Come back</div>
               <h2 id="intro-title">Redo each lecture&apos;s LAQs when it&apos;s due</h2>
@@ -203,8 +237,8 @@ export function Onboarding({
 
         <div className="modal-foot">
           <div className="pips" aria-hidden="true">
-            {Array.from({ length: STEPS }, (_, i) => (
-              <i key={i} className={i === step ? "on" : undefined} />
+            {keys.map((k, i) => (
+              <i key={k} className={i === step ? "on" : undefined} />
             ))}
           </div>
           <span className="spacer" />
@@ -213,7 +247,7 @@ export function Onboarding({
               Back
             </button>
           )}
-          {step < STEPS - 1 ? (
+          {step < keys.length - 1 ? (
             <button className="btn primary" onClick={() => setStep((s) => s + 1)}>
               Next <Icon name="arrowRight" size={14} />
             </button>

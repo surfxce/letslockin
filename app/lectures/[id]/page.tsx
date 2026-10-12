@@ -28,9 +28,11 @@ import { questionBudget } from "@/lib/engines/mastery";
 import { feedbackFor, readRubric } from "@/lib/feedback";
 import { clockTime, dateInput, formatScore, hours, longDate, plural, scoreTone, shortDate, tagTone } from "@/lib/format";
 import { readSteps } from "@/lib/jobs";
+import { activeLocalModel } from "@/lib/models";
 import { getSettings, readHeartbeat, type Mode } from "@/lib/settings";
 import { readSkipped } from "@/lib/sources";
 import { lectureRows, questionNumbers } from "@/lib/views";
+import { usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +71,7 @@ export default async function LecturePage({
   const lecture = await prisma.lecture.findUnique({ where: { id }, include: LECTURE_INCLUDE });
   if (!lecture) notFound();
 
-  const [[row], settings, numbers, job, beat] = await Promise.all([
+  const [[row], settings, numbers, job, beat, localReady] = await Promise.all([
     lectureRows({ ids: [id] }),
     getSettings(),
     questionNumbers(id),
@@ -78,6 +80,7 @@ export default async function LecturePage({
       orderBy: { createdAt: "desc" },
     }),
     readHeartbeat(),
+    activeLocalModel(),
   ]);
 
   const tab: Tab = (["summary", "laqs", "scores", "details"] as const).find((t) => t === tabParam) ?? "summary";
@@ -100,7 +103,10 @@ export default async function LecturePage({
         startedAt: job.startedAt?.toISOString() ?? null,
         error: job.error,
         queuePosition: row.queuePosition,
-        workerAlive: !!beat?.alive,
+        waitingFor: !beat?.alive ? "worker" : settings.mode === "local" && !localReady ? "model" : null,
+        // A server component renders once per request, so this is the time of that render.
+        // eslint-disable-next-line react-hooks/purity
+        renderedAt: Date.now(),
       }
     : null;
 
@@ -176,7 +182,7 @@ export default async function LecturePage({
             </Submit>
           </form>
         )}
-        {settings.mode === "auto" && needsPrep && hasMaterial && !busy && (
+        {usesAi(settings.mode) && needsPrep && hasMaterial && !busy && (
           <form action={prepareLectures}>
             <input type="hidden" name="lectureId" value={lecture.id} />
             <Submit className={lecture.questions.length ? "btn lg" : "btn primary lg"} pending="Queueing…">
@@ -286,7 +292,7 @@ function SummaryTab({
             Replace this summary
           </summary>
           <div className="stack" style={{ marginTop: 12 }}>
-            {mode === "auto" && !busy && (
+            {usesAi(mode) && !busy && (
               <form action={prepareLectures}>
                 <input type="hidden" name="lectureId" value={lecture.id} />
                 <input type="hidden" name="redo" value="1" />
@@ -307,7 +313,7 @@ function SummaryTab({
 
   if (!hasMaterial) return <NoMaterial lectureId={lecture.id} />;
 
-  if (mode === "auto") {
+  if (usesAi(mode)) {
     return (
       <div className="soft-card">
         <p style={{ marginTop: 0 }}>
@@ -417,14 +423,14 @@ function LaqsTab({
       ) : !hasMaterial ? (
         <NoMaterial lectureId={lecture.id} />
       ) : (
-        mode === "auto" && (
+        usesAi(mode) && (
           <p className="muted">
             {busy ? "LAQs are written right after the summary — progress is shown above." : "No LAQs yet. Prepare with AI writes them."}
           </p>
         )
       )}
 
-      {hasMaterial && mode === "auto" && lecture.questions.length > 0 && (
+      {hasMaterial && usesAi(mode) && lecture.questions.length > 0 && (
         <div className="row" style={{ marginTop: 18 }}>
           <form action={writeMoreLaqs}>
             <input type="hidden" name="lectureId" value={lecture.id} />

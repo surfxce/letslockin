@@ -4,10 +4,21 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import { setMode, setNotify } from "@/app/actions";
 import "@/app/ui/desktop";
-import type { Mode } from "@/lib/settings";
+import type { Mode } from "@/lib/modes";
 
 /** Choosing a mode saves it; there is no separate save button to forget. */
-export function ModePicker({ mode, cliFound, cliVersion }: { mode: Mode; cliFound: boolean; cliVersion: string | null }) {
+export function ModePicker({
+  mode,
+  cliFound,
+  cliVersion,
+  localModel,
+}: {
+  mode: Mode;
+  cliFound: boolean;
+  cliVersion: string | null;
+  /** Name of the linked local model, if one is downloaded. */
+  localModel: string | null;
+}) {
   const form = useRef<HTMLFormElement>(null);
   return (
     <form ref={form} action={setMode}>
@@ -30,6 +41,19 @@ export function ModePicker({ mode, cliFound, cliVersion }: { mode: Mode; cliFoun
                 Install it with <code>npm i -g @anthropic-ai/claude-code</code> and run <code>claude</code> once to sign in.
               </>
             )}
+          </span>
+        </span>
+      </label>
+      <label className="choice">
+        <input type="radio" name="mode" value="local" defaultChecked={mode === "local"} onChange={() => form.current?.requestSubmit()} />
+        <span>
+          <span className="ct">
+            On this computer
+            {localModel ? <span className="tag t-green">{localModel}</span> : <span className="tag t-gray">no model yet</span>}
+          </span>
+          <span className="cd">
+            A model downloaded to this computer does the work: fully offline, private and free, a little slower.
+            Pick one below.
           </span>
         </span>
       </label>

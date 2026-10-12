@@ -47,14 +47,17 @@ export interface ParsePastPaperInput {
 /**
  * The only place in the app a model gets called.
  *
- * Backed by the Claude Code CLI against a personal subscription (`cli`), or by a
- * canned stand-in for development and demos (`fake`). Nothing outside lib/llm/ may
- * import an adapter directly.
+ * Backed by the Claude Code CLI against a personal subscription, by a model running
+ * on this computer, or by a canned stand-in for development and demos. Nothing
+ * outside lib/llm/ may import an adapter directly.
  */
 export interface LlmProvider {
   readonly name: string;
   /** Version of the prompt behind the most recent call, stamped onto the rows it produced. */
   readonly lastPromptVersion: string;
+  /** Set by the worker: a slow provider reports what it is doing within a stage
+   *  ("reading part 2 of 4"), and null when it has nothing to add. */
+  onProgress?: (detail: string | null) => void;
   /** Title, set-aside sections, summary and concepts for one lecture, in one call. */
   digest(input: DigestInput): Promise<Digest>;
   generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet>;

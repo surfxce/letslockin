@@ -1,11 +1,7 @@
 import { prisma } from "@/lib/db";
+import type { Mode } from "@/lib/modes";
 
-/**
- * How Lockin gets its summaries and LAQs.
- *  - auto: the worker runs Claude Code on this computer, one lecture at a time.
- *  - manual: copy a prompt into any AI chat and paste the reply back. No CLI needed.
- */
-export type Mode = "auto" | "manual";
+export type { Mode } from "@/lib/modes";
 
 export interface Settings {
   mode: Mode;
@@ -13,9 +9,11 @@ export interface Settings {
   notify: boolean;
   /** The first-run walkthrough has been seen. */
   onboarded: boolean;
+  /** Catalog id of the downloaded model used in "local" mode. */
+  localModel: string | null;
 }
 
-const DEFAULTS: Settings = { mode: "auto", notify: false, onboarded: false };
+const DEFAULTS: Settings = { mode: "auto", notify: false, onboarded: false, localModel: null };
 
 export async function getSettings(): Promise<Settings> {
   const rows = await prisma.setting.findMany({

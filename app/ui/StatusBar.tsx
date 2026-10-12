@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { clearQueueAction, retryJobAction } from "@/app/actions";
-import type { StatusPayload } from "@/app/api/status/route";
+import type { StatusPayload } from "@/lib/payloads";
 import { Icon } from "@/app/ui/Icon";
 import { Menu } from "@/app/ui/Menu";
 import { clockTime, duration } from "@/lib/format";
@@ -13,6 +13,7 @@ import type { ActivityJob } from "@/lib/jobs";
 import { STAGES } from "@/lib/types";
 
 import "@/app/ui/desktop";
+import { usesAi } from "@/lib/modes";
 
 const BUSY_POLL_MS = 2500;
 const IDLE_POLL_MS = 20_000;
@@ -29,7 +30,8 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
   const router = useRouter();
   const [status, setStatus] = useState<StatusPayload>(initial);
   const [seenInitial, setSeenInitial] = useState(initial);
-  const [now, setNow] = useState(() => Date.now());
+  // Starts from the server's clock so the first render matches the server's HTML.
+  const [now, setNow] = useState(initial.at);
   const version = useRef(initial.version);
 
   // A server render (after an action, or a refresh) carries fresher state than the
@@ -43,7 +45,7 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
   // server reports a change, so freshly queued work is picked up at the fast rate.
   useEffect(() => {
     let stop = false;
-    let busy = !!initial.running || initial.queued.length > 0;
+    let busy = !!initial.running || initial.queued.length > 0 || initial.downloading.length > 0;
     let timer: ReturnType<typeof setTimeout>;
     const tick = async () => {
       try {
@@ -52,7 +54,7 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
           const next = (await res.json()) as StatusPayload;
           if (stop) return;
           setStatus(next);
-          busy = !!next.running || next.queued.length > 0;
+          busy = !!next.running || next.queued.length > 0 || next.downloading.length > 0;
           if (next.version !== version.current) {
             version.current = next.version;
             if (!window.__lockinHoldRefresh) router.refresh();
@@ -84,8 +86,10 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
 
   const queued = status.queued.filter((j) => j.kind !== "MARK");
   const lastFailed = status.recent.find((j) => j.status === "FAILED");
-  const workerDown = status.mode === "auto" && !status.worker?.alive;
+  const workerDown = usesAi(status.mode) && !status.worker?.alive;
   const waiting = status.queued.length > 0 && !running && workerDown;
+  // Offline mode with nothing downloaded yet: queued work waits for a model.
+  const noModel = status.mode === "local" && !status.localModel;
 
   let pill: { cls: string; label: React.ReactNode };
   if (running) {
@@ -103,18 +107,34 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
         </>
       ),
     };
+  } else if (noModel) {
+    pill = {
+      cls: "stalled",
+      label: <><Icon name="download" size={13} /> <span className="label">{status.downloading.length ? "Waiting for the model to download" : "Pick an offline model"}</span></>,
+    };
   } else if (waiting) {
     pill = { cls: "stalled", label: <><Icon name="pause" size={13} /> <span className="label">{status.queued.length} waiting — AI worker not running</span></> };
   } else if (lastFailed && lastFailed === status.recent[0]) {
     pill = { cls: "failed", label: <><Icon name="alert" size={13} /> <span className="label">Failed: {lastFailed.lectureTitle ?? KIND_LABEL[lastFailed.kind]}</span></> };
-  } else if (status.mode === "auto") {
-    pill = { cls: "idle", label: <><Icon name="sparkles" size={13} /> <span className="label">{status.recent.length ? "All done" : "AI idle"}</span></> };
+  } else if (usesAi(status.mode)) {
+    const who = status.mode === "local" ? status.localModel!.name : "AI";
+    pill = { cls: "idle", label: <><Icon name="sparkles" size={13} /> <span className="label">{status.recent.length ? "All done" : `${who} idle`}</span></> };
   } else {
     pill = { cls: "idle", label: <><Icon name="clipboard" size={13} /> <span className="label">Copy & paste mode</span></> };
   }
 
+  const dl = status.downloading[0];
   return (
     <>
+      {dl && (
+        <Link href="/settings#local" className="activity busy" title="Downloading an offline model">
+          <Icon name="download" size={13} />
+          <span className="label">
+            {dl.name}
+            {dl.total > 0 ? ` · ${Math.floor((dl.downloaded / dl.total) * 100)}%` : " · starting"}
+          </span>
+        </Link>
+      )}
       {status.due.length > 0 && (
         <Link href="/#due" className="due-badge" title="Lectures due for LAQs today">
           <Icon name="bell" size={13} /> {status.due.length} due
@@ -126,23 +146,45 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
         label={pill.label}
         title="What the AI is doing"
       >
-        {() => <ActivityPanel status={status} now={now} workerDown={workerDown} />}
+        {() => <ActivityPanel status={status} now={now} workerDown={workerDown} noModel={noModel} />}
       </Menu>
     </>
   );
 }
 
-function ActivityPanel({ status, now, workerDown }: { status: StatusPayload; now: number; workerDown: boolean }) {
+function ActivityPanel({
+  status,
+  now,
+  workerDown,
+  noModel,
+}: {
+  status: StatusPayload;
+  now: number;
+  workerDown: boolean;
+  noModel: boolean;
+}) {
   const { running, queued, recent } = status;
   return (
     <div className="activity-pop">
+      {status.mode === "local" && (
+        <p className="note">
+          {noModel ? (
+            <>
+              Offline mode needs a model on this computer — queued lectures wait until one is ready.{" "}
+              <Link className="link" href="/settings#local">Pick one</Link>
+            </>
+          ) : (
+            <>Running offline on {status.localModel!.name}, on this computer.</>
+          )}
+        </p>
+      )}
       {status.mode === "manual" && (
         <p className="note">
           You are in copy & paste mode: nothing runs here. Copy each lecture&apos;s prompt into any AI chat and paste the reply
           back. <Link className="link" href="/settings">Change</Link>
         </p>
       )}
-      {status.mode === "auto" && workerDown && (
+      {usesAi(status.mode) && workerDown && (
         <p className="note" style={{ color: "var(--t-yellow)", background: "var(--t-yellow-bg)", borderRadius: 6 }}>
           The AI worker isn&apos;t running, so queued lectures will wait. The desktop app starts it for you; from a terminal,
           run <code>npm run worker</code>. Or switch to <Link className="link" href="/settings">copy & paste mode</Link>.
@@ -223,6 +265,7 @@ function JobLine({ job, now, detailed }: { job: ActivityJob; now: number; detail
             <span key={s.stage + s.startedAt} className={`step ${s.finishedAt ? "done" : "run"}`}>
               <span className="ring">{s.finishedAt ? "✓" : ""}</span>
               {STAGES[s.stage] ?? s.stage}
+              {!s.finishedAt && s.detail ? ` — ${s.detail}` : ""}
               <span className="t">
                 {clockTime(s.startedAt)} ·{" "}
                 {duration((s.finishedAt ? new Date(s.finishedAt).getTime() : now) - new Date(s.startedAt).getTime())}

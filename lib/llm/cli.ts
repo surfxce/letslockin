@@ -1,14 +1,17 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import path from "node:path";
 import type { ZodType } from "zod";
 
-import { promptsDir } from "@/lib/paths";
-
+import {
+  digestVars,
+  generateVars,
+  markVars,
+  paperVars,
+  renderPrompt,
+  type PromptName,
+} from "@/lib/llm/prompts";
 import { DigestSchema, MarkingSchema, PaperItemsSchema, QuestionSetSchema } from "@/lib/llm/schemas";
 import type {
-  ConceptRef,
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
@@ -159,44 +162,6 @@ export function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-async function loadPrompt(name: string): Promise<{ text: string; version: string }> {
-  // prompts/<name>.<semver>.md — the version is stamped onto every row the reply produces.
-  const { readdir } = await import("node:fs/promises");
-  const files = await readdir(promptsDir());
-  const matches = files
-    .filter((f) => f.startsWith(`${name}.`) && f.endsWith(".md"))
-    .sort((a, b) => compareSemver(versionOf(name, b), versionOf(name, a)));
-  if (matches.length === 0) throw new ClaudeCliError(`no prompt file for "${name}" in ${promptsDir()}`);
-  const file = matches[0];
-  return {
-    text: await readFile(path.join(promptsDir(), file), "utf8"),
-    version: versionOf(name, file),
-  };
-}
-
-function versionOf(name: string, file: string): string {
-  return file.slice(name.length + 1, -".md".length);
-}
-
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-function fill(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
-}
-
-function conceptTable(concepts: ConceptRef[]): string {
-  if (concepts.length === 0) return "(none yet)";
-  return concepts.map((c) => `- ${c.id} :: ${c.name} — ${c.definition}`).join("\n");
-}
-
 export class ClaudeCliProvider implements LlmProvider {
   readonly name = "claude-code-cli";
   /** Set to the prompt version used by the most recent call, for stamping rows. */
@@ -204,10 +169,9 @@ export class ClaudeCliProvider implements LlmProvider {
 
   constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {}
 
-  private async call<T>(promptName: string, vars: Record<string, string>, schema: ZodType<T>) {
-    const { text, version } = await loadPrompt(promptName);
-    this.lastPromptVersion = `${promptName}@${version}`;
-    const prompt = fill(text, vars);
+  private async call<T>(promptName: PromptName, vars: Record<string, string>, schema: ZodType<T>) {
+    const { text: prompt, version } = await renderPrompt(promptName, vars);
+    this.lastPromptVersion = version;
 
     const attempt = async (extra = "") => {
       const reply = await runClaude(prompt + extra, this.cfg);
@@ -227,66 +191,18 @@ export class ClaudeCliProvider implements LlmProvider {
   }
 
   digest(input: DigestInput) {
-    return this.call(
-      "digest-lecture",
-      {
-        currentTitle: input.currentTitle,
-        titleNote: input.titleIsPlaceholder
-          ? "(That title was made from a filename and is only a placeholder — replace it.)"
-          : "(The student chose that title. Return it unchanged unless it is plainly wrong.)",
-        durationHours: String(input.durationHours),
-        lowerBound: String(Math.round(8 * input.durationHours)),
-        upperBound: String(Math.round(20 * input.durationHours)),
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-        existingConcepts: conceptTable(input.existingConcepts),
-        alreadySkipped: input.alreadySkipped.length
-          ? `\nThese slides were already removed before you saw them and are recorded, so do not list them again:\n` +
-            input.alreadySkipped.map((s) => `- ${s.what} (${s.where})`).join("\n")
-          : "",
-      },
-      DigestSchema,
-    );
+    return this.call("digest-lecture", digestVars(input), DigestSchema);
   }
 
   generateQuestions(input: GenerateQuestionsInput) {
-    const allocation = input.allocation
-      .filter((a) => a.count > 0)
-      .map((a) => `- ${a.conceptId}: ${a.count}`)
-      .join("\n");
-    return this.call(
-      "generate-questions",
-      {
-        lectureTitle: input.lectureTitle,
-        type: input.type,
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-        concepts: conceptTable(input.concepts),
-        allocation: allocation || "(none)",
-        total: String(input.allocation.reduce((n, a) => n + a.count, 0)),
-      },
-      QuestionSetSchema,
-    );
+    return this.call("generate-questions", generateVars(input), QuestionSetSchema);
   }
 
   mark(input: MarkInput) {
-    return this.call(
-      "mark",
-      {
-        questionStem: input.questionStem,
-        rubric: JSON.stringify(input.rubric, null, 2),
-        answerText: input.answerText,
-        concepts: conceptTable(input.concepts),
-      },
-      MarkingSchema,
-    );
+    return this.call("mark", markVars(input), MarkingSchema);
   }
 
   parsePastPaper(input: ParsePastPaperInput) {
-    return this.call(
-      "parse-past-paper",
-      { paperText: input.paperText, concepts: conceptTable(input.concepts) },
-      PaperItemsSchema,
-    );
+    return this.call("parse-past-paper", paperVars(input), PaperItemsSchema);
   }
 }

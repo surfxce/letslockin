@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { allocate } from "@/lib/engines/allocation";
 import { geometricMean } from "@/lib/engines/geomean";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
-import { getProvider } from "@/lib/llm";
+import type { LlmProvider } from "@/lib/llm/provider";
 import { mergeSkipped } from "@/lib/parse/aims";
 import { lectureSources } from "@/lib/sources";
 
@@ -13,7 +13,7 @@ import { lectureSources } from "@/lib/sources";
  */
 
 /** Title, set-aside sections, summary and concepts for one lecture, in one model call. */
-export async function digestLecture(lectureId: string, opts: { keepSummary: boolean }) {
+export async function digestLecture(lectureId: string, opts: { keepSummary: boolean }, provider: LlmProvider) {
   const lecture = await prisma.lecture.findUniqueOrThrow({
     where: { id: lectureId },
     include: { materials: true },
@@ -24,24 +24,30 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
   // minting a synonym. Merged-away concepts are excluded — they are dead ids.
   const existing = await prisma.concept.findMany({
     where: { courseId: lecture.courseId, mergedIntoId: null },
-    select: { id: true, name: true, definition: true },
+    select: { id: true, name: true, definition: true, lectureId: true },
   });
 
-  const digest = await getProvider().digest({
+  const digest = await provider.digest({
     currentTitle: lecture.title,
     titleIsPlaceholder: lecture.autoTitle,
     durationHours: lecture.durationHours,
     transcript: sources.transcript,
     slidesText: sources.slidesText,
     alreadySkipped: sources.skipped,
-    existingConcepts: existing,
+    existingConcepts: existing.map(({ id, name, definition }) => ({ id, name, definition })),
   });
 
   const knownIds = new Set(existing.map((c) => c.id));
+  const ownIds = new Set(existing.filter((c) => c.lectureId === lectureId).map((c) => c.id));
+  const isReuse = (id: string | null) => !!id && knownIds.has(id);
+  // A reused concept stays with the lecture that introduced it. If every one is a
+  // reuse (a recap lecture), this lecture would own nothing to be asked about — so
+  // then they become its own.
+  const keepsOne = digest.concepts.some((c) => !isReuse(c.existingId) || ownIds.has(c.existingId!));
   let reused = 0;
   let minted = 0;
   for (const c of digest.concepts) {
-    if (c.existingId && knownIds.has(c.existingId)) {
+    if (keepsOne && isReuse(c.existingId)) {
       // Reuse means "this lecture also covers it" — never overwrite the original
       // wording, or the id stops meaning one stable thing.
       reused++;
@@ -76,7 +82,7 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
  * Writes LAQs for a lecture. The allocation is adaptive: concepts you have never
  * been asked about, or keep scoring badly on, get the questions.
  */
-export async function writeQuestions(lectureId: string) {
+export async function writeQuestions(lectureId: string, provider: LlmProvider) {
   const lecture = await prisma.lecture.findUniqueOrThrow({
     where: { id: lectureId },
     include: { materials: true, concepts: { where: { mergedIntoId: null } } },
@@ -93,7 +99,6 @@ export async function writeQuestions(lectureId: string) {
     return { generated: 0, budget, note: "every concept in this lecture is already at 10/10" };
   }
 
-  const provider = getProvider();
   const { questions } = await provider.generateQuestions({
     lectureTitle: lecture.title,
     transcript: sources.transcript,
@@ -106,7 +111,8 @@ export async function writeQuestions(lectureId: string) {
   const known = new Set(lecture.concepts.map((c) => c.id));
   let generated = 0;
   for (const q of questions) {
-    const conceptIds = q.conceptIds.filter((id) => known.has(id));
+    // Deduplicated: a model can cite one concept twice, and the link table's key forbids it.
+    const conceptIds = [...new Set(q.conceptIds)].filter((id) => known.has(id));
     if (conceptIds.length === 0) continue; // a question about nothing cannot be scored
     await prisma.question.create({
       data: {
@@ -123,7 +129,7 @@ export async function writeQuestions(lectureId: string) {
   return { generated, budget, targeted: allocation.length };
 }
 
-export async function markResponse(responseId: string) {
+export async function markResponse(responseId: string, provider: LlmProvider) {
   const response = await prisma.response.findUniqueOrThrow({
     where: { id: responseId },
     include: { question: { include: { concepts: { include: { concept: true } } } } },
@@ -136,7 +142,7 @@ export async function markResponse(responseId: string) {
     definition: qc.concept.definition,
   }));
 
-  const marking = await getProvider().mark({
+  const marking = await provider.mark({
     questionStem: response.question.stem,
     // The rubric was frozen when the question was written. Marking applies it.
     rubric: JSON.parse(response.question.rubric),

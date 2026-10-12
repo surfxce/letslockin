@@ -46,6 +46,8 @@ prisma/*.db-journal
 # Where the database lands when DATABASE_URL is unset (lib/paths.ts).
 /lockin.db*
 materials/
+# Downloaded local models (in the desktop app they live in its data folder).
+/models/
 
 # Prisma generated client
 /lib/generated/

@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 
 import "./globals.css";
 
-import type { StatusPayload } from "@/app/api/status/route";
 import { Icon } from "@/app/ui/Icon";
 import { NavLinks } from "@/app/ui/NavLinks";
 import { Onboarding } from "@/app/ui/Onboarding";
 import { StatusBar } from "@/app/ui/StatusBar";
 import { prisma } from "@/lib/db";
-import { activity } from "@/lib/jobs";
 import { detectCli } from "@/lib/llm/detect";
+import { modelsPayload, statusPayload } from "@/lib/payloads";
 import { getSettings } from "@/lib/settings";
-import { dueLectures } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -21,35 +20,22 @@ export const metadata: Metadata = {
   description: "Lectures in, exam practice out.",
 };
 
-/** Marks the desktop app before first paint, so the top bar clears macOS's window buttons. */
-const DESKTOP_SCRIPT = `if (window.lockin && window.lockin.desktop) document.documentElement.classList.add("desktop");`;
-
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const [settings, act, due, courses, cli] = await Promise.all([
+  const [settings, status, courses, cli, models, head] = await Promise.all([
     getSettings(),
-    activity(),
-    dueLectures(),
+    statusPayload(),
     prisma.course.count(),
     detectCli(),
+    modelsPayload(),
+    headers(),
   ]);
-  const status: StatusPayload = {
-    ...act,
-    mode: settings.mode,
-    notify: settings.notify,
-    due: due.map((d) => ({
-      lectureId: d.id,
-      title: d.title,
-      courseCode: d.courseCode,
-      dueAt: d.dueAt!,
-      lastScore: d.lastScore,
-    })),
-  };
+  // The desktop app hides its title bar on macOS, so the top bar must clear the
+  // window buttons. Its user agent says so; marking it here avoids a flash.
+  const ua = head.get("user-agent") ?? "";
+  const macDesktop = ua.includes("Electron/") && ua.includes("Macintosh");
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: DESKTOP_SCRIPT }} />
-      </head>
+    <html lang="en" className={macDesktop ? "desktop" : undefined} suppressHydrationWarning>
       <body>
         <header className="topbar">
           <Link href="/" className="brand">
@@ -69,6 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           hasCourses={courses > 0}
           mode={settings.mode}
           notify={settings.notify}
+          models={models}
         />
       </body>
     </html>

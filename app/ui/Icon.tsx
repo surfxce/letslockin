@@ -39,6 +39,10 @@ const PATHS = {
   help: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01",
   pause: "M6 4h4v16H6zM14 4h4v16h-4z",
   arrowRight: "M5 12h14M12 5l7 7-7 7",
+  download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+  cpu: "M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9z",
+  zap: "M13 2 3 14h9l-1 8 10-12h-9l1-8z",
+  laptop: "M4 5h16a1 1 0 0 1 1 1v10H3V6a1 1 0 0 1 1-1zM2 19h20",
 } as const;
 
 export type IconName = keyof typeof PATHS;

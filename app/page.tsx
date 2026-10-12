@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { daysUntil, dueLabel, plural, tagTone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { dueLectures, lectureRows } from "@/lib/views";
+import { usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function Home({
           </span>
           <p>
             Imported {plural(Number(imported), "lecture")}.{" "}
-            {settings.mode === "auto"
+            {usesAi(settings.mode)
               ? "They are being prepared one at a time — the top-right corner shows which lecture it is on and for how long."
               : "Open one and use Copy prompt to get its summary and LAQs from any AI chat."}
           </p>
@@ -123,7 +124,7 @@ export default async function Home({
         ) : (
           <CourseMenu courses={courses.map((c) => ({ id: c.id, code: c.code, title: c.title }))} />
         )}
-        {settings.mode === "auto" && toPrepare.length > 0 && (
+        {usesAi(settings.mode) && toPrepare.length > 0 && (
           <form action={prepareLectures}>
             {toPrepare.map((r) => (
               <input key={r.id} type="hidden" name="lectureId" value={r.id} />

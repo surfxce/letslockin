@@ -6,6 +6,7 @@ import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { prisma } from "@/lib/db";
 import { dateInput } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function NewLecture({ searchParams }: { searchParams: Promi
             <input name="durationHours" type="number" step="0.5" min="0.5" defaultValue="1" />
           </label>
         </div>
-        {mode === "auto" && (
+        {usesAi(mode) && (
           <label className="check">
             <input type="checkbox" name="prepare" defaultChecked />
             <span>Prepare it with AI straight away — summary, then LAQs</span>

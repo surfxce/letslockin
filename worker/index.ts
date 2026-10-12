@@ -4,15 +4,23 @@
  * queue. Every job records its raw result, duration, prompt version and a timeline
  * of the stages it went through, so the UI can say what it is doing and since when.
  *
+ * The AI part runs on Claude Code or on a model downloaded to this computer, as the
+ * settings say at the moment each job starts. Model downloads run in a lane of their
+ * own beside the queue, so a lecture can be prepared while a bigger model downloads.
+ *
  * Run with `npm run worker` (the desktop app starts it for you).
  */
 import "dotenv/config";
 
+import { findModel } from "@/lib/llm/catalog";
 import { prisma } from "@/lib/db";
-import { closeSteps, enterStage } from "@/lib/jobs";
-import { getProvider } from "@/lib/llm";
+import { closeSteps, enterStage, setStageDetail } from "@/lib/jobs";
+import { getLocalProvider, getProvider, type LlmProvider } from "@/lib/llm";
+import { downloadModelFile, modelSource } from "@/lib/llm/download";
+import { activeLocalModel, modelsDir, registerModel } from "@/lib/models";
+import { MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
-import { HEARTBEAT_KEY } from "@/lib/settings";
+import { getSettings, HEARTBEAT_KEY, setSetting } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
 
 const POLL_MS = Number(process.env.LOCKIN_WORKER_POLL_MS ?? 2000);
@@ -21,11 +29,11 @@ const HEARTBEAT_MS = 5000;
  *  failure is usually real (not logged in, rate limited) and the queue should move on. */
 const MAX_ATTEMPTS = 2;
 
-type Handler = (payload: Record<string, unknown>, jobId: string) => Promise<unknown>;
+type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
-const handlers: Record<JobKind, Handler> = {
+const handlers: Record<Exclude<JobKind, "DOWNLOAD">, Handler> = {
   /** Files → title, summary, concepts → first LAQs. Skips whatever is already done. */
-  PREPARE: async (payload, jobId) => {
+  PREPARE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
     const redo = payload.redo === true;
     const lecture = await prisma.lecture.findUniqueOrThrow({
@@ -40,55 +48,74 @@ const handlers: Record<JobKind, Handler> = {
     if (redo || !lecture.summaryMd || lecture._count.concepts === 0) {
       await enterStage(jobId, "digest");
       // A pasted summary is the student's; keep it unless they asked for a redo.
-      result.digest = await digestLecture(lectureId, { keepSummary: !redo });
+      result.digest = await digestLecture(lectureId, { keepSummary: !redo }, provider);
     }
     if (lecture._count.questions === 0) {
       await enterStage(jobId, "questions");
-      result.questions = await writeQuestions(lectureId);
+      result.questions = await writeQuestions(lectureId, provider);
     }
     return result;
   },
 
   /** Fresh LAQs aimed at weak concepts. Digests first if the lecture never was. */
-  GENERATE: async (payload, jobId) => {
+  GENERATE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
     const concepts = await prisma.concept.count({ where: { lectureId, mergedIntoId: null } });
     if (concepts === 0) {
       await enterStage(jobId, "digest");
-      await digestLecture(lectureId, { keepSummary: true });
+      await digestLecture(lectureId, { keepSummary: true }, provider);
     }
     await enterStage(jobId, "questions");
-    return writeQuestions(lectureId);
+    return writeQuestions(lectureId, provider);
   },
 
-  MARK: async (payload, jobId) => {
+  MARK: async (payload, jobId, provider) => {
     await enterStage(jobId, "marking");
-    return markResponse(String(payload.responseId));
+    return markResponse(String(payload.responseId), provider);
   },
 };
+
+/**
+ * Which provider the next job runs on, from the settings as they are now. Null means
+ * nothing can run: copy-and-paste mode, or local mode with no model downloaded yet.
+ * Jobs then wait in the queue rather than failing.
+ */
+async function currentProvider(): Promise<LlmProvider | null> {
+  const { mode } = await getSettings();
+  if (mode === "manual") return null;
+  if (mode === "local") {
+    const active = await activeLocalModel();
+    return active ? getLocalProvider(active.path, active.model.name) : null;
+  }
+  return getProvider();
+}
 
 async function claimNext() {
   // Single-writer worker, so a read-then-update claim is sufficient here.
   const job = await prisma.job.findFirst({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", kind: { not: "DOWNLOAD" } },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   if (!job) return null;
   return prisma.job.update({
     where: { id: job.id },
-    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: null },
+    // Each attempt gets a fresh timeline: an earlier one's stages are not this one's.
+    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: null, steps: null },
   });
 }
 
 async function runOne(): Promise<boolean> {
+  const provider = await currentProvider();
+  if (!provider) return false;
   const job = await claimNext();
   if (!job) return false;
 
   const started = Date.now();
-  const handler = handlers[job.kind as JobKind];
+  const handler = handlers[job.kind as keyof typeof handlers];
+  provider.onProgress = (detail) => void setStageDetail(job.id, detail).catch(() => undefined);
   try {
     if (!handler) throw new Error(`no handler for job kind "${job.kind}"`);
-    const result = await handler(JSON.parse(job.payload), job.id);
+    const result = await handler(JSON.parse(job.payload), job.id, provider);
     const current = await prisma.job.findUnique({ where: { id: job.id }, select: { steps: true } });
     await prisma.job.update({
       where: { id: job.id },
@@ -97,13 +124,13 @@ async function runOne(): Promise<boolean> {
         stage: null,
         steps: closeSteps(current?.steps ?? null),
         result: JSON.stringify(result),
-        promptVersion: getProvider().lastPromptVersion || null,
+        promptVersion: provider.lastPromptVersion || null,
         durationMs: Date.now() - started,
         finishedAt: new Date(),
         error: null,
       },
     });
-    console.log(`✓ ${job.kind} ${job.id} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+    console.log(`✓ ${job.kind} ${job.id} on ${provider.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const giveUp = job.attempts >= MAX_ATTEMPTS;
@@ -122,15 +149,93 @@ async function runOne(): Promise<boolean> {
       })
       .catch(() => undefined);
     console.error(`✗ ${job.kind} ${job.id} attempt ${job.attempts}: ${message}`);
+  } finally {
+    provider.onProgress = undefined;
   }
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Model downloads, in their own lane.
+
+async function downloadOne(): Promise<boolean> {
+  const pending = await prisma.job.findFirst({
+    where: { kind: "DOWNLOAD", status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!pending) return false;
+  const job = await prisma.job.update({
+    where: { id: pending.id },
+    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: "download" },
+  });
+  const { modelId, link } = JSON.parse(job.payload) as { modelId: string; link?: boolean };
+  const model = findModel(modelId);
+  const started = Date.now();
+  const controller = new AbortController();
+
+  // Cancelling is a status change made by the server; watch for it.
+  const watch = setInterval(async () => {
+    const now = await prisma.job.findUnique({ where: { id: job.id }, select: { status: true } }).catch(() => null);
+    if (!now || now.status !== "RUNNING") controller.abort();
+  }, 2000);
+
+  let lastWrite = 0;
+  try {
+    if (!model) throw new Error(`unknown model ${modelId}`);
+    console.log(`↓ ${model.name} from ${modelSource(model)}`);
+    const { path, bytes } = await downloadModelFile(
+      model,
+      modelsDir(),
+      (downloaded, total) => {
+        if (Date.now() - lastWrite < 1000) return;
+        lastWrite = Date.now();
+        void prisma.job
+          .updateMany({ where: { id: job.id, status: "RUNNING" }, data: { result: JSON.stringify({ downloaded, total }) } })
+          .catch(() => undefined);
+      },
+      controller.signal,
+    );
+    await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString() });
+    // Linking up: a finished download becomes the model local mode uses.
+    if (link) {
+      await setSetting("localModel", model.id);
+      await setSetting("mode", "local");
+    }
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "DONE",
+        stage: null,
+        result: JSON.stringify({ downloaded: bytes, total: bytes }),
+        durationMs: Date.now() - started,
+        finishedAt: new Date(),
+      },
+    });
+    console.log(`✓ downloaded ${model.name} to ${path}`);
+  } catch (err) {
+    const cancelled = controller.signal.aborted;
+    const message = cancelled ? "Cancelled" : err instanceof Error ? err.message : String(err);
+    await prisma.job
+      .updateMany({
+        where: { id: job.id, status: "RUNNING" },
+        data: { status: "FAILED", stage: null, error: message, durationMs: Date.now() - started, finishedAt: new Date() },
+      })
+      .catch(() => undefined);
+    console.error(`✗ download ${modelId}: ${message}`);
+  } finally {
+    clearInterval(watch);
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 
 let lastBeat = 0;
 async function heartbeat() {
   if (Date.now() - lastBeat < HEARTBEAT_MS) return;
   lastBeat = Date.now();
-  const value = JSON.stringify({ at: new Date().toISOString(), pid: process.pid, provider: getProvider().name });
+  const { mode } = await getSettings();
+  const value = JSON.stringify({ at: new Date().toISOString(), pid: process.pid, provider: MODE_LABEL[mode] });
   await prisma.setting.upsert({
     where: { key: HEARTBEAT_KEY },
     update: { value },
@@ -139,13 +244,14 @@ async function heartbeat() {
 }
 
 async function main() {
-  // A job left RUNNING means the last worker died mid-job. Put it back in the queue.
+  // A job left RUNNING means the last worker died mid-job. Put it back in the queue;
+  // a download picks up from its partial file.
   const { count } = await prisma.job.updateMany({
     where: { status: "RUNNING" },
     data: { status: "PENDING", stage: null },
   });
   if (count) console.log(`requeued ${count} job(s) interrupted by the last shutdown`);
-  console.log(`worker up (${getProvider().name}), polling every ${POLL_MS}ms`);
+  console.log(`worker up, polling every ${POLL_MS}ms`);
 
   let running = true;
   // Ctrl-C in a terminal finishes the current job first. The desktop app quitting
@@ -167,10 +273,21 @@ async function main() {
   const beat = setInterval(() => heartbeat().catch(() => undefined), HEARTBEAT_MS);
   await heartbeat();
 
+  const downloads = (async () => {
+    while (running) {
+      const did = await downloadOne().catch((err) => {
+        console.error(err);
+        return false;
+      });
+      if (!did) await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+  })();
+
   while (running) {
     const didWork = await runOne();
     if (!didWork) await new Promise((r) => setTimeout(r, POLL_MS));
   }
+  await downloads;
   clearInterval(beat);
   await prisma.setting.delete({ where: { key: HEARTBEAT_KEY } }).catch(() => undefined);
   await prisma.$disconnect();

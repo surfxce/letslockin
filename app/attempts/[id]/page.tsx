@@ -13,6 +13,7 @@ import { feedbackFor, readRubric } from "@/lib/feedback";
 import { clockTime, formatScore, scoreTone, shortDate } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { lectureRows, questionNumbers } from "@/lib/views";
+import { usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -143,7 +144,7 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
                 mark={r.mark}
                 raw={fb.raw ?? undefined}
                 feedback={fb.items}
-                pending={r.mark === null && settings.mode === "auto"}
+                pending={r.mark === null && usesAi(settings.mode)}
               />
               <details style={{ marginTop: 10 }}>
                 <summary className="small muted" style={{ cursor: "pointer" }}>

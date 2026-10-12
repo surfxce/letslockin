@@ -3,12 +3,14 @@ import { readHeartbeat } from "@/lib/settings";
 import { STAGES, type JobKind, type Stage } from "@/lib/types";
 
 /** Marking jumps the queue: someone is sitting there waiting for their score. */
-export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10 } as const satisfies Record<JobKind, number>;
+export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10, DOWNLOAD: 0 } as const satisfies Record<JobKind, number>;
 
 export interface Step {
   stage: Stage;
   startedAt: string;
   finishedAt: string | null;
+  /** What a slow provider is doing within the stage: "reading part 2 of 4". */
+  detail?: string | null;
 }
 
 export function readSteps(json: string | null): Step[] {
@@ -75,6 +77,17 @@ export async function enterStage(jobId: string, stage: Stage) {
   const steps = readSteps(job.steps).map((s) => (s.finishedAt ? s : { ...s, finishedAt: now }));
   steps.push({ stage, startedAt: now, finishedAt: null });
   await prisma.job.update({ where: { id: jobId }, data: { stage, steps: JSON.stringify(steps) } });
+}
+
+/** Updates what the current stage is doing, without starting a new one. */
+export async function setStageDetail(jobId: string, detail: string | null) {
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { steps: true } });
+  if (!job) return;
+  const steps = readSteps(job.steps);
+  const current = steps.at(-1);
+  if (!current || current.finishedAt || current.detail === detail) return;
+  current.detail = detail;
+  await prisma.job.update({ where: { id: jobId }, data: { steps: JSON.stringify(steps) } });
 }
 
 export function closeSteps(json: string | null): string {
@@ -154,11 +167,13 @@ function toActivity(j: JobRow): ActivityJob {
 }
 
 export async function activity(): Promise<Activity> {
+  // Model downloads run in their own lane and are reported separately (lib/models.ts).
+  const lane = { kind: { not: "DOWNLOAD" } };
   const [running, queued, recent, beat] = await Promise.all([
-    loadJobs({ where: { status: "RUNNING" }, orderBy: { startedAt: "asc" }, take: 1 }),
-    loadJobs({ where: { status: "PENDING" }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }], take: 50 }),
+    loadJobs({ where: { ...lane, status: "RUNNING" }, orderBy: { startedAt: "asc" }, take: 1 }),
+    loadJobs({ where: { ...lane, status: "PENDING" }, orderBy: [{ priority: "desc" }, { createdAt: "asc" }], take: 50 }),
     loadJobs({
-      where: { status: { in: ["DONE", "FAILED"] }, finishedAt: { gte: new Date(Date.now() - 86_400_000) } },
+      where: { ...lane, status: { in: ["DONE", "FAILED"] }, finishedAt: { gte: new Date(Date.now() - 86_400_000) } },
       orderBy: { finishedAt: "desc" },
       take: 12,
     }),
@@ -171,7 +186,7 @@ export async function activity(): Promise<Activity> {
     recent: recent.map(toActivity),
   };
   const version = [
-    out.running ? `${out.running.id}:${out.running.stage}` : "-",
+    out.running ? `${out.running.id}:${out.running.stage}:${out.running.steps.at(-1)?.detail ?? ""}` : "-",
     out.queued.length,
     out.recent[0]?.id ?? "-",
     out.recent[0]?.status ?? "-",
