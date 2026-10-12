@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ZodType } from "zod";
 
 import {
@@ -8,15 +9,23 @@ import {
   markVars,
   paperVars,
   renderPrompt,
+  sortVars,
   type PromptName,
 } from "@/lib/llm/prompts";
-import { DigestSchema, MarkingSchema, PaperItemsSchema, QuestionSetSchema } from "@/lib/llm/schemas";
+import {
+  DigestSchema,
+  FolderSortSchema,
+  MarkingSchema,
+  PaperItemsSchema,
+  QuestionSetSchema,
+} from "@/lib/llm/schemas";
 import type {
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
   ParsePastPaperInput,
+  SortFilesInput,
 } from "@/lib/llm/provider";
 
 
@@ -34,6 +43,8 @@ export interface ClaudeCliConfig {
   /** Path to the standalone CLI. The desktop app ships its own copy that is not on PATH. */
   binary: string;
   model: string;
+  /** For sorting a folder: a quick look at file openings, so a small fast model. */
+  sortModel: string;
   timeoutMs: number;
   /** Extra flags, space-separated, from LOCKIN_CLI_FLAGS. Lets flag drift be fixed
    *  without a code change. */
@@ -44,25 +55,36 @@ export function cliConfigFromEnv(): ClaudeCliConfig {
   return {
     binary: process.env.LOCKIN_CLAUDE_BIN ?? "claude",
     model: process.env.LOCKIN_MODEL ?? "claude-opus-5",
+    sortModel: process.env.LOCKIN_SORT_MODEL ?? "haiku",
     // One digest call now does what three used to, so a double lecture needs room.
     timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000),
     extraArgs: (process.env.LOCKIN_CLI_FLAGS ?? "").split(" ").filter(Boolean),
   };
 }
 
+export interface RunOptions {
+  model?: string;
+  /** Folders the model may read files from — the slide decks, which it reads as pages
+   *  it can see. Reading is the only tool it ever gets, and only for these. */
+  readDirs?: string[];
+}
+
 /** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). */
-function runClaude(prompt: string, cfg: ClaudeCliConfig): Promise<string> {
+function runClaude(prompt: string, cfg: ClaudeCliConfig, opts: RunOptions = {}): Promise<string> {
+  const reads = opts.readDirs?.length ? opts.readDirs : null;
   const args = [
     "-p",
     "--output-format",
     "json",
     "--model",
-    cfg.model,
-    // Every input is inlined in the prompt, so the model has no reason to touch
-    // the filesystem, and a deterministic prompt is a cacheable one. --allowed-tools
-    // is variadic, so an empty string is not a safe way to say "none" — deny instead.
+    opts.model ?? cfg.model,
+    // Text is inlined in the prompt; the only thing worth opening is a slide deck, so
+    // Read is allowed only when there is one, and only in its folder. --allowed-tools
+    // and --add-dir are variadic, so each is followed by another flag, and "none" is
+    // said by denying rather than by an empty list.
+    ...(reads ? ["--allowed-tools", "Read", "--add-dir", ...reads] : []),
     "--disallowed-tools",
-    "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task",
+    `Bash,${reads ? "" : "Read,"}Write,Edit,Glob,Grep,WebFetch,WebSearch,Task`,
     ...cfg.extraArgs,
   ];
 
@@ -164,17 +186,24 @@ export function extractJson(text: string): unknown {
 
 export class ClaudeCliProvider implements LlmProvider {
   readonly name = "claude-code-cli";
+  readonly seesSlides = true;
   /** Set to the prompt version used by the most recent call, for stamping rows. */
   lastPromptVersion = "";
 
   constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {}
 
-  private async call<T>(promptName: PromptName, vars: Record<string, string>, schema: ZodType<T>) {
-    const { text: prompt, version } = await renderPrompt(promptName, vars);
-    this.lastPromptVersion = version;
+  private async call<T>(
+    promptName: PromptName,
+    vars: Record<string, string>,
+    schema: ZodType<T>,
+    opts: RunOptions & { append?: string } = {},
+  ) {
+    const rendered = await renderPrompt(promptName, vars);
+    const prompt = rendered.text + (opts.append ?? "");
+    this.lastPromptVersion = rendered.version;
 
     const attempt = async (extra = "") => {
-      const reply = await runClaude(prompt + extra, this.cfg);
+      const reply = await runClaude(prompt + extra, this.cfg, opts);
       return schema.parse(extractJson(reply));
     };
 
@@ -190,8 +219,27 @@ export class ClaudeCliProvider implements LlmProvider {
     }
   }
 
+  /**
+   * With PDF slides, Claude reads the decks itself, as pages it can see: text inside
+   * pictures, diagrams and photos never reaches the extracted text. It writes notes
+   * on each slide as it goes, for the later steps that only read text.
+   */
   digest(input: DigestInput) {
-    return this.call("digest-lecture", digestVars(input), DigestSchema);
+    const pdfs = input.slides?.decks.filter((d) => d.pdf && d.pages > 0) ?? [];
+    if (pdfs.length === 0) return this.call("digest-lecture", digestVars(input), DigestSchema);
+    const list = pdfs
+      .map((d) => `- ${d.file} — ${d.pages} page${d.pages === 1 ? "" : "s"}, slides ${d.first}–${d.first + d.pages - 1}`)
+      .join("\n");
+    const append =
+      `\n\n---\n\nThe slide decks are attached as PDF files you can open with the Read tool. The slide text ` +
+      `above was extracted from them and misses everything inside pictures, diagrams, tables and photos, so ` +
+      `look at every page yourself before writing anything — up to 20 pages per Read call (pages "1-20", then ` +
+      `"21-40", and so on):\n\n${list}\n\nSlides are numbered across the decks as listed: use those numbers for ` +
+      `slide pictures and slideNotes. Read nothing else. Then reply with the JSON described above.`;
+    return this.call("digest-lecture", digestVars(input, { visual: true }), DigestSchema, {
+      readDirs: [...new Set(pdfs.map((d) => path.dirname(d.file)))],
+      append,
+    });
   }
 
   generateQuestions(input: GenerateQuestionsInput) {
@@ -204,5 +252,9 @@ export class ClaudeCliProvider implements LlmProvider {
 
   parsePastPaper(input: ParsePastPaperInput) {
     return this.call("parse-past-paper", paperVars(input), PaperItemsSchema);
+  }
+
+  sortFiles(input: SortFilesInput) {
+    return this.call("sort-files", sortVars(input), FolderSortSchema, { model: this.cfg.sortModel });
   }
 }

@@ -57,6 +57,10 @@ model Lecture {
   /// JSON [{ what, where }]: module aims, learning objectives and admin that were
   /// left out of the summary and questions, so the omission is visible, not silent.
   skipped       String?
+  /// JSON [{ slide, notes }]: what each slide shows — its words, including any inside
+  /// pictures, and what its figures depict — from a model that saw the slides. The
+  /// steps that only read text (writing LAQs) use these instead of the extracted text.
+  slideNotes    String?
   createdAt     DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -79,6 +83,8 @@ model Material {
   path          String // relative to materials/; the DB never stores blobs
   originalName  String
   extractedText String? // parsed once at ingest, hand-correctable
+  /// Pages or slides in a deck, including those with no text; null for other files.
+  pageCount     Int?
   checksum      String
   createdAt     DateTime @default(now())
 

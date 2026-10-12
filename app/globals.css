@@ -453,6 +453,35 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .answer textarea { width: 100%; min-height: 220px; margin-top: 12px; font-size: 15px; background: var(--bg); }
 .sticky-foot { position: sticky; bottom: 0; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(6px); padding: 14px 0; margin-top: 18px; border-top: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
+/* ------------------------------------------------------------------ slide pictures */
+.slide-fig { margin: 18px 0 20px; }
+.slide-fig a { display: block; max-width: 680px; }
+.slide-fig img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--rule); background: #fff; }
+.slide-fig figcaption { font-size: 13px; color: var(--text-soft); margin-top: 6px; }
+.slide-fig figcaption span { color: var(--text-faint); }
+.slide-fig.missing { padding: 9px 12px; border-left: 3px solid var(--rule-strong); background: var(--bg-soft); border-radius: 0 6px 6px 0; max-width: 680px; }
+.slide-fig.missing figcaption { margin: 0; }
+.slide-notes { margin: 10px 0 0; display: grid; gap: 8px; }
+.slide-notes div { display: grid; grid-template-columns: 64px 1fr; gap: 10px; font-size: 13.5px; }
+.slide-notes dt { color: var(--text-faint); font-family: var(--mono); font-size: 12px; padding-top: 2px; }
+.slide-notes dd { margin: 0; }
+.how .btn.sm { margin: 2px 4px 2px 0; }
+
+/* ------------------------------------------------------------------ import */
+.sort-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.sort-choice .choice { margin: 0; }
+.sort-choice .cd { display: block; }
+.choice.disabled { opacity: 0.55; cursor: not-allowed; }
+@media (max-width: 680px) {
+  .sort-choice { grid-template-columns: 1fr; }
+}
+.import-file { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+.import-file .tag { flex: none; }
+.import-file .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.import-file.out .fname { text-decoration: line-through; opacity: 0.6; }
+.import-file.out .tag { opacity: 0.6; }
+.import-file .icon-btn { width: 22px; height: 22px; flex: none; margin-left: auto; }
+
 /* ------------------------------------------------------------------ local model picker */
 .picker-specs { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--text-soft); margin: 0 0 14px; }
 .picker-cards { display: grid; grid-template-columns: 1fr 1.18fr 1fr; gap: 12px; align-items: center; }

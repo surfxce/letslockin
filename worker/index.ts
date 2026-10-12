@@ -14,10 +14,13 @@ import "dotenv/config";
 
 import { findModel } from "@/lib/llm/catalog";
 import { prisma } from "@/lib/db";
-import { closeSteps, enterStage, setStageDetail } from "@/lib/jobs";
+import type { SortedFolder } from "@/lib/group";
+import { closeSteps, enterStage, setStageDetail, SIDE_LANES } from "@/lib/jobs";
 import { getLocalProvider, getProvider, type LlmProvider } from "@/lib/llm";
+import type { SortFile } from "@/lib/llm/provider";
 import { downloadModelFile, modelSource } from "@/lib/llm/download";
 import { activeLocalModel, modelsDir, registerModel } from "@/lib/models";
+import { readSlidePictures } from "@/lib/ocr";
 import { MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, setSetting } from "@/lib/settings";
@@ -31,7 +34,7 @@ const MAX_ATTEMPTS = 2;
 
 type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
-const handlers: Record<Exclude<JobKind, "DOWNLOAD">, Handler> = {
+const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT">, Handler> = {
   /** Files → title, summary, concepts → first LAQs. Skips whatever is already done. */
   PREPARE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
@@ -46,6 +49,15 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD">, Handler> = {
 
     const result: Record<string, unknown> = {};
     if (redo || !lecture.summaryMd || lecture._count.concepts === 0) {
+      // A model that can't see images gets the words on picture-only slides read out
+      // first. Only pages never read before take any time.
+      if (!provider.seesSlides) {
+        const read = await readSlidePictures(lectureId, {
+          onStart: () => enterStage(jobId, "slides"),
+          onProgress: (detail) => void setStageDetail(jobId, detail).catch(() => undefined),
+        });
+        if (read.pages) result.slidePictures = read;
+      }
       await enterStage(jobId, "digest");
       // A pasted summary is the student's; keep it unless they asked for a redo.
       result.digest = await digestLecture(lectureId, { keepSummary: !redo }, provider);
@@ -93,7 +105,7 @@ async function currentProvider(): Promise<LlmProvider | null> {
 async function claimNext() {
   // Single-writer worker, so a read-then-update claim is sufficient here.
   const job = await prisma.job.findFirst({
-    where: { status: "PENDING", kind: { not: "DOWNLOAD" } },
+    where: { status: "PENDING", kind: { notIn: SIDE_LANES } },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   if (!job) return null;
@@ -229,6 +241,63 @@ async function downloadOne(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Sorting a folder into lectures, in its own lane: someone is waiting on the
+// import screen, so it must not queue behind a lecture being prepared.
+
+async function sortOne(): Promise<boolean> {
+  const pending = await prisma.job.findFirst({
+    where: { kind: "SORT", status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!pending) return false;
+  const job = await prisma.job.update({
+    where: { id: pending.id },
+    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 } },
+  });
+  const started = Date.now();
+  try {
+    const provider = await currentProvider();
+    if (!provider) throw new Error("no AI is set up — choose Claude Code or download an offline model in Settings");
+    const { files } = JSON.parse(job.payload) as { files: SortFile[] };
+    const sorted = await provider.sortFiles({ files });
+    // The model answers in file numbers; the screen knows files by path.
+    const pathOf = (n: number) => files[n - 1]?.path;
+    const result: SortedFolder = {
+      lectures: sorted.lectures.map((l) => ({
+        title: l.title,
+        module: l.module,
+        files: l.files.map(pathOf).filter((p): p is string => !!p),
+      })),
+      setAside: sorted.setAside.flatMap((s) => {
+        const file = pathOf(s.file);
+        return file ? [{ file, reason: s.reason }] : [];
+      }),
+    };
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "DONE",
+        result: JSON.stringify(result),
+        promptVersion: provider.lastPromptVersion || null,
+        durationMs: Date.now() - started,
+        finishedAt: new Date(),
+      },
+    });
+    console.log(`✓ SORT ${job.id}: ${files.length} files into ${result.lectures.length} lectures on ${provider.name}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await prisma.job
+      .update({
+        where: { id: job.id },
+        data: { status: "FAILED", error: message, durationMs: Date.now() - started, finishedAt: new Date() },
+      })
+      .catch(() => undefined);
+    console.error(`✗ SORT ${job.id}: ${message}`);
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 
 let lastBeat = 0;
 async function heartbeat() {
@@ -251,6 +320,8 @@ async function main() {
     data: { status: "PENDING", stage: null },
   });
   if (count) console.log(`requeued ${count} job(s) interrupted by the last shutdown`);
+  // A sort's answer is only wanted while its import screen is open.
+  await prisma.job.deleteMany({ where: { kind: "SORT", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
   console.log(`worker up, polling every ${POLL_MS}ms`);
 
   let running = true;
@@ -273,21 +344,25 @@ async function main() {
   const beat = setInterval(() => heartbeat().catch(() => undefined), HEARTBEAT_MS);
   await heartbeat();
 
-  const downloads = (async () => {
-    while (running) {
-      const did = await downloadOne().catch((err) => {
-        console.error(err);
-        return false;
-      });
-      if (!did) await new Promise((r) => setTimeout(r, POLL_MS));
-    }
-  })();
+  const lane = (work: () => Promise<boolean>, poll: number) =>
+    (async () => {
+      while (running) {
+        const did = await work().catch((err) => {
+          console.error(err);
+          return false;
+        });
+        if (!did) await new Promise((r) => setTimeout(r, poll));
+      }
+    })();
+  const downloads = lane(downloadOne, POLL_MS);
+  // Someone is watching the import screen: look often.
+  const sorts = lane(sortOne, Math.min(POLL_MS, 750));
 
   while (running) {
     const didWork = await runOne();
     if (!didWork) await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  await downloads;
+  await Promise.all([downloads, sorts]);
   clearInterval(beat);
   await prisma.setting.delete({ where: { key: HEARTBEAT_KEY } }).catch(() => undefined);
   await prisma.$disconnect();

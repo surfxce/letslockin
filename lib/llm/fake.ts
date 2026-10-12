@@ -1,10 +1,12 @@
+import { groupFiles } from "@/lib/group";
 import type {
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
+  SortFilesInput,
 } from "@/lib/llm/provider";
-import type { Digest, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
+import type { Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 
 /**
  * A stand-in that returns plausible, deterministic output after a short delay, so the
@@ -31,6 +33,10 @@ export class FakeProvider implements LlmProvider {
       .filter((s) => s.length > 30);
     const phrases = keyPhrases(sentences.join(" ")).slice(0, 6);
     const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    // Shows the first two slides with text, so the slide pictures can be tried too.
+    const slides = [...(input.slidesText ?? "").matchAll(/^-{3} Slide (\d+) -{3}\n(.+)$/gm)]
+      .slice(0, 2)
+      .map((m) => ({ slide: Number(m[1]), notes: m[2].trim() }));
     return {
       title: input.titleIsPlaceholder
         ? phrases.slice(0, 2).map(cap).join(" & ") || "Untitled lecture"
@@ -39,10 +45,12 @@ export class FakeProvider implements LlmProvider {
       summaryMd: [
         "## Key points",
         ...sentences.slice(0, 6).map((s) => `- ${s}`),
+        ...slides.flatMap((s) => ["", `![${s.notes}](slide:${s.slide})`]),
         "",
         "## In more detail",
         sentences.slice(6, 12).join(" ") || "(The fake provider only repeats the transcript.)",
       ].join("\n"),
+      slideNotes: slides,
       concepts: phrases.map((phrase) => {
         const name = cap(phrase);
         const existing = input.existingConcepts.find((c) => c.name.toLowerCase() === phrase);
@@ -106,6 +114,25 @@ export class FakeProvider implements LlmProvider {
   async parsePastPaper(): Promise<PaperItems> {
     await this.wait();
     return { items: [] };
+  }
+
+  /** Sorts by filename, as the import screen does without AI, so the flow can be tried. */
+  async sortFiles(input: SortFilesInput): Promise<FolderSort> {
+    await this.wait();
+    const grouped = groupFiles(
+      input.files.map((f) => ({
+        relativePath: f.path,
+        kind: f.detail.startsWith("transcript") ? "TRANSCRIPT" : "SLIDES",
+        modifiedOn: new Date(0),
+        measuredHours: null,
+      })),
+    );
+    return {
+      lectures: grouped
+        .filter((l) => !l.setAside)
+        .map((l) => ({ title: l.title, module: l.moduleTitle, files: l.fileIndexes.map((i) => i + 1) })),
+      setAside: grouped.filter((l) => l.setAside).map((l) => ({ file: l.fileIndexes[0] + 1, reason: l.setAside! })),
+    };
   }
 }
 

@@ -17,9 +17,9 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ course?: string; imported?: string }>;
+  searchParams: Promise<{ course?: string; imported?: string; updated?: string }>;
 }) {
-  const { course: courseParam, imported } = await searchParams;
+  const { course: courseParam, imported, updated } = await searchParams;
   const courses = await prisma.course.findMany({
     orderBy: { createdAt: "asc" },
     select: { id: true, code: true, title: true, examDate: true },
@@ -60,7 +60,14 @@ export default async function Home({
             <Icon name="check" />
           </span>
           <p>
-            Imported {plural(Number(imported), "lecture")}.{" "}
+            {[
+              Number(imported) > 0 || !(Number(updated) > 0) ? `Imported ${plural(Number(imported), "lecture")}` : "",
+              Number(updated) > 0 ? `added new files to ${plural(Number(updated), "existing lecture")}` : "",
+            ]
+              .filter(Boolean)
+              .join(" and ")
+              .replace(/^./, (c) => c.toUpperCase())}
+            .{" "}
             {usesAi(settings.mode)
               ? "They are being prepared one at a time — the top-right corner shows which lecture it is on and for how long."
               : "Open one and use Copy prompt to get its summary and LAQs from any AI chat."}

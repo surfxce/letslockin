@@ -7,6 +7,7 @@ import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { LaqCard, Markdown, QuestionScore } from "@/app/ui/render";
 import { geometricMean } from "@/lib/engines/geomean";
 import { formatScore, scoreTone } from "@/lib/format";
+import type { SlideImages } from "@/lib/markdown";
 import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
 
 type Kind = "summary" | "laqs" | "scores";
@@ -28,6 +29,7 @@ export function PasteBox({
   saveLabel,
   firstNumber = 1,
   autoFocus,
+  slides,
 }: {
   kind: Kind;
   action: (prev: Result, fd: FormData) => Promise<Result>;
@@ -36,9 +38,14 @@ export function PasteBox({
   /** LAQs only: the number the first pasted question will be saved as. */
   firstNumber?: number;
   autoFocus?: boolean;
+  /** Summary only: the lecture's slide pictures, for `![…](slide:N)` in the paste. */
+  slides?: SlideImages;
 }) {
   const [text, setText] = useState("");
-  const preview = useMemo(() => (text.trim() ? <Preview kind={kind} text={text} firstNumber={firstNumber} /> : null), [kind, text, firstNumber]);
+  const preview = useMemo(
+    () => (text.trim() ? <Preview kind={kind} text={text} firstNumber={firstNumber} slides={slides} /> : null),
+    [kind, text, firstNumber, slides],
+  );
   const usable = useMemo(() => {
     if (!text.trim()) return false;
     if (kind === "laqs") return parseLaqs(text).length > 0;
@@ -71,7 +78,17 @@ export function PasteBox({
   );
 }
 
-function Preview({ kind, text, firstNumber }: { kind: Kind; text: string; firstNumber: number }) {
+function Preview({
+  kind,
+  text,
+  firstNumber,
+  slides,
+}: {
+  kind: Kind;
+  text: string;
+  firstNumber: number;
+  slides?: SlideImages;
+}) {
   if (kind === "summary") {
     const s = parseSummary(text);
     return (
@@ -82,7 +99,7 @@ function Preview({ kind, text, firstNumber }: { kind: Kind; text: string; firstN
             Title found: <strong>{s.title}</strong> — used if this lecture still has a placeholder title.
           </p>
         )}
-        <Markdown md={s.markdown} />
+        <Markdown md={s.markdown} slides={slides} />
       </div>
     );
   }

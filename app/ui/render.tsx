@@ -1,5 +1,5 @@
 import { formatScore, scoreTone } from "@/lib/format";
-import { renderMarkdown } from "@/lib/markdown";
+import { renderMarkdown, type SlideImages } from "@/lib/markdown";
 import type { FeedbackKind } from "@/lib/paste";
 
 /**
@@ -7,8 +7,8 @@ import type { FeedbackKind } from "@/lib/paste";
  * preview shows is exactly what will be saved. Render-only: no hooks.
  */
 
-export function Markdown({ md, className = "prose" }: { md: string; className?: string }) {
-  return <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }} />;
+export function Markdown({ md, className = "prose", slides }: { md: string; className?: string; slides?: SlideImages }) {
+  return <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(md, slides) }} />;
 }
 
 export interface LaqData {

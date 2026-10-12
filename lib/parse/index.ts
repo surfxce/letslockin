@@ -6,6 +6,8 @@ export interface ParsedFile {
   text: string;
   /** What the parser could not do, shown in the UI so bad input is never invisible. */
   warnings: string[];
+  /** Pages or slides in a deck, including ones with no text (left out of `text`). */
+  pages?: number;
 }
 
 /**
@@ -132,11 +134,12 @@ async function parsePdf(buffer: Buffer): Promise<ParsedFile> {
   const empty = totalPages - body.split("--- Page ").length + 1;
   if (empty > 0) {
     warnings.push(
-      `${empty} of ${totalPages} pages had no extractable text — likely scanned images, ` +
-        `so their content is invisible to every later step. Consider correcting by hand.`,
+      `${empty} of ${totalPages} pages have no selectable text — pictures or scans. Claude Code reads ` +
+        `them as images; offline, Lockin reads their words with text recognition; for copy & paste, ` +
+        `attach the PDF in your AI chat.`,
     );
   }
-  return { text: body, warnings };
+  return { text: body, warnings, pages: totalPages };
 }
 
 /** A .pptx is a zip; slide text lives in <a:t> runs inside ppt/slides/slideN.xml. */
@@ -170,7 +173,7 @@ async function parsePptx(buffer: Buffer): Promise<ParsedFile> {
         `(diagram or image only) — describe them by hand if they matter.`,
     );
   }
-  return { text: sections.join("\n\n"), warnings };
+  return { text: sections.join("\n\n"), warnings, pages: slideFiles.length };
 }
 
 function slideNumber(name: string): number {

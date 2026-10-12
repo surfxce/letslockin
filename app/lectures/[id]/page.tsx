@@ -30,7 +30,9 @@ import { clockTime, dateInput, formatScore, hours, longDate, plural, scoreTone, 
 import { readSteps } from "@/lib/jobs";
 import { activeLocalModel } from "@/lib/models";
 import { getSettings, readHeartbeat, type Mode } from "@/lib/settings";
-import { readSkipped } from "@/lib/sources";
+import type { SlideImages } from "@/lib/markdown";
+import { lectureDecks, pictured, sharedDecks, type Deck } from "@/lib/slides";
+import { readSkipped, readSlideNotes } from "@/lib/sources";
 import { lectureRows, questionNumbers } from "@/lib/views";
 import { usesAi } from "@/lib/modes";
 
@@ -71,7 +73,7 @@ export default async function LecturePage({
   const lecture = await prisma.lecture.findUnique({ where: { id }, include: LECTURE_INCLUDE });
   if (!lecture) notFound();
 
-  const [[row], settings, numbers, job, beat, localReady] = await Promise.all([
+  const [[row], settings, numbers, job, beat, localReady, decks, deckCopies] = await Promise.all([
     lectureRows({ ids: [id] }),
     getSettings(),
     questionNumbers(id),
@@ -81,6 +83,8 @@ export default async function LecturePage({
     }),
     readHeartbeat(),
     activeLocalModel(),
+    lectureDecks(id),
+    sharedDecks(lecture),
   ]);
 
   const tab: Tab = (["summary", "laqs", "scores", "details"] as const).find((t) => t === tabParam) ?? "summary";
@@ -88,7 +92,11 @@ export default async function LecturePage({
   const busy = job && (job.status === "PENDING" || job.status === "RUNNING");
   const showJob = job && (busy || (job.status === "FAILED" && lecture.questions.length === 0));
   const budget = questionBudget(lecture.durationHours);
-  const hasMaterial = lecture.materials.some((m) => (m.extractedText ?? "").trim());
+  // A deck of pictures has no text but is still something to prepare from.
+  const hasMaterial =
+    lecture.materials.some((m) => (m.extractedText ?? "").trim()) || decks.some((d) => d.pdf && d.pages > 0);
+  const slideImages: SlideImages = { base: `/api/lectures/${lecture.id}/slides`, ranges: pictured(decks) };
+  const pdfDecks = decks.filter((d) => d.pdf && d.pages > 0);
   const needsPrep = !lecture.summaryMd || lecture.questions.length === 0;
   const scored = lecture.attempts.filter((a) => a.geometricMean !== null);
 
@@ -207,13 +215,28 @@ export default async function LecturePage({
       </nav>
 
       {tab === "summary" && (
-        <SummaryTab lecture={lecture} mode={settings.mode} busy={!!busy} hasMaterial={hasMaterial} sat={scored.length > 0} />
+        <SummaryTab
+          lecture={lecture}
+          mode={settings.mode}
+          busy={!!busy}
+          hasMaterial={hasMaterial}
+          sat={scored.length > 0}
+          slides={slideImages}
+          decks={pdfDecks}
+        />
       )}
       {tab === "laqs" && (
-        <LaqsTab lecture={lecture} numbers={numbers} mode={settings.mode} busy={!!busy} hasMaterial={hasMaterial} />
+        <LaqsTab
+          lecture={lecture}
+          numbers={numbers}
+          mode={settings.mode}
+          busy={!!busy}
+          hasMaterial={hasMaterial}
+          decks={pdfDecks}
+        />
       )}
       {tab === "scores" && <ScoresTab lecture={lecture} numbers={numbers} />}
-      {tab === "details" && <DetailsTab lecture={lecture} />}
+      {tab === "details" && <DetailsTab lecture={lecture} decks={decks} shared={deckCopies} />}
     </main>
   );
 }
@@ -229,15 +252,27 @@ function Prop({ icon, label, children }: { icon: IconName; label: string; childr
   );
 }
 
-/** The three steps of copy-and-paste mode, shown wherever it is used. */
-function HowToPaste({ what }: { what: string }) {
+/** The steps of copy-and-paste mode, shown wherever it is used. */
+function HowToPaste({ what, decks }: { what: string; decks: Deck[] }) {
   return (
     <div className="how">
       <div className="s">
-        <b>1</b> Copy the prompt — it already contains this lecture&apos;s transcript and slides.
+        <b>1</b> Copy the prompt — it already contains this lecture&apos;s transcript and slide text.
       </div>
       <div className="s">
-        <b>2</b> Paste it into ChatGPT, Claude or any AI chat.
+        <b>2</b> Paste it into Claude, ChatGPT or any AI chat
+        {decks.length > 0 && (
+          <>
+            , and attach the slides too:{" "}
+            {decks.map((d) => (
+              <a key={d.materialId} className="btn sm" href={`/api/materials/${d.materialId}`} download>
+                <Icon name="download" size={13} /> {d.name}
+              </a>
+            ))}{" "}
+            — then it reads the pictures and diagrams, and can put slides in your summary
+          </>
+        )}
+        .
       </div>
       <div className="s">
         <b>3</b> Copy the {what} it writes and paste it into the box below.
@@ -269,12 +304,16 @@ function SummaryTab({
   busy,
   hasMaterial,
   sat,
+  slides,
+  decks,
 }: {
   lecture: LecturePageData;
   mode: Mode;
   busy: boolean;
   hasMaterial: boolean;
   sat: boolean;
+  slides: SlideImages;
+  decks: Deck[];
 }) {
   if (lecture.summaryMd) {
     return (
@@ -285,7 +324,7 @@ function SummaryTab({
             <p>Read this once, properly. Then come back — ideally tomorrow — and answer the LAQs without it.</p>
           </div>
         )}
-        <Markdown md={lecture.summaryMd} />
+        <Markdown md={lecture.summaryMd} slides={slides} />
         <hr className="divider" />
         <details>
           <summary className="small muted" style={{ cursor: "pointer" }}>
@@ -304,7 +343,7 @@ function SummaryTab({
             <div className="row">
               <CopyButton url={`/api/lectures/${lecture.id}/prompt?kind=summary`} label="Copy summary prompt" />
             </div>
-            <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Replace summary" />
+            <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Replace summary" slides={slides} />
           </div>
         </details>
       </>
@@ -326,11 +365,11 @@ function SummaryTab({
             Or use any AI chat instead
           </summary>
           <div className="stack" style={{ marginTop: 12 }}>
-            <HowToPaste what="summary" />
+            <HowToPaste what="summary" decks={decks} />
             <div className="row">
               <CopyButton url={`/api/lectures/${lecture.id}/prompt?kind=summary`} label="Copy summary prompt" />
             </div>
-            <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Save summary" />
+            <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Save summary" slides={slides} />
           </div>
         </details>
       </div>
@@ -339,11 +378,11 @@ function SummaryTab({
 
   return (
     <div className="stack">
-      <HowToPaste what="summary" />
+      <HowToPaste what="summary" decks={decks} />
       <div className="row">
         <CopyButton url={`/api/lectures/${lecture.id}/prompt?kind=summary`} label="Copy summary prompt" className="btn primary" />
       </div>
-      <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Save summary" />
+      <PasteBox kind="summary" action={saveSummary} hidden={{ lectureId: lecture.id }} saveLabel="Save summary" slides={slides} />
     </div>
   );
 }
@@ -354,17 +393,19 @@ function LaqsTab({
   mode,
   busy,
   hasMaterial,
+  decks,
 }: {
   lecture: LecturePageData;
   numbers: Map<string, number>;
   mode: Mode;
   busy: boolean;
   hasMaterial: boolean;
+  decks: Deck[];
 }) {
   const next = lecture.questions.length + 1;
   const pasteSection = (
     <div className="stack">
-      <HowToPaste what="LAQs" />
+      <HowToPaste what="LAQs" decks={decks} />
       <p className="small muted" style={{ margin: 0 }}>
         The prompt asks the chat to mark your answers too, so you can answer there and paste the marking into{" "}
         <Link className="link" href={`/lectures/${lecture.id}?tab=scores`}>
@@ -575,7 +616,16 @@ function ScoresTab({ lecture, numbers }: { lecture: LecturePageData; numbers: Ma
   );
 }
 
-function DetailsTab({ lecture }: { lecture: LecturePageData }) {
+function DetailsTab({
+  lecture,
+  decks,
+  shared,
+}: {
+  lecture: LecturePageData;
+  decks: Deck[];
+  shared: Map<string, Array<{ id: string; title: string }>>;
+}) {
+  const notes = readSlideNotes(lecture.slideNotes);
   return (
     <>
       <ActionForm action={updateLecture} className="form">
@@ -617,15 +667,41 @@ function DetailsTab({ lecture }: { lecture: LecturePageData }) {
         <p className="muted">None yet.</p>
       ) : (
         <div className="files">
-          {lecture.materials.map((m) => (
+          {lecture.materials.map((m) => {
+            const deck = decks.find((d) => d.materialId === m.id);
+            const others = shared.get(m.checksum) ?? [];
+            return (
             <div key={m.id} className="file">
               <Icon name="file" />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="row" style={{ gap: 6 }}>
-                  <span className="fname">{m.originalName}</span>
+                  <a className="fname link" href={`/api/materials/${m.id}`} download title="Download the original file">
+                    {m.originalName}
+                  </a>
                   <Tag tone={m.kind === "TRANSCRIPT" ? "blue" : "gray"}>{m.kind.toLowerCase()}</Tag>
+                  {others.length > 0 && (
+                    <span className="small muted">
+                      also in{" "}
+                      {others.map((o, i) => (
+                        <span key={o.id}>
+                          {i > 0 && ", "}
+                          <Link className="link" href={`/lectures/${o.id}`}>
+                            {o.title}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
-                <div className="small muted">{(m.extractedText ?? "").length.toLocaleString("en")} characters of text</div>
+                <div className="small muted">
+                  {deck && deck.pages > 0 && (
+                    <>
+                      slides {deck.first}–{deck.first + deck.pages - 1}
+                      {deck.pdf ? "" : " · no pictures (export it as PDF to show slides in summaries)"} ·{" "}
+                    </>
+                  )}
+                  {(m.extractedText ?? "").length.toLocaleString("en")} characters of text
+                </div>
                 <details>
                   <summary>Check or correct the text Lockin reads</summary>
                   <ActionForm action={correctText} className="stack" >
@@ -647,8 +723,25 @@ function DetailsTab({ lecture }: { lecture: LecturePageData }) {
                 </Submit>
               </form>
             </div>
-          ))}
+            );
+          })}
         </div>
+      )}
+
+      {notes.length > 0 && (
+        <details style={{ marginTop: 14 }}>
+          <summary className="small muted" style={{ cursor: "pointer" }}>
+            Slide notes — what the AI saw on {plural(notes.length, "slide")}, used when it writes and marks LAQs
+          </summary>
+          <dl className="slide-notes">
+            {notes.map((n) => (
+              <div key={n.slide}>
+                <dt>Slide {n.slide}</dt>
+                <dd>{n.notes}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       )}
 
       <h3>Add files</h3>

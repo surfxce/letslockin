@@ -16,6 +16,8 @@ export interface ScannedFile {
   bytes: number;
   kindGuess: string;
   text: string;
+  /** Pages or slides, for a deck. */
+  pages: number | null;
   measuredHours: number | null;
   warnings: string[];
   checksum: string;
@@ -73,7 +75,9 @@ export async function scanFolder(root: string): Promise<ScanResult> {
     const buffer = await readFile(absolutePath);
     try {
       const parsed = await parseMaterial(path.basename(absolutePath), buffer);
-      if (!parsed.text.trim()) {
+      // A deck of pictures has no text but is still worth importing: Claude reads its
+      // pages as images, and offline its words are read with text recognition.
+      if (!parsed.text.trim() && !parsed.pages) {
         skipped.push({ path: path.relative(root, absolutePath), why: "no extractable text" });
         continue;
       }
@@ -85,6 +89,7 @@ export async function scanFolder(root: string): Promise<ScanResult> {
         bytes: st.size,
         kindGuess: guessKind(absolutePath, parsed.text),
         text: parsed.text,
+        pages: parsed.pages ?? null,
         measuredHours: measureHours(parsed.text),
         warnings: parsed.warnings,
         checksum: checksum(buffer),

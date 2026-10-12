@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { laqPrompt, markingPrompt, SCORE_FORMAT, summaryPrompt } from "./offline";
 import { parseScores } from "./paste";
-import { lectureSources } from "./sources";
+import { lectureSources, readSlideNotes, slideNotesText } from "./sources";
 
 const sources = { transcript: "[00:00] The lac operon…", slidesText: "--- Slide 4 ---\nlacZ", skipped: [] };
 
@@ -47,6 +47,34 @@ describe("copy-and-paste prompts", () => {
   });
 });
 
+describe("copy-and-paste prompts with slides", () => {
+  const slides = {
+    decks: [
+      { name: "A4-A5 slides.pdf", first: 1, pages: 30, pdf: true },
+      { name: "extra.pptx", first: 31, pages: 4, pdf: false },
+    ],
+    sharedWith: ["Appetite and Satiety Part 2"],
+  };
+
+  it("asks for the PDFs to be attached and read, and for slide pictures in a summary", () => {
+    const prompt = summaryPrompt({ durationHours: 1, sources, slides });
+    expect(prompt).toContain("I've attached the slides: A4-A5 slides.pdf (slides 1–30).");
+    expect(prompt).not.toContain("extra.pptx");
+    expect(prompt).toContain("![<what it shows>](slide:<number>)");
+    expect(prompt).toContain('shared with another lecture ("Appetite and Satiety Part 2")');
+  });
+
+  it("keeps LAQs to this lecture's part of a shared deck, without asking for pictures", () => {
+    const prompt = laqPrompt({ count: 2, firstNumber: 1, sources, slides });
+    expect(prompt).toContain("ask about only that part");
+    expect(prompt).not.toContain("(slide:<number>)");
+  });
+
+  it("says nothing about slides when there are none", () => {
+    expect(summaryPrompt({ durationHours: 1, sources })).not.toContain("attached");
+  });
+});
+
 describe("lectureSources", () => {
   it("strips aims from slides but leaves the transcript whole", () => {
     const out = lectureSources([
@@ -61,5 +89,29 @@ describe("lectureSources", () => {
   it("falls back to slides alone, and refuses a lecture with no text", () => {
     expect(lectureSources([{ kind: "SLIDES", extractedText: "--- Slide 2 ---\nlacZ" }]).transcript).toContain("lacZ");
     expect(() => lectureSources([{ kind: "TRANSCRIPT", extractedText: "  " }])).toThrow(/no transcript or slides/);
+  });
+
+  it("numbers slides across decks, in upload order, as the slide pictures are", () => {
+    const out = lectureSources([
+      { kind: "TRANSCRIPT", extractedText: "[00:00] hello" },
+      { kind: "SLIDES", id: "b", createdAt: new Date(2), pageCount: 2, extractedText: "--- Page 1 ---\nSatiety" },
+      { kind: "SLIDES", id: "a", createdAt: new Date(1), pageCount: 3, extractedText: "--- Page 2 ---\nGhrelin" },
+    ]);
+    expect(out.slidesText).toBe("--- Slide 2 ---\nGhrelin\n\n--- Slide 4 ---\nSatiety");
+  });
+
+  it("takes a deck of pictures with no text, for a model that can see it", () => {
+    const out = lectureSources([{ kind: "SLIDES", pageCount: 12, extractedText: "" }]);
+    expect(out.transcript).toMatch(/work from the slides/);
+  });
+});
+
+describe("slide notes", () => {
+  it("reads only well-formed notes", () => {
+    expect(readSlideNotes('[{"slide":2,"notes":" Ghrelin "},{"slide":"x","notes":"no"},{"slide":3,"notes":""}]')).toEqual([
+      { slide: 2, notes: "Ghrelin" },
+    ]);
+    expect(readSlideNotes("not json")).toEqual([]);
+    expect(slideNotesText([{ slide: 2, notes: "Ghrelin" }])).toBe("--- Slide 2 ---\nGhrelin");
   });
 });

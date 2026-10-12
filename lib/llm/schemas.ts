@@ -19,6 +19,8 @@ export const DigestSchema = z.object({
     .default([]),
   summaryMd: z.string().min(1),
   concepts: z.array(ConceptSchema),
+  /** What each slide says and shows, from a model that could see them; else empty. */
+  slideNotes: z.array(z.object({ slide: z.number().int().min(1), notes: z.string().min(1) })).default([]),
 });
 export type Digest = z.infer<typeof DigestSchema>;
 
@@ -67,6 +69,19 @@ export const MarkingSchema = z.object({
   ),
 });
 export type Marking = z.infer<typeof MarkingSchema>;
+
+/** A folder grouped into lectures. Files are the numbers they were listed under. */
+export const FolderSortSchema = z.object({
+  lectures: z.array(
+    z.object({
+      title: z.string().min(1),
+      module: z.string().nullable().default(null),
+      files: z.array(z.number().int().min(1)).min(1),
+    }),
+  ),
+  setAside: z.array(z.object({ file: z.number().int().min(1), reason: z.string().default("") })).default([]),
+});
+export type FolderSort = z.infer<typeof FolderSortSchema>;
 
 export const PaperItemsSchema = z.object({
   items: z.array(

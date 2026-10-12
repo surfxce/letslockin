@@ -13,11 +13,13 @@ import { fromDateInput } from "@/lib/format";
 import { groupFiles, titleFromFilename, type ProposedLecture } from "@/lib/group";
 import { clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jobs";
 import { ingestFile } from "@/lib/materials";
+import { checksum } from "@/lib/parse";
 import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
-import { cancelDownload, removeModel, requestDownload } from "@/lib/models";
+import { activeLocalModel, cancelDownload, removeModel, requestDownload } from "@/lib/models";
 import { materialsDir } from "@/lib/paths";
 import { scoreAttemptIfMarked } from "@/lib/pipeline";
 import { scanFolder } from "@/lib/scan";
+import { describeForSort } from "@/lib/sortfiles";
 import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
 import { usesAi } from "@/lib/modes";
@@ -107,16 +109,25 @@ async function moduleIdFor(courseId: string, title: string, cache = new Map<stri
 // ---------------------------------------------------------------------------
 // Importing a folder
 
+export interface ScannedFileView {
+  relativePath: string;
+  kind: string;
+  warnings: string[];
+  measuredHours: number | null;
+  /** ISO date of the file's last change: a lecture's date when its name has none. */
+  modifiedOn: string;
+}
+
 export interface ScanState {
   error?: string;
   root?: string;
   /** Distinguishes one scan from the next, so the review form resets between them. */
   scannedAt?: number;
-  files?: Array<{ relativePath: string; kind: string; warnings: string[]; measuredHours: number | null }>;
+  files?: ScannedFileView[];
   lectures?: ProposedLecture[];
   skipped?: Array<{ path: string; why: string }>;
-  /** File indexes whose exact contents are already in this course. */
-  alreadyImported?: number[];
+  /** For each file index already in this course (same contents): the lectures holding it. */
+  inLectures?: Record<number, Array<{ id: string; title: string }>>;
 }
 
 /** Reads the folder and proposes lectures. Local and instant: no model call. */
@@ -131,11 +142,17 @@ export async function scanFolderAction(_prev: ScanState, fd: FormData): Promise<
     if (files.length === 0) {
       return { error: `Nothing readable in ${root}. Lockin reads .vtt .srt .txt .md .pdf and .pptx.`, root };
     }
-    const known = new Set(
-      (
-        await prisma.material.findMany({ where: { lecture: { courseId } }, select: { checksum: true } })
-      ).map((m) => m.checksum),
-    );
+    const held = new Map<string, Array<{ id: string; title: string }>>();
+    const existing = await prisma.material.findMany({
+      where: { lecture: { courseId } },
+      select: { checksum: true, lecture: { select: { id: true, title: true } } },
+    });
+    for (const m of existing) {
+      if (!m.lecture) continue;
+      const list = held.get(m.checksum) ?? [];
+      if (!list.some((l) => l.id === m.lecture!.id)) list.push(m.lecture);
+      held.set(m.checksum, list);
+    }
     return {
       root,
       scannedAt: Date.now(),
@@ -144,6 +161,7 @@ export async function scanFolderAction(_prev: ScanState, fd: FormData): Promise<
         kind: f.kindGuess,
         warnings: f.warnings,
         measuredHours: f.measuredHours,
+        modifiedOn: f.modifiedOn.toISOString(),
       })),
       lectures: groupFiles(
         files.map((f) => ({
@@ -154,10 +172,42 @@ export async function scanFolderAction(_prev: ScanState, fd: FormData): Promise<
         })),
       ),
       skipped,
-      alreadyImported: files.flatMap((f, i) => (known.has(f.checksum) ? [i] : [])),
+      inLectures: Object.fromEntries(
+        files.flatMap((f, i) => (held.has(f.checksum) ? [[i, held.get(f.checksum)!]] : [])),
+      ),
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err), root };
+  }
+}
+
+/**
+ * Asks the AI to group a scanned folder: for folders whose names don't say which
+ * lecture is which. Queued for the worker, which runs it beside anything already
+ * being prepared; the import screen polls /api/jobs/<id> for the answer.
+ */
+export async function startSort(input: {
+  root: string;
+  paths: string[];
+}): Promise<{ jobId: string } | { error: string }> {
+  const { mode } = await getSettings();
+  if (!usesAi(mode)) {
+    return { error: "Sorting with AI needs Claude Code or an offline model — you're in copy & paste mode (Settings)." };
+  }
+  if (mode === "local" && !(await activeLocalModel())) {
+    return { error: "Download an offline model first, in Settings → Offline AI." };
+  }
+  const root = path.resolve(input.root);
+  if (input.paths.some((rel) => !path.resolve(root, rel).startsWith(root + path.sep))) {
+    return { error: "Those files are not inside the folder. Scan it again." };
+  }
+  try {
+    // A small local model has less room to read in, so it gets shorter openings.
+    const files = await describeForSort(root, input.paths, mode === "local" ? 260 : 600);
+    const job = await enqueue("SORT", { root, files }, null);
+    return { jobId: job.id };
+  } catch (err) {
+    return { error: `Could not read the files again (${err instanceof Error ? err.message : err}). Scan again.` };
   }
 }
 
@@ -179,7 +229,12 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
     date: str(fd, `date.${i}`),
     hours: str(fd, `hours.${i}`),
     paths: fd.getAll(`paths.${i}`).map((v) => String(v)),
+    /** An existing lecture these files belong to: add them to it, don't make another. */
+    into: str(fd, `into.${i}`),
   }));
+  if (planned.some((p) => p.paths.length === 0)) {
+    return { ok: false, message: "A ticked lecture has no files left — tick a file back, or untick the lecture." };
+  }
 
   // Every file must still be where the scan found it, and inside the chosen folder,
   // before anything is written — no half-finished imports.
@@ -197,7 +252,27 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
 
   const modules = new Map<string, string>();
   const created: string[] = [];
+  const added: string[] = [];
   for (const row of planned) {
+    if (row.into) {
+      const lecture = await prisma.lecture.findFirst({
+        where: { id: row.into, courseId },
+        include: { materials: { select: { checksum: true } } },
+      });
+      if (lecture) {
+        const have = new Set(lecture.materials.map((m) => m.checksum));
+        let fresh = 0;
+        for (const rel of row.paths) {
+          const buffer = await readFile(path.resolve(root, rel));
+          if (have.has(checksum(buffer))) continue;
+          await ingestFile({ file: new File([new Uint8Array(buffer)], path.basename(rel)), lectureId: lecture.id });
+          fresh++;
+        }
+        if (fresh) added.push(lecture.id);
+        continue;
+      }
+      // The lecture was deleted since the scan: import the row as a new one.
+    }
     const title = row.title || row.proposed || "Untitled lecture";
     const lecture = await prisma.lecture.create({
       data: {
@@ -226,9 +301,13 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
     created.push(lecture.id);
   }
 
-  if (prepare && usesAi((await getSettings()).mode)) await queuePrepare(created);
+  if (prepare && usesAi((await getSettings()).mode)) {
+    await queuePrepare(created);
+    // New slides change what a lecture's summary can show: write it again from all its files.
+    await queuePrepare(added, { redo: true });
+  }
   refreshAll();
-  redirect(`/?course=${courseId}&imported=${created.length}`);
+  redirect(`/?course=${courseId}&imported=${created.length}${added.length ? `&updated=${added.length}` : ""}`);
 }
 
 // ---------------------------------------------------------------------------

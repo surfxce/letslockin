@@ -7,10 +7,21 @@ is due again.
 
 ## How it works
 
-1. **Add lectures.** Point a course at the folder your files are in. Lockin pairs each
-   transcript with its slides by lecture number, date, module folder or shared name — locally,
-   in a second — and shows the list to check before importing. Past papers and course admin
-   are set aside. Or add one lecture by dropping in files or pasting the transcript.
+1. **Add lectures.** Point a course at the folder your files are in, then choose how they
+   become lectures:
+   - **Sorted already** — files named by lecture are grouped from their names, locally, in a
+     second: lecture numbers (L7, Lecture 07, Week 3 Lecture 2), codes (A4), dates, module
+     folders or shared names. A file for several lectures (`A4-A5 slides`, `L4-5`,
+     `Lectures 4 & 5`) goes into each of them.
+   - **Sort with AI** — for a messy folder: Claude Haiku (or your offline model) reads the
+     start of every file — a transcript's opening, each slide's first line — and works out
+     which go together, which deck two lectures share, and what is not a lecture at all.
+
+   Either way the list is shown to check and edit before anything is imported: untick a
+   lecture, take a file out of one with its ×, retitle. Past papers and course admin are set
+   aside. Files already in the course are recognised; new ones are added to the lecture they
+   belong to rather than making a second copy of it. Or add one lecture by dropping in files
+   or pasting the transcript.
 2. **Summary and LAQs**, one lecture at a time, in one of three modes (Settings):
    - **Claude Code** — the worker runs Claude Code on this computer. A lecture is read once
      to write its title, summary and concepts, then its LAQs are written; the next lecture
@@ -21,6 +32,17 @@ is due again.
    - **Copy & paste** — no AI runs locally. Each lecture has *Copy prompt* buttons for any AI
      chat (the prompt carries the transcript) and boxes that turn the pasted reply into a
      formatted summary, LAQ cards, or coloured scores, with a live preview before saving.
+
+   **Slides are read as pictures, and shown in summaries.** In Claude Code mode, Claude opens
+   the PDF decks itself and sees each page, so text inside images, diagrams, graphs and
+   photos is read, not lost. Where a slide's figure helps, the summary shows it — the model
+   writes `![what it shows](slide:12)` and Lockin puts the slide's picture there, drawn from
+   the PDF the first time it is viewed. As it reads, Claude writes a note on each slide; the
+   steps that write and mark LAQs, which only read text, use those notes. A deck shared by
+   two lectures is copied into each, and each lecture covers only the part its transcript
+   does. In copy & paste mode the prompt asks you to attach the PDF (there is a download
+   button) and asks for the same slide pictures. Offline, see below. PowerPoint files give
+   their text but not pictures — export them as PDF for that.
 3. **Module aims are left out.** Slides that are a module's aims or learning objectives are
    dropped before any model sees them, and the prompts tell the model to ignore aims read
    aloud, housekeeping and acknowledgements. Each lecture page lists what was left out.
@@ -63,7 +85,9 @@ npm run worker       # the AI queue and model downloads — not needed in copy &
 ```
 
 Claude Code mode needs the Claude Code CLI: `npm i -g @anthropic-ai/claude-code`, then run
-`claude` once to sign in. `LOCKIN_MODEL` picks the model. To try the app without model
+`claude` once to sign in. `LOCKIN_MODEL` picks the model for summaries, LAQs and marking;
+`LOCKIN_SORT_MODEL` (default `haiku`) the one that sorts folders. Claude is given one tool,
+reading files, and only in the folder of the lecture's slides. To try the app without model
 calls, run the worker with `LOCKIN_PROVIDER=fake`.
 
 ## Offline AI
@@ -93,6 +117,14 @@ JSON, out-of-range marks or concept ids that do not exist. A transcript too long
 model's context is read in parts and condensed first; the lecture page says which part it
 is on.
 
+These models read text only — node-llama-cpp has no image input yet, though Gemma 4 itself
+can see. So before an offline model summarises a lecture, slides that are pictures (scans,
+slides exported as images) have their words read by text recognition on this computer
+(tesseract.js, with its English data bundled), and the result is kept in the deck's text,
+where Details & files shows it for correcting. The words on a graph or diagram are read;
+what it shows is not — that needs a model that can see, i.e. Claude Code. Slide pictures
+still appear in offline summaries, placed from the slides' text.
+
 - Models are saved in `models/` beside the source, or in the desktop app's data folder
   (`~/Library/Application Support/Lockin/models` on a Mac). Settings lists them, with
   *Use* and *Delete*.
@@ -102,7 +134,7 @@ is on.
 ## Working on it
 
 ```bash
-npm test             # vitest: grouping, aims filter, paste parsers, scheduling, scoring, model picks
+npm test             # vitest: grouping, aims filter, paste parsers, scheduling, scoring, model picks, slides
 npm run lint
 npx tsc --noEmit
 npm run smoke        # one real model call through the CLI
@@ -111,7 +143,10 @@ npm run smoke        # one real model call through the CLI
 | Where | What |
 | --- | --- |
 | `app/` | Pages and server actions. `app/ui/` holds the shared client components. |
-| `lib/group.ts` | Local folder → lectures grouping. |
+| `lib/group.ts` | Local folder → lectures grouping, and turning an AI's grouping (`lib/sortfiles.ts` builds what it reads) into the same list. |
+| `lib/slides.ts`, `lib/sources.ts` | A lecture's decks, slide numbering across them, slide pictures drawn on demand; the text every prompt is built from. |
+| `lib/ocr.ts`, `lib/slidetext.ts` | Reading the words on picture-only slides, for models that can't see. |
+| `lib/runtime-import.ts` | Loading packages that must not be bundled — native binaries, and ESM that finds its own files. |
 | `lib/parse/aims.ts` | The module-aims filter. |
 | `lib/paste.ts`, `lib/offline.ts` | Copy-and-paste mode: what is pasted back, and the prompts that ask for it. They change together; `lib/offline.test.ts` holds them to it. |
 | `lib/pipeline.ts`, `worker/` | The steps the worker runs, and the queue that runs them one at a time. |

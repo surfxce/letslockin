@@ -39,6 +39,7 @@ export async function ingestFile(opts: {
       path: relPath,
       originalName: opts.file.name,
       extractedText: parsed.text,
+      pageCount: parsed.pages ?? null,
       checksum: checksum(buffer),
     },
   });

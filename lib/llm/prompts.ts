@@ -7,6 +7,7 @@ import type {
   GenerateQuestionsInput,
   MarkInput,
   ParsePastPaperInput,
+  SortFilesInput,
 } from "@/lib/llm/provider";
 import { promptsDir } from "@/lib/paths";
 
@@ -50,15 +51,41 @@ export async function renderPrompt(name: PromptName, vars: Record<string, string
   return { text: fill(text, vars), version: `${name}@${version}` };
 }
 
-export type PromptName = "digest-lecture" | "generate-questions" | "mark" | "parse-past-paper";
+export type PromptName = "digest-lecture" | "generate-questions" | "mark" | "parse-past-paper" | "sort-files";
 
 function conceptTable(concepts: ConceptRef[]): string {
   if (concepts.length === 0) return "(none yet)";
   return concepts.map((c) => `- ${c.id} :: ${c.name} — ${c.definition}`).join("\n");
 }
 
-export function digestVars(input: DigestInput): Record<string, string> {
+const sharedNote = (titles: string[] | undefined, what: string) =>
+  titles?.length
+    ? `\nThese slides are shared with ${titles.length === 1 ? "another lecture" : "other lectures"}: ` +
+      `${titles.map((t) => `"${t}"`).join(", ")}. This lecture is only the part its transcript covers — ` +
+      `${what} only that part, and leave out slides that belong to the other lecture.\n`
+    : "";
+
+/**
+ * `visual` is set by a provider that shows the model the slides themselves (Claude
+ * Code reading the PDFs); only then can it describe what is on them.
+ */
+export function digestVars(input: DigestInput, opts: { visual?: boolean } = {}): Record<string, string> {
+  const pictured = input.slides?.decks.some((d) => d.pdf && d.pages > 0);
   return {
+    slidesNote: sharedNote(input.slides?.sharedWith, "summarise and extract concepts for"),
+    picturesNote: pictured
+      ? `\nWhere a slide's figure, diagram, graph, table or photo would help someone revise — a pathway, a ` +
+        `labelled structure, a graph with a trend — show it: put \`![<what it shows>](slide:<number>)\` on a line ` +
+        `of its own, right where it belongs, using the slide numbers from the "--- Slide N ---" markers. Choose ` +
+        `the few that teach something, about four per hour of lecture at most — never a title slide, a slide of ` +
+        `plain text, a logo or a decorative picture.\n`
+      : "",
+    slideNotesStep: opts.visual
+      ? "For every slide this lecture covers, write one or two sentences in `slideNotes`: the words on it, " +
+        "including any inside pictures, and what any figure shows (\"Graph: plasma ghrelin peaks just before each " +
+        "meal and falls after eating\"). The steps that write and mark exam questions cannot see the slides and " +
+        "work from these. Skip title slides, aims and housekeeping, and slides that belong to another lecture."
+      : "Leave `slideNotes` as an empty list.",
     currentTitle: input.currentTitle,
     titleNote: input.titleIsPlaceholder
       ? "(That title was made from a filename and is only a placeholder — replace it.)"
@@ -82,6 +109,7 @@ export function generateVars(input: GenerateQuestionsInput): Record<string, stri
     .map((a) => `- ${a.conceptId}: ${a.count}`)
     .join("\n");
   return {
+    scopeNote: sharedNote(input.sharedWith, "ask about"),
     lectureTitle: input.lectureTitle,
     type: input.type,
     transcript: input.transcript,
@@ -103,4 +131,12 @@ export function markVars(input: MarkInput): Record<string, string> {
 
 export function paperVars(input: ParsePastPaperInput): Record<string, string> {
   return { paperText: input.paperText, concepts: conceptTable(input.concepts) };
+}
+
+export function sortVars(input: SortFilesInput): Record<string, string> {
+  return {
+    files: input.files
+      .map((f) => `[${f.number}] ${f.path} — ${f.detail}\n    ${f.excerpt.replace(/\s+/g, " ").trim() || "(no text)"}`)
+      .join("\n"),
+  };
 }

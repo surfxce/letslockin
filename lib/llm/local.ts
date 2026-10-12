@@ -3,16 +3,31 @@ import { createHash } from "node:crypto";
 import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
-import { digestVars, generateVars, markVars, paperVars, renderPrompt, type PromptName } from "@/lib/llm/prompts";
+import {
+  digestVars,
+  generateVars,
+  markVars,
+  paperVars,
+  renderPrompt,
+  sortVars,
+  type PromptName,
+} from "@/lib/llm/prompts";
 import type {
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
   ParsePastPaperInput,
+  SortFilesInput,
 } from "@/lib/llm/provider";
 import { importLlamaCpp } from "@/lib/llm/runtime";
-import { DigestSchema, MarkingSchema, PaperItemsSchema, QuestionSetSchema } from "@/lib/llm/schemas";
+import {
+  DigestSchema,
+  FolderSortSchema,
+  MarkingSchema,
+  PaperItemsSchema,
+  QuestionSetSchema,
+} from "@/lib/llm/schemas";
 
 /**
  * Runs a downloaded model on this computer through llama.cpp — Metal on a Mac, CUDA
@@ -27,18 +42,34 @@ import { DigestSchema, MarkingSchema, PaperItemsSchema, QuestionSetSchema } from
 /** Room for the chat template and the start of the reply beyond what is counted. */
 const OVERHEAD_TOKENS = 512;
 
-/** Loaded once per worker: loading weights takes seconds to minutes. */
-let runtime: { modelPath: string; llama: Llama; model: LlamaModel } | null = null;
+interface Runtime {
+  modelPath: string;
+  llama: Llama;
+  model: LlamaModel;
+}
 
-async function load(modelPath: string) {
-  if (runtime?.modelPath === modelPath) return runtime;
-  const { getLlama } = await importLlamaCpp();
-  const llama = runtime?.llama ?? (await getLlama());
-  if (runtime) await runtime.model.dispose();
-  runtime = null;
-  const model = await llama.loadModel({ modelPath });
-  runtime = { modelPath, llama, model };
-  return runtime;
+/** Loaded once per worker: loading weights takes seconds to minutes. */
+let runtime: Runtime | null = null;
+/** A load in progress. Sorting runs beside preparing, and two lanes must not load twice. */
+let loading: Promise<Runtime> | null = null;
+
+function load(modelPath: string): Promise<Runtime> {
+  if (runtime?.modelPath === modelPath) return Promise.resolve(runtime);
+  const pending: Promise<Runtime> =
+    loading ??
+    (async () => {
+      const { getLlama } = await importLlamaCpp();
+      const llama = runtime?.llama ?? (await getLlama());
+      if (runtime) await runtime.model.dispose();
+      runtime = null;
+      const model = await llama.loadModel({ modelPath });
+      runtime = { modelPath, llama, model };
+      return runtime;
+    })().finally(() => {
+      loading = null;
+    });
+  loading = pending;
+  return pending.then((r) => (r.modelPath === modelPath ? r : load(modelPath)));
 }
 
 const nullable = (schema: GbnfJsonSchema): GbnfJsonSchema => ({ oneOf: [schema, { type: "null" }] });
@@ -76,6 +107,8 @@ function digestSchema(existingIds: string[]): GbnfJsonSchema {
           },
         },
       },
+      // Notes describe what a slide shows; a model that never saw it has none to give.
+      slideNotes: { type: "array", maxItems: 0 },
     },
   };
 }
@@ -142,6 +175,32 @@ function markingSchema(conceptIds: string[]): GbnfJsonSchema {
             },
           }
         : { type: "array", maxItems: 0 },
+    },
+  };
+}
+
+function sortSchema(fileCount: number): GbnfJsonSchema {
+  const file: GbnfJsonSchema = { enum: Array.from({ length: fileCount }, (_, i) => i + 1) };
+  return {
+    type: "object",
+    properties: {
+      lectures: {
+        type: "array",
+        maxItems: fileCount,
+        items: {
+          type: "object",
+          properties: {
+            title: text(120),
+            module: nullable(text(80)),
+            files: { type: "array", minItems: 1, maxItems: 8, items: file },
+          },
+        },
+      },
+      setAside: {
+        type: "array",
+        maxItems: fileCount,
+        items: { type: "object", properties: { file, reason: text(80) } },
+      },
     },
   };
 }
@@ -227,6 +286,19 @@ export class LocalProvider implements LlmProvider {
     });
   }
 
+  async sortFiles(input: SortFilesInput) {
+    return this.run({
+      prompt: "sort-files",
+      vars: () => sortVars(input),
+      schema: sortSchema(input.files.length),
+      zod: FolderSortSchema,
+      maxTokens: 120 + 60 * input.files.length,
+      temperature: 0,
+      // It runs beside a lecture being prepared, whose progress line this must not take over.
+      quiet: true,
+    });
+  }
+
   private progress(detail: string | null) {
     this.onProgress?.(detail);
   }
@@ -239,8 +311,10 @@ export class LocalProvider implements LlmProvider {
     zod: ZodType<T>;
     maxTokens: number;
     temperature: number;
+    quiet?: boolean;
   }): Promise<T> {
-    if (!runtime || runtime.modelPath !== this.modelPath) this.progress(`loading ${this.modelName} into memory`);
+    const progress = (detail: string | null) => (opts.quiet ? undefined : this.progress(detail));
+    if (!runtime || runtime.modelPath !== this.modelPath) progress(`loading ${this.modelName} into memory`);
     const { llama, model } = await load(this.modelPath);
     const { LlamaChatSession } = await importLlamaCpp();
 
@@ -277,11 +351,11 @@ export class LocalProvider implements LlmProvider {
           words += chunk.split(/\s+/).filter(Boolean).length;
           if (Date.now() - last > 2000) {
             last = Date.now();
-            this.progress(`writing — ${words.toLocaleString("en")} words so far`);
+            progress(`writing — ${words.toLocaleString("en")} words so far`);
           }
         },
       });
-      this.progress(null);
+      progress(null);
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);

@@ -4,7 +4,8 @@ import { geometricMean } from "@/lib/engines/geomean";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { mergeSkipped } from "@/lib/parse/aims";
-import { lectureSources } from "@/lib/sources";
+import { lectureDecks, sharingTitles } from "@/lib/slides";
+import { lectureSources, readSlideNotes, slideNotesText } from "@/lib/sources";
 
 /**
  * The steps the worker runs. Each reads what it needs fresh from the database and
@@ -14,11 +15,14 @@ import { lectureSources } from "@/lib/sources";
 
 /** Title, set-aside sections, summary and concepts for one lecture, in one model call. */
 export async function digestLecture(lectureId: string, opts: { keepSummary: boolean }, provider: LlmProvider) {
+  // Decks first: it counts the pages of any deck imported before page counts were kept.
+  const decks = await lectureDecks(lectureId);
   const lecture = await prisma.lecture.findUniqueOrThrow({
     where: { id: lectureId },
     include: { materials: true },
   });
   const sources = lectureSources(lecture.materials);
+  const sharedWith = await sharingTitles(lecture);
 
   // The whole course's concepts go in, so the model reuses an id rather than
   // minting a synonym. Merged-away concepts are excluded — they are dead ids.
@@ -35,7 +39,15 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
     slidesText: sources.slidesText,
     alreadySkipped: sources.skipped,
     existingConcepts: existing.map(({ id, name, definition }) => ({ id, name, definition })),
+    slides: decks.length
+      ? {
+          decks: decks.map(({ file, name, first, pages, pdf }) => ({ file, name, first, pages, pdf })),
+          sharedWith,
+        }
+      : undefined,
   });
+  const lastSlide = decks.reduce((n, d) => n + d.pages, 0);
+  const slideNotes = digest.slideNotes.filter((s) => s.slide >= 1 && s.slide <= lastSlide);
 
   const knownIds = new Set(existing.map((c) => c.id));
   const ownIds = new Set(existing.filter((c) => c.lectureId === lectureId).map((c) => c.id));
@@ -73,9 +85,18 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
       ...(lecture.autoTitle ? { title: digest.title.trim(), autoTitle: false } : {}),
       summaryMd: keep ? lecture.summaryMd : digest.summaryMd,
       skipped: JSON.stringify(mergeSkipped([...sources.skipped, ...digest.skipped])),
+      // Notes from a model that saw this set of slides; a model that didn't leaves none,
+      // and old notes for a set of slides that has since changed are not kept.
+      slideNotes: slideNotes.length ? JSON.stringify(slideNotes) : null,
     },
   });
-  return { title: digest.title, reused, minted, skipped: digest.skipped.length + sources.skipped.length };
+  return {
+    title: digest.title,
+    reused,
+    minted,
+    skipped: digest.skipped.length + sources.skipped.length,
+    slideNotes: slideNotes.length,
+  };
 }
 
 /**
@@ -99,13 +120,17 @@ export async function writeQuestions(lectureId: string, provider: LlmProvider) {
     return { generated: 0, budget, note: "every concept in this lecture is already at 10/10" };
   }
 
+  // Notes written by a model that saw the slides beat text extracted from them: they
+  // include words inside pictures and what each figure shows.
+  const notes = readSlideNotes(lecture.slideNotes);
   const { questions } = await provider.generateQuestions({
     lectureTitle: lecture.title,
     transcript: sources.transcript,
-    slidesText: sources.slidesText,
+    slidesText: notes.length ? slideNotesText(notes) : sources.slidesText,
     concepts: lecture.concepts.map((c) => ({ id: c.id, name: c.name, definition: c.definition })),
     allocation,
     type: "LAQ",
+    sharedWith: await sharingTitles(lecture),
   });
 
   const known = new Set(lecture.concepts.map((c) => c.id));

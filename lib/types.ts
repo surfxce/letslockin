@@ -13,9 +13,10 @@ export type GapType = (typeof GAP_TYPES)[number];
 /**
  * PREPARE takes one lecture from files to a summary and a first set of LAQs.
  * GENERATE writes fresh LAQs aimed at weak concepts. MARK marks one answer.
- * DOWNLOAD fetches a local model; it runs alongside the others, not in their queue.
+ * DOWNLOAD fetches a local model, and SORT groups a folder's files into lectures while
+ * someone waits on the import screen; both run alongside the others, not in their queue.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -23,6 +24,7 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 
 /** The named steps inside a job, in the order they run. Shown to the user. */
 export const STAGES = {
+  slides: "Reading slide pictures",
   digest: "Reading & summarising",
   questions: "Writing LAQs",
   marking: "Marking",

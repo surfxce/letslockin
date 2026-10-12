@@ -19,6 +19,42 @@ export const SCORE_FORMAT = `LAQ <number>: <mark>/10
 - Missed: <a point I left out — written as the correct fact, ready to copy into my notes>
 - Wrong: <something I got wrong — written as the correct fact>`;
 
+/** A lecture's decks, for prompts that ask the student to attach them. */
+export interface PromptSlides {
+  decks: Array<{ name: string; first: number; pages: number; pdf: boolean }>;
+  /** Other lectures using the same deck. */
+  sharedWith: string[];
+}
+
+function slidesNotes(slides: PromptSlides | undefined, task: "summary" | "laqs"): string {
+  if (!slides) return "";
+  const out: string[] = [];
+  const pdfs = slides.decks.filter((d) => d.pdf && d.pages > 0);
+  if (pdfs.length) {
+    const list = pdfs.map((d) => `${d.name} (slides ${d.first}–${d.first + d.pages - 1})`).join(", ");
+    out.push(
+      `I've attached the slides: ${list}. Read every page — including words inside pictures and what each diagram, ` +
+        `graph or photo shows; the slide text at the bottom misses those.` +
+        (pdfs.length > 1 ? " Slide numbers run on from one file to the next, as listed." : ""),
+    );
+    if (task === "summary") {
+      out.push(
+        "Where a slide's figure, diagram, graph or photo would help me revise, show it: put " +
+          "![<what it shows>](slide:<number>) on a line of its own where it belongs. Pick the few that teach " +
+          "something — never a title slide, a slide of plain text or a decorative picture.",
+      );
+    }
+  }
+  if (slides.sharedWith.length) {
+    out.push(
+      `These slides are shared with another lecture (${slides.sharedWith.map((t) => `"${t}"`).join(", ")}). This ` +
+        `lecture is only the part its transcript covers: ${task === "summary" ? "summarise" : "ask about"} only that ` +
+        `part, and leave out slides that belong to the other lecture.`,
+    );
+  }
+  return out.length ? `\n\n${out.join("\n\n")}` : "";
+}
+
 function material(sources: LectureSources): string {
   return [
     "MATERIAL",
@@ -29,14 +65,14 @@ function material(sources: LectureSources): string {
   ].join("\n");
 }
 
-export function summaryPrompt(opts: { durationHours: number; sources: LectureSources }): string {
+export function summaryPrompt(opts: { durationHours: number; sources: LectureSources; slides?: PromptSlides }): string {
   return `I'm a university student and need to revise this ${opts.durationHours}-hour lecture for an exam. Summarise it for me.
 
 ${DATA_GUARD}
 
 ${IGNORE_AIMS}
 
-Write a summary I could revise from. Follow the lecture's own structure, keep the lecturer's exact terminology, and say so wherever the lecturer flags something as examinable or important. Use only the material below — don't add things that aren't in it, even if they're true.
+Write a summary I could revise from. Follow the lecture's own structure, keep the lecturer's exact terminology, and say so wherever the lecturer flags something as examinable or important. Use only the material below — don't add things that aren't in it, even if they're true.${slidesNotes(opts.slides, "summary")}
 
 Reply in Markdown, starting with a heading that names the lecture by what it teaches (no course code, lecture number or date), like this:
 
@@ -50,6 +86,7 @@ export function laqPrompt(opts: {
   count: number;
   firstNumber: number;
   sources: LectureSources;
+  slides?: PromptSlides;
 }): string {
   const last = opts.firstNumber + opts.count - 1;
   const numbering =
@@ -61,7 +98,7 @@ ${DATA_GUARD}
 
 ${IGNORE_AIMS} Never base a question on them.
 
-Each question should take several paragraphs to answer well and ask for explanation, comparison, prediction or application — never bare recall of a definition, never multiple choice. Every question must be answerable from this lecture alone. Break each ideal answer into specific marking points that a marker can tick or not tick, totalling exactly 10 marks.
+Each question should take several paragraphs to answer well and ask for explanation, comparison, prediction or application — never bare recall of a definition, never multiple choice. Every question must be answerable from this lecture alone. Break each ideal answer into specific marking points that a marker can tick or not tick, totalling exactly 10 marks.${slidesNotes(opts.slides, "laqs")}
 
 Use exactly this format for every question:
 
