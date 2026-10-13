@@ -1,3 +1,4 @@
+import { SlideErrors } from "@/app/ui/SlideErrors";
 import { formatScore, scoreTone } from "@/lib/format";
 import { renderMarkdown, type SlideImages } from "@/lib/markdown";
 import type { FeedbackKind } from "@/lib/paste";
@@ -8,7 +9,12 @@ import type { FeedbackKind } from "@/lib/paste";
  */
 
 export function Markdown({ md, className = "prose", slides }: { md: string; className?: string; slides?: SlideImages }) {
-  return <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(md, slides) }} />;
+  return (
+    <>
+      <div className={className} dangerouslySetInnerHTML={{ __html: renderMarkdown(md, slides) }} />
+      {slides && <SlideErrors watch={md} />}
+    </>
+  );
 }
 
 export interface LaqData {

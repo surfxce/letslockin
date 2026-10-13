@@ -459,6 +459,10 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .slide-fig img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--rule); background: #fff; }
 .slide-fig figcaption { font-size: 13px; color: var(--text-soft); margin-top: 6px; }
 .slide-fig figcaption span { color: var(--text-faint); }
+.slide-fig.multi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-width: 680px; }
+.slide-fig.multi a { max-width: none; }
+.slide-fig.multi figcaption { grid-column: 1 / -1; }
+.slide-fig .slide-error { color: var(--s-orange); }
 .slide-fig.missing { padding: 9px 12px; border-left: 3px solid var(--rule-strong); background: var(--bg-soft); border-radius: 0 6px 6px 0; max-width: 680px; }
 .slide-fig.missing figcaption { margin: 0; }
 .slide-notes { margin: 10px 0 0; display: grid; gap: 8px; }
