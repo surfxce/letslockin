@@ -1,15 +1,14 @@
 import Link from "next/link";
 
-import { ModePicker, NotifyToggle } from "@/app/settings/controls";
+import { CloudModelPicker, LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
 import { Icon } from "@/app/ui/Icon";
 import { ModelPicker } from "@/app/ui/ModelPicker";
 import { prisma } from "@/lib/db";
 import { plural, tagTone } from "@/lib/format";
-import { cliConfigFromEnv } from "@/lib/llm/cli";
 import { detectCli } from "@/lib/llm/detect";
 import { findModel } from "@/lib/llm/catalog";
-import { MODE_LABEL, usesAi } from "@/lib/modes";
+import { CLOUD_MODEL_LABEL, MODE_LABEL, usesAi } from "@/lib/modes";
 import { modelsPayload } from "@/lib/payloads";
 import { getSettings, readHeartbeat } from "@/lib/settings";
 
@@ -24,7 +23,9 @@ export default async function SettingsPage() {
     prisma.course.findMany({ orderBy: { createdAt: "asc" }, include: { _count: { select: { lectures: true } } } }),
   ]);
   const linked = findModel(models.active);
-  const engine = settings.mode === "local" ? (linked?.name ?? "no model yet") : cliConfigFromEnv().model;
+  // The fallback is the model chosen for local mode, else any that is downloaded.
+  const offline = linked ?? models.installed.map((m) => findModel(m.id)).find(Boolean) ?? null;
+  const engine = settings.mode === "local" ? (linked?.name ?? "no model yet") : CLOUD_MODEL_LABEL[settings.cloudModel];
 
   return (
     <main className="page narrow">
@@ -35,6 +36,13 @@ export default async function SettingsPage() {
 
       <h2>Summaries and LAQs</h2>
       <ModePicker mode={settings.mode} cliFound={cli.found} cliVersion={cli.version} localModel={linked?.name ?? null} />
+      {settings.mode === "auto" && (
+        <CloudModelPicker
+          model={settings.cloudModel}
+          fallbackLocal={settings.fallbackLocal}
+          offlineModel={offline?.name ?? null}
+        />
+      )}
       {usesAi(settings.mode) && (
         <div className="setting">
           <div>
@@ -56,6 +64,13 @@ export default async function SettingsPage() {
           <Tag tone={beat?.alive ? "green" : "orange"}>{beat?.alive ? "Running" : "Stopped"}</Tag>
         </div>
       )}
+
+      <h2 id="laqs">LAQs</h2>
+      <LaqSettings
+        laqsPerHour={settings.laqsPerHour}
+        sittingPerHour={settings.sittingPerHour}
+        laqStyle={settings.laqStyle}
+      />
 
       <h2 id="local">Offline AI on this computer</h2>
       <p className="muted small" style={{ marginTop: -4 }}>

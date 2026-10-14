@@ -68,6 +68,18 @@ export async function activeLocalModel(): Promise<{ model: LocalModel; path: str
   return model && installed ? { model, path: installed.path } : null;
 }
 
+/** The offline model to fall back on when Claude fails: the one chosen for local mode,
+ *  else any that is downloaded. */
+export async function fallbackLocalModel(): Promise<{ model: LocalModel; path: string } | null> {
+  const active = await activeLocalModel();
+  if (active) return active;
+  for (const m of await installedModels()) {
+    const model = findModel(m.id);
+    if (model) return { model, path: m.path };
+  }
+  return null;
+}
+
 export interface DownloadState {
   jobId: string;
   modelId: string;

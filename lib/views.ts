@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { nextReview } from "@/lib/engines/schedule";
+import { SIDE_LANES } from "@/lib/jobs";
 import type { LectureRow, LectureStatus } from "@/lib/status";
 import { STAGES, type Stage } from "@/lib/types";
 
@@ -38,8 +39,9 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
     },
   });
 
+  // Places in the queue lectures wait in; side lanes (downloads, sorts, asks) run beside it.
   const pending = await prisma.job.findMany({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", kind: { notIn: SIDE_LANES } },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
     select: { id: true },
   });

@@ -15,7 +15,7 @@ const ConceptSchema = z.object({
 export const DigestSchema = z.object({
   title: z.string().min(1),
   skipped: z
-    .array(z.object({ what: z.string().min(1), where: z.string().default("") }))
+    .array(z.object({ what: z.string().min(1), where: z.string().default(""), about: z.string().default("") }))
     .default([]),
   summaryMd: z.string().min(1),
   concepts: z.array(ConceptSchema),
@@ -82,6 +82,15 @@ export const FolderSortSchema = z.object({
   setAside: z.array(z.object({ file: z.number().int().min(1), reason: z.string().default("") })).default([]),
 });
 export type FolderSort = z.infer<typeof FolderSortSchema>;
+
+/** A short answer for someone waiting on the lecture page: a question answered, a
+ *  passage broken down, or what a left-out part said. */
+export const AnswerSchema = z.object({
+  answer: z.string().min(1),
+  /** Question answers only: the summary heading the answer belongs under. */
+  section: z.string().nullable().default(null),
+});
+export type Answer = z.infer<typeof AnswerSchema>;
 
 export const PaperItemsSchema = z.object({
   items: z.array(

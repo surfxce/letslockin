@@ -25,6 +25,9 @@ import type { MaterialKind } from "@/lib/types";
 import { usesAi } from "@/lib/modes";
 import { questionNumbers } from "@/lib/views";
 
+/** Who wrote a summary or LAQ that was pasted in, as shown on the lecture page. */
+const PASTED = "Pasted from an AI chat";
+
 /** What a form gets back when it stays on the page: shown next to the button. */
 export type Result = { ok: boolean; message: string } | null;
 
@@ -458,6 +461,7 @@ export async function saveSummary(_prev: Result, fd: FormData): Promise<Result> 
     where: { id: lectureId },
     data: {
       summaryMd: parsed.markdown,
+      summaryModel: PASTED,
       ...(lecture.autoTitle && parsed.title ? { title: parsed.title, autoTitle: false } : {}),
     },
   });
@@ -482,6 +486,7 @@ export async function saveLaqs(_prev: Result, fd: FormData): Promise<Result> {
           source: "pasted",
         }),
         promptVersion: "pasted",
+        model: PASTED,
       },
     });
   }
@@ -575,6 +580,19 @@ export async function saveAttemptScores(_prev: Result, fd: FormData): Promise<Re
 
 export async function startAttempt(fd: FormData) {
   const lectureId = str(fd, "lectureId");
+  // A sitting started and never submitted is picked up again, drafts and all, rather
+  // than left behind while a fresh one starts empty.
+  const open = await prisma.attempt.findFirst({
+    where: {
+      lectureId,
+      source: "APP",
+      sittingDate: { gte: new Date(Date.now() - 14 * 86_400_000) },
+      responses: { every: { answerText: "", mark: null } },
+    },
+    orderBy: { sittingDate: "desc" },
+    include: { _count: { select: { responses: true } } },
+  });
+  if (open && open._count.responses > 0) redirect(`/attempts/${open.id}`);
   const questionIds = await pickQuestions(lectureId);
   if (questionIds.length === 0) throw new Error("This lecture has no LAQs yet.");
   const attempt = await prisma.attempt.create({
@@ -584,6 +602,18 @@ export async function startAttempt(fd: FormData) {
     },
   });
   redirect(`/attempts/${attempt.id}`);
+}
+
+/**
+ * Saves what has been typed into one answer so far, as it is typed. Only while the
+ * sitting is open: once submitted, the answer itself is what counts.
+ */
+export async function saveAnswerDraft(responseId: string, text: string): Promise<{ ok: boolean }> {
+  const { count } = await prisma.response.updateMany({
+    where: { id: responseId, answerText: "", mark: null },
+    data: { draftText: text.slice(0, 50_000) },
+  });
+  return { ok: count > 0 };
 }
 
 /**
@@ -604,9 +634,10 @@ export async function submitAttempt(_prev: Result, fd: FormData): Promise<Result
     await prisma.response.update({
       where: { id: r.id },
       data: text
-        ? { answerText: text }
+        ? { answerText: text, draftText: null }
         : {
             answerText: "",
+            draftText: null,
             mark: 0,
             markedAt: new Date(),
             rawMarkingJson: JSON.stringify({ source: "blank", feedback: [{ kind: "missed", text: "Left blank." }] }),

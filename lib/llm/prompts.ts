@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
+  AskInput,
   ConceptRef,
   DigestInput,
   GenerateQuestionsInput,
@@ -9,6 +10,7 @@ import type {
   ParsePastPaperInput,
   SortFilesInput,
 } from "@/lib/llm/provider";
+import { laqStyleNote } from "@/lib/modes";
 import { promptsDir } from "@/lib/paths";
 
 /**
@@ -51,7 +53,15 @@ export async function renderPrompt(name: PromptName, vars: Record<string, string
   return { text: fill(text, vars), version: `${name}@${version}` };
 }
 
-export type PromptName = "digest-lecture" | "generate-questions" | "mark" | "parse-past-paper" | "sort-files";
+export type PromptName =
+  | "digest-lecture"
+  | "generate-questions"
+  | "mark"
+  | "parse-past-paper"
+  | "sort-files"
+  | "answer-question"
+  | "break-down"
+  | "left-out";
 
 function conceptTable(concepts: ConceptRef[]): string {
   if (concepts.length === 0) return "(none yet)";
@@ -110,6 +120,7 @@ export function generateVars(input: GenerateQuestionsInput): Record<string, stri
     .join("\n");
   return {
     scopeNote: sharedNote(input.sharedWith, "ask about"),
+    styleNote: laqStyleNote(input.style),
     lectureTitle: input.lectureTitle,
     type: input.type,
     transcript: input.transcript,
@@ -139,4 +150,36 @@ export function sortVars(input: SortFilesInput): Record<string, string> {
       .map((f) => `[${f.number}] ${f.path} — ${f.detail}\n    ${f.excerpt.replace(/\s+/g, " ").trim() || "(no text)"}`)
       .join("\n"),
   };
+}
+
+/** Which prompt a quick question uses, and what fills it. */
+export function askVars(input: AskInput): { prompt: PromptName; vars: Record<string, string> } {
+  switch (input.kind) {
+    case "question":
+      return {
+        prompt: "answer-question",
+        vars: {
+          lectureTitle: input.lectureTitle,
+          summary: input.summary,
+          question: input.question,
+          headings: input.headings.length ? input.headings.map((h) => `- ${h}`).join("\n") : "(the summary has no headings)",
+        },
+      };
+    case "breakdown":
+      return {
+        prompt: "break-down",
+        vars: { lectureTitle: input.lectureTitle, summary: input.summary, selection: input.selection },
+      };
+    case "leftout":
+      return {
+        prompt: "left-out",
+        vars: {
+          lectureTitle: input.lectureTitle,
+          what: input.what,
+          where: input.where || "place not recorded",
+          transcript: input.transcript,
+          slidesText: input.slidesText ?? "(no slides supplied)",
+        },
+      };
+  }
 }

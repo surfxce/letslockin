@@ -12,14 +12,16 @@
  */
 import "dotenv/config";
 
+import { runAsk, type AskPayload } from "@/lib/ask";
 import { findModel } from "@/lib/llm/catalog";
 import { prisma } from "@/lib/db";
 import type { SortedFolder } from "@/lib/group";
 import { closeSteps, enterStage, setStageDetail, SIDE_LANES } from "@/lib/jobs";
-import { getLocalProvider, getProvider, type LlmProvider } from "@/lib/llm";
+import { getLocalProvider, getProvider, isFake, type LlmProvider } from "@/lib/llm";
+import { ClaudeCliError } from "@/lib/llm/cli";
 import type { SortFile } from "@/lib/llm/provider";
 import { downloadModelFile, modelSource } from "@/lib/llm/download";
-import { activeLocalModel, modelsDir, registerModel } from "@/lib/models";
+import { activeLocalModel, fallbackLocalModel, modelsDir, registerModel } from "@/lib/models";
 import { readSlidePictures } from "@/lib/ocr";
 import { MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
@@ -34,7 +36,7 @@ const MAX_ATTEMPTS = 2;
 
 type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
-const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT">, Handler> = {
+const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> = {
   /** Files → title, summary, concepts → first LAQs. Skips whatever is already done. */
   PREPARE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
@@ -99,7 +101,35 @@ async function currentProvider(): Promise<LlmProvider | null> {
     const active = await activeLocalModel();
     return active ? getLocalProvider(active.path, active.model.name) : null;
   }
-  return getProvider();
+  return getProvider((await getSettings()).cloudModel);
+}
+
+/**
+ * Claude first; if it fails — signed out, rate limited, a reply that would not parse —
+ * the offline model does the job instead, when one is downloaded and Settings allow.
+ * A lecture with nothing to read fails the same way on any model, so that is not
+ * retried.
+ */
+async function withFallback<T>(
+  primary: LlmProvider,
+  work: (provider: LlmProvider) => Promise<T>,
+  onFallback?: (why: string, local: LlmProvider) => void,
+): Promise<{ result: T; used: LlmProvider; fellBack: string | null }> {
+  try {
+    return { result: await work(primary), used: primary, fellBack: null };
+  } catch (err) {
+    const cloudFailed =
+      err instanceof ClaudeCliError || (err instanceof Error && (err.name === "ZodError" || err instanceof SyntaxError));
+    const { mode, fallbackLocal } = await getSettings();
+    if (!cloudFailed || mode !== "auto" || !fallbackLocal || isFake()) throw err;
+    const model = await fallbackLocalModel();
+    if (!model) throw err;
+    const why = err instanceof Error ? err.message : String(err);
+    const local = getLocalProvider(model.path, model.model.name);
+    console.warn(`Claude Code failed (${why}); doing it on ${model.model.name} instead`);
+    onFallback?.(why, local);
+    return { result: await work(local), used: local, fellBack: why };
+  }
 }
 
 async function claimNext() {
@@ -124,10 +154,21 @@ async function runOne(): Promise<boolean> {
 
   const started = Date.now();
   const handler = handlers[job.kind as keyof typeof handlers];
-  provider.onProgress = (detail) => void setStageDetail(job.id, detail).catch(() => undefined);
+  const progress = (detail: string | null) => void setStageDetail(job.id, detail).catch(() => undefined);
+  provider.onProgress = progress;
+  let fallback: LlmProvider | null = null;
   try {
     if (!handler) throw new Error(`no handler for job kind "${job.kind}"`);
-    const result = await handler(JSON.parse(job.payload), job.id, provider);
+    const payload = JSON.parse(job.payload);
+    const { result, used, fellBack } = await withFallback(
+      provider,
+      (p) => handler(payload, job.id, p),
+      (_why, local) => {
+        fallback = local;
+        local.onProgress = progress;
+        progress("Claude Code failed — the offline model is doing it instead");
+      },
+    );
     const current = await prisma.job.findUnique({ where: { id: job.id }, select: { steps: true } });
     await prisma.job.update({
       where: { id: job.id },
@@ -135,14 +176,15 @@ async function runOne(): Promise<boolean> {
         status: "DONE",
         stage: null,
         steps: closeSteps(current?.steps ?? null),
-        result: JSON.stringify(result),
-        promptVersion: provider.lastPromptVersion || null,
+        result: JSON.stringify(fellBack ? { ...(result as object), fellBack } : result),
+        promptVersion: used.lastPromptVersion || null,
+        model: used.lastModel,
         durationMs: Date.now() - started,
         finishedAt: new Date(),
         error: null,
       },
     });
-    console.log(`✓ ${job.kind} ${job.id} on ${provider.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+    console.log(`✓ ${job.kind} ${job.id} on ${used.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const giveUp = job.attempts >= MAX_ATTEMPTS;
@@ -163,6 +205,7 @@ async function runOne(): Promise<boolean> {
     console.error(`✗ ${job.kind} ${job.id} attempt ${job.attempts}: ${message}`);
   } finally {
     provider.onProgress = undefined;
+    if (fallback) (fallback as LlmProvider).onProgress = undefined;
   }
   return true;
 }
@@ -259,7 +302,7 @@ async function sortOne(): Promise<boolean> {
     const provider = await currentProvider();
     if (!provider) throw new Error("no AI is set up — choose Claude Code or download an offline model in Settings");
     const { files } = JSON.parse(job.payload) as { files: SortFile[] };
-    const sorted = await provider.sortFiles({ files });
+    const { result: sorted, used } = await withFallback(provider, (p) => p.sortFiles({ files }));
     // The model answers in file numbers; the screen knows files by path.
     const pathOf = (n: number) => files[n - 1]?.path;
     const result: SortedFolder = {
@@ -278,12 +321,13 @@ async function sortOne(): Promise<boolean> {
       data: {
         status: "DONE",
         result: JSON.stringify(result),
-        promptVersion: provider.lastPromptVersion || null,
+        promptVersion: used.lastPromptVersion || null,
+        model: used.lastModel,
         durationMs: Date.now() - started,
         finishedAt: new Date(),
       },
     });
-    console.log(`✓ SORT ${job.id}: ${files.length} files into ${result.lectures.length} lectures on ${provider.name}`);
+    console.log(`✓ SORT ${job.id}: ${files.length} files into ${result.lectures.length} lectures on ${used.name}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.job
@@ -293,6 +337,52 @@ async function sortOne(): Promise<boolean> {
       })
       .catch(() => undefined);
     console.error(`✗ SORT ${job.id}: ${message}`);
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Quick questions from a lecture page, in their own lane: someone is waiting on the
+// answer, so it must not queue behind a lecture being prepared.
+
+async function askOne(): Promise<boolean> {
+  const pending = await prisma.job.findFirst({
+    where: { kind: "ASK", status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!pending) return false;
+  const job = await prisma.job.update({
+    where: { id: pending.id },
+    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 } },
+  });
+  const started = Date.now();
+  try {
+    const provider = await currentProvider();
+    if (!provider) throw new Error("no AI is set up — choose Claude Code or download an offline model in Settings");
+    const payload = JSON.parse(job.payload) as AskPayload;
+    const { result, used } = await withFallback(provider, (p) => runAsk(payload, p));
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "DONE",
+        result: JSON.stringify({ ...result, model: used.lastModel }),
+        promptVersion: used.lastPromptVersion || null,
+        model: used.lastModel,
+        durationMs: Date.now() - started,
+        finishedAt: new Date(),
+      },
+    });
+    console.log(`✓ ASK ${job.id} (${result.kind}) on ${used.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // The lecture may have been deleted while it waited, which deletes this job with it.
+    await prisma.job
+      .update({
+        where: { id: job.id },
+        data: { status: "FAILED", error: message, durationMs: Date.now() - started, finishedAt: new Date() },
+      })
+      .catch(() => undefined);
+    console.error(`✗ ASK ${job.id}: ${message}`);
   }
   return true;
 }
@@ -322,6 +412,8 @@ async function main() {
   if (count) console.log(`requeued ${count} job(s) interrupted by the last shutdown`);
   // A sort's answer is only wanted while its import screen is open.
   await prisma.job.deleteMany({ where: { kind: "SORT", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
+  // Questions asked are kept a while: the lecture page lists recent ones.
+  await prisma.job.deleteMany({ where: { kind: "ASK", createdAt: { lt: new Date(Date.now() - 30 * 86_400_000) } } });
   console.log(`worker up, polling every ${POLL_MS}ms`);
 
   let running = true;
@@ -357,12 +449,14 @@ async function main() {
   const downloads = lane(downloadOne, POLL_MS);
   // Someone is watching the import screen: look often.
   const sorts = lane(sortOne, Math.min(POLL_MS, 750));
+  // Someone is waiting on the lecture page for an answer: look often.
+  const asks = lane(askOne, Math.min(POLL_MS, 500));
 
   while (running) {
     const didWork = await runOne();
     if (!didWork) await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  await Promise.all([downloads, sorts]);
+  await Promise.all([downloads, sorts, asks]);
   clearInterval(beat);
   await prisma.setting.delete({ where: { key: HEARTBEAT_KEY } }).catch(() => undefined);
   await prisma.$disconnect();

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ZodType } from "zod";
 
 import {
+  askVars,
   digestVars,
   generateVars,
   markVars,
@@ -13,6 +14,7 @@ import {
   type PromptName,
 } from "@/lib/llm/prompts";
 import {
+  AnswerSchema,
   DigestSchema,
   FolderSortSchema,
   MarkingSchema,
@@ -20,6 +22,7 @@ import {
   QuestionSetSchema,
 } from "@/lib/llm/schemas";
 import type {
+  AskInput,
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
@@ -45,6 +48,9 @@ export interface ClaudeCliConfig {
   model: string;
   /** For sorting a folder: a quick look at file openings, so a small fast model. */
   sortModel: string;
+  /** For questions asked from a lecture page while the student waits: quick, but
+   *  answering about the content, so not the smallest model. */
+  askModel: string;
   timeoutMs: number;
   /** Extra flags, space-separated, from LOCKIN_CLI_FLAGS. Lets flag drift be fixed
    *  without a code change. */
@@ -54,8 +60,10 @@ export interface ClaudeCliConfig {
 export function cliConfigFromEnv(): ClaudeCliConfig {
   return {
     binary: process.env.LOCKIN_CLAUDE_BIN ?? "claude",
-    model: process.env.LOCKIN_MODEL ?? "claude-opus-5",
+    // Settings choose the model (lib/llm/index.ts); this is only the fallback.
+    model: process.env.LOCKIN_MODEL ?? "sonnet",
     sortModel: process.env.LOCKIN_SORT_MODEL ?? "haiku",
+    askModel: process.env.LOCKIN_ASK_MODEL ?? "sonnet",
     // One digest call now does what three used to, so a double lecture needs room.
     timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000),
     extraArgs: (process.env.LOCKIN_CLI_FLAGS ?? "").split(" ").filter(Boolean),
@@ -69,8 +77,13 @@ export interface RunOptions {
   readDirs?: string[];
 }
 
-/** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). */
-function runClaude(prompt: string, cfg: ClaudeCliConfig, opts: RunOptions = {}): Promise<string> {
+/** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). Gives back
+ *  the reply, and the model that actually wrote it when the CLI says. */
+function runClaude(
+  prompt: string,
+  cfg: ClaudeCliConfig,
+  opts: RunOptions = {},
+): Promise<{ text: string; model: string | null }> {
   const reads = opts.readDirs?.length ? opts.readDirs : null;
   const args = [
     "-p",
@@ -117,7 +130,7 @@ function runClaude(prompt: string, cfg: ClaudeCliConfig, opts: RunOptions = {}):
         // Parse before checking the exit code: the CLI still prints a result
         // envelope on failure, and its message ("Not logged in", a rate limit,
         // a refusal) is far more useful than the status.
-        resolve(unwrapEnvelope(stdout));
+        resolve({ text: unwrapEnvelope(stdout), model: modelOf(stdout) });
       } catch (err) {
         if (code !== 0 && !(err instanceof ClaudeCliError && /claude reported/.test(err.message))) {
           reject(
@@ -166,6 +179,22 @@ export function unwrapEnvelope(stdout: string): string {
   return trimmed;
 }
 
+/**
+ * The model that did most of the writing, from the envelope's per-model usage. A call
+ * can touch more than one (a small model for housekeeping), so the one that wrote the
+ * most output is the one that answered.
+ */
+export function modelOf(stdout: string): string | null {
+  try {
+    const usage = (JSON.parse(stdout.trim()) as { modelUsage?: Record<string, { outputTokens?: number }> }).modelUsage;
+    if (!usage || typeof usage !== "object") return null;
+    const ranked = Object.entries(usage).sort((a, b) => (b[1]?.outputTokens ?? 0) - (a[1]?.outputTokens ?? 0));
+    return ranked[0]?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Pulls the JSON body out of a reply that may be fenced or prefaced with prose. */
 export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*\n([\s\S]*?)\n?```/);
@@ -189,8 +218,11 @@ export class ClaudeCliProvider implements LlmProvider {
   readonly seesSlides = true;
   /** Set to the prompt version used by the most recent call, for stamping rows. */
   lastPromptVersion = "";
+  lastModel: string;
 
-  constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {}
+  constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {
+    this.lastModel = `Claude Code · ${cfg.model}`;
+  }
 
   private async call<T>(
     promptName: PromptName,
@@ -204,7 +236,8 @@ export class ClaudeCliProvider implements LlmProvider {
 
     const attempt = async (extra = "") => {
       const reply = await runClaude(prompt + extra, this.cfg, opts);
-      return schema.parse(extractJson(reply));
+      this.lastModel = `Claude Code · ${reply.model ?? opts.model ?? this.cfg.model}`;
+      return schema.parse(extractJson(reply.text));
     };
 
     try {
@@ -256,5 +289,11 @@ export class ClaudeCliProvider implements LlmProvider {
 
   sortFiles(input: SortFilesInput) {
     return this.call("sort-files", sortVars(input), FolderSortSchema, { model: this.cfg.sortModel });
+  }
+
+  ask(input: AskInput) {
+    const { prompt, vars } = askVars(input);
+    // Someone chose Haiku to be quick: questions stay on it too.
+    return this.call(prompt, vars, AnswerSchema, { model: this.cfg.model === "haiku" ? "haiku" : this.cfg.askModel });
   }
 }

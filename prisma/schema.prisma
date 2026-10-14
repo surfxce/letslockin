@@ -54,13 +54,18 @@ model Lecture {
   /// True while the title is a placeholder made from a filename. The first AI pass
   /// (or a pasted summary with a heading) replaces it; editing it by hand clears this.
   autoTitle     Boolean  @default(false)
-  /// JSON [{ what, where }]: module aims, learning objectives and admin that were
-  /// left out of the summary and questions, so the omission is visible, not silent.
+  /// JSON [{ what, where, about?, added? }]: module aims, learning objectives and admin
+  /// that were left out of the summary and questions, so the omission is visible, not
+  /// silent. `about` says what the part contained; `added` is set once the student has
+  /// put it back into the summary.
   skipped       String?
   /// JSON [{ slide, notes }]: what each slide shows — its words, including any inside
   /// pictures, and what its figures depict — from a model that saw the slides. The
   /// steps that only read text (writing LAQs) use these instead of the extracted text.
   slideNotes    String?
+  /// Who wrote the summary, for display: "Claude Code · claude-sonnet-…", "Offline ·
+  /// Gemma 4 E4B", "Pasted from an AI chat". Null for summaries from before this was kept.
+  summaryModel  String?
   createdAt     DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -70,9 +75,25 @@ model Lecture {
   questions Question[]
   attempts  Attempt[]
   jobs      Job[]
+  glossary  GlossaryTerm[]
 
   @@index([courseId])
   @@index([moduleId])
+}
+
+/// A phrase the student picked out of a lecture's summary, with the short explanation
+/// they chose to keep. Underlined wherever it appears in that summary; hovering it
+/// shows the explanation.
+model GlossaryTerm {
+  id          String   @id @default(cuid())
+  lectureId   String
+  term        String
+  explanation String
+  createdAt   DateTime @default(now())
+
+  lecture Lecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([lectureId])
 }
 
 model Material {
@@ -126,6 +147,8 @@ model Question {
   type          String // enum: LAQ | SAQ
   rubric        String // JSON: model answer + mark allocation, frozen at generation
   promptVersion String
+  /// Who wrote it, for display, as Lecture.summaryModel.
+  model         String?
   createdAt     DateTime @default(now())
 
   lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
@@ -166,6 +189,8 @@ model Response {
   attemptId      String
   questionId     String
   answerText     String
+  /// What has been typed so far, saved as it is typed, until the sitting is submitted.
+  draftText      String?
   mark           Float? // 0-10
   rubricVersion  String?
   rawMarkingJson String?
@@ -251,7 +276,7 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD
+  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK
   payload       String // JSON
   /// The lecture this work is for, so "what is it doing right now" is a lookup
   /// rather than a search through payloads. Deleting the lecture drops its jobs.
@@ -267,6 +292,8 @@ model Job {
   error         String?
   result        String? // raw model output, kept so a bad mark is always traceable
   promptVersion String?
+  /// The model that did the work, for display, as Lecture.summaryModel.
+  model         String?
   durationMs    Int?
   createdAt     DateTime  @default(now())
   startedAt     DateTime?

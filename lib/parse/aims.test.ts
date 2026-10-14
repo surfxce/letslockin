@@ -47,14 +47,22 @@ describe("stripAims", () => {
     expect(text).not.toContain("Module 3 aims");
     expect(text).not.toContain("Learning objectives");
     expect(skipped).toEqual([
-      { what: "Module 3 aims", where: "slide 2" },
-      { what: "Learning objectives", where: "slide 3" },
+      {
+        what: "Module 3 aims",
+        where: "slide 2",
+        about: "Module 3 aims • Describe prokaryotic gene regulation • Explain operons",
+      },
+      {
+        what: "Learning objectives",
+        where: "slide 3",
+        about: "Learning objectives By the end of this lecture you should be able to explain CAP",
+      },
     ]);
   });
 
   it("works on PDF pages and exported 'Slide N:' notes", () => {
     expect(stripAims("--- Page 1 ---\nLearning outcomes\n\n--- Page 2 ---\nContent").skipped).toEqual([
-      { what: "Learning outcomes", where: "page 1" },
+      { what: "Learning outcomes", where: "page 1", about: "Learning outcomes" },
     ]);
     expect(stripAims("Slide 1: Learning objectives\nSlide 2: Allolactose").text).toBe(
       "Slide 2: Allolactose",
@@ -65,7 +73,7 @@ describe("stripAims", () => {
     const md = "# Lac operon\nintro\n## Learning objectives\n- explain X\n### detail\nmore\n## Regulation\nbody";
     const { text, skipped } = stripAims(md);
     expect(text).toBe("# Lac operon\nintro\n## Regulation\nbody");
-    expect(skipped).toEqual([{ what: "Learning objectives", where: "section" }]);
+    expect(skipped).toEqual([{ what: "Learning objectives", where: "section", about: "- explain X\n### detail\nmore" }]);
   });
 
   it("leaves text with no structure alone", () => {

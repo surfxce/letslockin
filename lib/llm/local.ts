@@ -4,6 +4,7 @@ import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
 import {
+  askVars,
   digestVars,
   generateVars,
   markVars,
@@ -13,6 +14,7 @@ import {
   type PromptName,
 } from "@/lib/llm/prompts";
 import type {
+  AskInput,
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
@@ -22,6 +24,7 @@ import type {
 } from "@/lib/llm/provider";
 import { importLlamaCpp } from "@/lib/llm/runtime";
 import {
+  AnswerSchema,
   DigestSchema,
   FolderSortSchema,
   MarkingSchema,
@@ -90,7 +93,10 @@ function digestSchema(existingIds: string[]): GbnfJsonSchema {
       skipped: {
         type: "array",
         maxItems: 12,
-        items: { type: "object", properties: { what: text(120), where: { type: "string", maxLength: 120 } } },
+        items: {
+          type: "object",
+          properties: { what: text(120), where: { type: "string", maxLength: 120 }, about: { type: "string", maxLength: 500 } },
+        },
       },
       summaryMd: text(),
       concepts: {
@@ -205,6 +211,17 @@ function sortSchema(fileCount: number): GbnfJsonSchema {
   };
 }
 
+/** A question's answer may only be filed under a heading the summary has. */
+function answerSchema(headings: string[], maxLength: number): GbnfJsonSchema {
+  return {
+    type: "object",
+    properties: {
+      answer: text(maxLength),
+      section: headings.length ? nullable({ enum: headings }) : { type: "null" },
+    },
+  };
+}
+
 const PAPER_SCHEMA: GbnfJsonSchema = {
   type: "object",
   properties: {
@@ -225,6 +242,7 @@ const PAPER_SCHEMA: GbnfJsonSchema = {
 
 export class LocalProvider implements LlmProvider {
   readonly name: string;
+  readonly lastModel: string;
   lastPromptVersion = "";
   onProgress?: (detail: string | null) => void;
   /** Condensed notes per transcript, so a lecture's digest and its LAQs condense once. */
@@ -235,6 +253,7 @@ export class LocalProvider implements LlmProvider {
     private readonly modelName: string,
   ) {
     this.name = `local:${modelName}`;
+    this.lastModel = `Offline · ${modelName}`;
   }
 
   async digest(input: DigestInput) {
@@ -299,6 +318,23 @@ export class LocalProvider implements LlmProvider {
     });
   }
 
+  async ask(input: AskInput) {
+    const { prompt, vars } = askVars(input);
+    const leftOut = input.kind === "leftout" ? input : null;
+    return this.run({
+      prompt,
+      // A left-out part is looked for in the transcript, which may need condensing to fit.
+      vars: (transcript) => (leftOut ? askVars({ ...leftOut, transcript }).vars : vars),
+      transcript: leftOut?.transcript,
+      schema: answerSchema(input.kind === "question" ? input.headings : [], input.kind === "question" ? 2400 : 900),
+      zod: AnswerSchema,
+      maxTokens: input.kind === "question" ? 700 : 300,
+      temperature: 0.3,
+      // It runs beside a lecture being prepared, whose progress line this must not take over.
+      quiet: true,
+    });
+  }
+
   private progress(detail: string | null) {
     this.onProgress?.(detail);
   }
@@ -330,7 +366,7 @@ export class LocalProvider implements LlmProvider {
       // Too long for the memory this computer has: read the lecture in parts first.
       if (context.contextSize < needed && opts.transcript) {
         const room = context.contextSize - (needed - count(transcript));
-        transcript = await this.condense(opts.transcript, Math.max(1024, room), context.contextSize);
+        transcript = await this.condense(opts.transcript, Math.max(1024, room), context.contextSize, progress);
         rendered = await renderPrompt(opts.prompt, opts.vars(transcript));
       }
       this.lastPromptVersion = rendered.version;
@@ -374,7 +410,12 @@ export class LocalProvider implements LlmProvider {
    * Rewrites a transcript too long for the available context as dense notes, part by
    * part, keeping every fact and term. Slower, but nothing is silently cut off.
    */
-  private async condense(transcript: string, targetTokens: number, contextSize: number): Promise<string> {
+  private async condense(
+    transcript: string,
+    targetTokens: number,
+    contextSize: number,
+    progress: (detail: string | null) => void,
+  ): Promise<string> {
     const key = createHash("sha1").update(`${contextSize}:${transcript}`).digest("hex");
     const cached = this.notes.get(key);
     if (cached) return cached;
@@ -388,7 +429,7 @@ export class LocalProvider implements LlmProvider {
 
     const notes: string[] = [];
     for (const [i, chunk] of chunks.entries()) {
-      this.progress(`lecture is long for this computer — reading part ${i + 1} of ${chunks.length}`);
+      progress(`lecture is long for this computer — reading part ${i + 1} of ${chunks.length}`);
       const context = await model.createContext({ contextSize });
       try {
         const session = new LlamaChatSession({ contextSequence: context.getSequence() });

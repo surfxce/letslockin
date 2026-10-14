@@ -282,6 +282,17 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .props .k { display: flex; align-items: center; gap: 8px; color: var(--text-soft); min-height: 32px; padding: 0 6px; border-radius: 4px; }
 .props .v { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px; flex-wrap: wrap; }
 
+/* Which model wrote what: a small circled i beside the lecture number */
+.model-info { display: inline-flex; vertical-align: middle; margin-left: 6px; font-family: var(--sans); }
+.model-info-btn { width: 17px; height: 17px; border-radius: 50%; border: 1.3px solid var(--text-faint); background: none; color: var(--text-faint); font: italic 600 11px/1 Georgia, "Times New Roman", serif; display: grid; place-items: center; padding: 0; cursor: pointer; }
+.model-info-btn:hover, .model-info-btn[aria-expanded="true"] { color: var(--accent-text); border-color: var(--accent-text); }
+.model-info-pop { left: -6px; width: 320px; max-width: calc(100vw - 32px); padding: 10px 12px; font-size: 13px; color: var(--text); }
+.model-info-pop dl { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; margin: 0 0 8px; }
+.model-info-pop dt { color: var(--text-soft); }
+.model-info-pop dd { margin: 0; word-break: break-word; }
+.model-info-pop p { margin: 0; }
+.model-info-fell { color: var(--s-orange); margin-top: 3px; }
+
 /* ------------------------------------------------------------------ tabs */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); margin: 8px 0 22px; overflow-x: auto; scrollbar-width: none; }
 .tabs a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px 9px; color: var(--text-soft); font-size: 14.5px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
@@ -308,6 +319,9 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .prose th, .prose td { border: 1px solid var(--rule); padding: 6px 10px; text-align: left; }
 .prose th { background: var(--bg-soft); font-weight: 550; }
 .prose hr { border: 0; border-top: 1px solid var(--rule); margin: 20px 0; }
+
+/* Above a summary: Edit, and a note when unsaved edits are waiting */
+.summary-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -10px 0 4px; min-height: 26px; }
 
 /* Steps for copy-and-paste mode */
 .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 0 0 16px; }
@@ -446,6 +460,18 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .setting { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--rule); }
 .setting .st { font-weight: 500; }
 .setting .sd { font-size: 13.5px; color: var(--text-soft); max-width: 560px; }
+
+/* Segmented choice and number stepper, for settings that take one of a few values */
+.seg { display: inline-flex; flex: none; padding: 2px; gap: 2px; border-radius: 7px; background: var(--bg-sunk); }
+.seg button { font: inherit; font-size: 13.5px; height: 28px; padding: 0 11px; border: 0; border-radius: 5px; background: none; color: var(--text-soft); cursor: pointer; white-space: nowrap; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--bg); color: var(--text); font-weight: 550; box-shadow: var(--shadow); }
+.stepper { display: inline-flex; flex: none; align-items: center; border: 1px solid var(--rule-strong); border-radius: 7px; overflow: hidden; }
+.stepper button { font: inherit; font-size: 16px; width: 32px; height: 30px; border: 0; background: var(--bg); color: var(--text); cursor: pointer; }
+.stepper button:hover { background: var(--hover); }
+.stepper button:disabled { color: var(--text-faint); cursor: default; background: var(--bg); }
+.stepper output { min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); line-height: 30px; }
+@media (max-width: 620px) { .setting { flex-wrap: wrap; } }
 
 /* Answering */
 .answer { padding: 20px 22px; border-radius: 8px; background: var(--bg); box-shadow: var(--shadow); }

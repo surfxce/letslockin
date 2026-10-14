@@ -1,12 +1,13 @@
 import { groupFiles } from "@/lib/group";
 import type {
+  AskInput,
   DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
   SortFilesInput,
 } from "@/lib/llm/provider";
-import type { Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
+import type { Answer, Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 
 /**
  * A stand-in that returns plausible, deterministic output after a short delay, so the
@@ -16,6 +17,7 @@ import type { Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib
  */
 export class FakeProvider implements LlmProvider {
   readonly name = "fake";
+  readonly lastModel = "Fake (development)";
   lastPromptVersion = "fake@0";
 
   constructor(private readonly delayMs = Number(process.env.LOCKIN_FAKE_DELAY_MS ?? 1500)) {}
@@ -73,9 +75,11 @@ export class FakeProvider implements LlmProvider {
           const c = byId.get(conceptId)!;
           return {
             stem:
-              i === 0
-                ? `Explain ${c.name} and why it matters in this lecture.`
-                : `Using an example, describe how ${c.name} would change under different conditions.`,
+              input.style === "story"
+                ? `Jane has just eaten a large breakfast. Explain what ${c.name} does in her body over the next few hours.`
+                : i === 0
+                  ? `Explain ${c.name} and why it matters in this lecture.`
+                  : `Using an example, describe how ${c.name} would change under different conditions.`,
             type: input.type,
             conceptIds: [conceptId],
             rubric: {
@@ -132,6 +136,33 @@ export class FakeProvider implements LlmProvider {
         .filter((l) => !l.setAside)
         .map((l) => ({ title: l.title, module: l.moduleTitle, files: l.fileIndexes.map((i) => i + 1) })),
       setAside: grouped.filter((l) => l.setAside).map((l) => ({ file: l.fileIndexes[0] + 1, reason: l.setAside! })),
+    };
+  }
+
+  /** Echoes the summary back: enough to try asking, breaking down and adding. */
+  async ask(input: AskInput): Promise<Answer> {
+    await this.wait();
+    if (input.kind === "leftout") {
+      return { answer: `What the lecture said under "${input.what}" (${input.where || "somewhere"}).`, section: null };
+    }
+    const sentences = input.summary
+      .split("\n")
+      .filter((l) => !/^\s*(?:#|!\[)/.test(l))
+      .join(" ")
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.replace(/^[-*\s]+/, "").trim())
+      .filter((s) => s.length > 20);
+    if (input.kind === "breakdown") {
+      return {
+        answer: `**In short:** "${input.selection.slice(0, 80)}" — ${sentences[0] ?? "the summary says little more about it."}`,
+        section: null,
+      };
+    }
+    const words = input.question.toLowerCase().match(/[a-z]{4,}/g) ?? [];
+    const related = sentences.filter((s) => words.some((w) => s.toLowerCase().includes(w))).slice(0, 3);
+    return {
+      answer: (related.length ? related : sentences.slice(0, 2)).map((s) => `- ${s}`).join("\n") || "- The summary does not say.",
+      section: input.headings.find((h) => words.some((w) => h.toLowerCase().includes(w))) ?? input.headings[0] ?? null,
     };
   }
 }

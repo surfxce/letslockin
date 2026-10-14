@@ -20,6 +20,7 @@ import { CopyButton } from "@/app/ui/CopyButton";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { Icon, type IconName } from "@/app/ui/Icon";
 import { JobProgress, type JobView } from "@/app/ui/JobProgress";
+import { ModelInfo, type ModelInfoData } from "@/app/ui/ModelInfo";
 import { PasteBox } from "@/app/ui/PasteBox";
 import { FeedbackLegend, LaqCard, Markdown, QuestionScore } from "@/app/ui/render";
 import { prisma } from "@/lib/db";
@@ -34,7 +35,7 @@ import type { SlideImages } from "@/lib/markdown";
 import { lectureDecks, pictured, sharedDecks, type Deck } from "@/lib/slides";
 import { readSkipped, readSlideNotes } from "@/lib/sources";
 import { lectureRows, questionNumbers } from "@/lib/views";
-import { usesAi } from "@/lib/modes";
+import { LAQ_STYLE_LABEL, usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,7 @@ export default async function LecturePage({
   const lecture = await prisma.lecture.findUnique({ where: { id }, include: LECTURE_INCLUDE });
   if (!lecture) notFound();
 
-  const [[row], settings, numbers, job, beat, localReady, decks, deckCopies] = await Promise.all([
+  const [[row], settings, numbers, job, beat, localReady, decks, deckCopies, lastRun] = await Promise.all([
     lectureRows({ ids: [id] }),
     getSettings(),
     questionNumbers(id),
@@ -85,13 +86,18 @@ export default async function LecturePage({
     activeLocalModel(),
     lectureDecks(id),
     sharedDecks(lecture),
+    prisma.job.findFirst({
+      where: { lectureId: id, kind: { in: ["PREPARE", "GENERATE"] }, status: "DONE" },
+      orderBy: { finishedAt: "desc" },
+      select: { kind: true, model: true, durationMs: true, finishedAt: true, result: true },
+    }),
   ]);
 
   const tab: Tab = (["summary", "laqs", "scores", "details"] as const).find((t) => t === tabParam) ?? "summary";
   const skipped = readSkipped(lecture.skipped);
   const busy = job && (job.status === "PENDING" || job.status === "RUNNING");
   const showJob = job && (busy || (job.status === "FAILED" && lecture.questions.length === 0));
-  const budget = questionBudget(lecture.durationHours);
+  const budget = questionBudget(lecture.durationHours, settings.sittingPerHour);
   // A deck of pictures has no text but is still something to prepare from.
   const hasMaterial =
     lecture.materials.some((m) => (m.extractedText ?? "").trim()) || decks.some((d) => d.pdf && d.pages > 0);
@@ -118,6 +124,8 @@ export default async function LecturePage({
       }
     : null;
 
+  const modelInfo = describeModels(lecture, lastRun);
+
   const tabs: Array<{ key: Tab; label: string; icon: IconName; n?: number }> = [
     { key: "summary", label: "Summary", icon: "book" },
     { key: "laqs", label: "LAQs", icon: "pen", n: lecture.questions.length },
@@ -139,8 +147,9 @@ export default async function LecturePage({
         )}
       </nav>
 
-      <div className="faint small" style={{ fontFamily: "var(--mono)", marginBottom: 4 }}>
+      <div className="faint small" style={{ fontFamily: "var(--mono)", marginBottom: 4, display: "flex", alignItems: "center" }}>
         L{row.ordinal}
+        <ModelInfo info={modelInfo} />
       </div>
       <h1 className="page-title">{lecture.title}</h1>
 
@@ -230,15 +239,52 @@ export default async function LecturePage({
           lecture={lecture}
           numbers={numbers}
           mode={settings.mode}
+          writes={questionBudget(lecture.durationHours, settings.laqsPerHour)}
+          style={LAQ_STYLE_LABEL[settings.laqStyle]}
           busy={!!busy}
           hasMaterial={hasMaterial}
           decks={pdfDecks}
         />
       )}
       {tab === "scores" && <ScoresTab lecture={lecture} numbers={numbers} />}
-      {tab === "details" && <DetailsTab lecture={lecture} decks={decks} shared={deckCopies} />}
+      {tab === "details" && (
+        <DetailsTab lecture={lecture} decks={decks} shared={deckCopies} sittingPerHour={settings.sittingPerHour} />
+      )}
     </main>
   );
+}
+
+/** Who wrote the summary and the LAQs, and the last AI run, for the ⓘ by the title. */
+function describeModels(
+  lecture: LecturePageData,
+  lastRun: { kind: string; model: string | null; durationMs: number | null; finishedAt: Date | null; result: string | null } | null,
+): ModelInfoData {
+  const laqs = new Map<string, number>();
+  for (const q of lecture.questions) {
+    const by = q.model ?? (q.promptVersion === "pasted" ? "Pasted from an AI chat" : "a model Lockin didn't record");
+    laqs.set(by, (laqs.get(by) ?? 0) + 1);
+  }
+  let fellBack: string | null = null;
+  try {
+    const r = lastRun?.result ? JSON.parse(lastRun.result) : null;
+    if (r && typeof r.fellBack === "string") fellBack = r.fellBack;
+  } catch {
+    // An unreadable result just says nothing about a fallback.
+  }
+  return {
+    summary: lecture.summaryMd ? (lecture.summaryModel ?? "") : null,
+    laqs: [...laqs].map(([model, count]) => ({ model, count })),
+    lastRun:
+      lastRun?.finishedAt
+        ? {
+            what: lastRun.kind === "PREPARE" ? "Prepared" : "Wrote new LAQs",
+            model: lastRun.model,
+            durationMs: lastRun.durationMs,
+            finishedAt: lastRun.finishedAt.toISOString(),
+            fellBack,
+          }
+        : null,
+  };
 }
 
 function Prop({ icon, label, children }: { icon: IconName; label: string; children: React.ReactNode }) {
@@ -391,6 +437,8 @@ function LaqsTab({
   lecture,
   numbers,
   mode,
+  writes,
+  style,
   busy,
   hasMaterial,
   decks,
@@ -398,6 +446,10 @@ function LaqsTab({
   lecture: LecturePageData;
   numbers: Map<string, number>;
   mode: Mode;
+  /** How many one press of Write new LAQs writes. */
+  writes: number;
+  /** The question style in Settings, as shown. */
+  style: string;
   busy: boolean;
   hasMaterial: boolean;
   decks: Deck[];
@@ -479,7 +531,12 @@ function LaqsTab({
               <Icon name="sparkles" /> Write new LAQs
             </Submit>
           </form>
-          <span className="small muted">Aimed at the concepts you have scored worst on, or never been asked.</span>
+          <span className="small muted">
+            {writes} more, {style.toLowerCase()} style, aimed at the concepts you have scored worst on or never been asked ·{" "}
+            <Link className="link" href="/settings#laqs">
+              change
+            </Link>
+          </span>
         </div>
       )}
 
@@ -620,10 +677,12 @@ function DetailsTab({
   lecture,
   decks,
   shared,
+  sittingPerHour,
 }: {
   lecture: LecturePageData;
   decks: Deck[];
   shared: Map<string, Array<{ id: string; title: string }>>;
+  sittingPerHour: number;
 }) {
   const notes = readSlideNotes(lecture.slideNotes);
   return (
@@ -652,7 +711,7 @@ function DetailsTab({
             <input name="deliveredOn" type="date" defaultValue={dateInput(lecture.deliveredOn)} />
           </label>
           <label className="field">
-            <span>Hours — 2 LAQs per hour</span>
+            <span>Hours — {sittingPerHour} LAQs per hour in a sitting</span>
             <input name="durationHours" type="number" step="0.5" min="0.5" defaultValue={lecture.durationHours} />
           </label>
         </div>

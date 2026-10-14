@@ -4,6 +4,7 @@ import { geometricMean } from "@/lib/engines/geomean";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { mergeSkipped } from "@/lib/parse/aims";
+import { getSettings } from "@/lib/settings";
 import { lectureDecks, sharingTitles } from "@/lib/slides";
 import { lectureSources, readSlideNotes, slideNotesText } from "@/lib/sources";
 
@@ -84,6 +85,7 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
       // A title the student typed is theirs; only a filename placeholder is replaced.
       ...(lecture.autoTitle ? { title: digest.title.trim(), autoTitle: false } : {}),
       summaryMd: keep ? lecture.summaryMd : digest.summaryMd,
+      ...(keep ? {} : { summaryModel: provider.lastModel }),
       skipped: JSON.stringify(mergeSkipped([...sources.skipped, ...digest.skipped])),
       // Notes from a model that saw this set of slides; a model that didn't leaves none,
       // and old notes for a set of slides that has since changed are not kept.
@@ -114,7 +116,8 @@ export async function writeQuestions(lectureId: string, provider: LlmProvider) {
   const sources = lectureSources(lecture.materials);
 
   const mastery = await conceptMastery(lecture.concepts.map((c) => c.id));
-  const budget = questionBudget(lecture.durationHours);
+  const { laqsPerHour, laqStyle } = await getSettings();
+  const budget = questionBudget(lecture.durationHours, laqsPerHour);
   const allocation = allocate(mastery, budget);
   if (allocation.length === 0) {
     return { generated: 0, budget, note: "every concept in this lecture is already at 10/10" };
@@ -130,6 +133,7 @@ export async function writeQuestions(lectureId: string, provider: LlmProvider) {
     concepts: lecture.concepts.map((c) => ({ id: c.id, name: c.name, definition: c.definition })),
     allocation,
     type: "LAQ",
+    style: laqStyle,
     sharedWith: await sharingTitles(lecture),
   });
 
@@ -146,6 +150,7 @@ export async function writeQuestions(lectureId: string, provider: LlmProvider) {
         type: q.type,
         rubric: JSON.stringify(q.rubric),
         promptVersion: provider.lastPromptVersion,
+        model: provider.lastModel,
         concepts: { create: conceptIds.map((conceptId) => ({ conceptId })) },
       },
     });

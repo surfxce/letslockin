@@ -11,6 +11,21 @@
 export interface Skipped {
   what: string;
   where: string;
+  /** What the part said, so the student can put it back if they want it. */
+  about?: string;
+  /** Set once the student has put it back into the summary. */
+  added?: boolean;
+}
+
+/** A dropped slide's own words, tidied into something readable on its own. */
+function aboutOf(body: string): string {
+  return body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 900)
+    .trim();
 }
 
 /** Labels that only ever mean "the aims of this module/lecture". */
@@ -98,7 +113,7 @@ function stripMarkedSections(text: string): { text: string; skipped: Skipped[] }
     const body = section.slice(m[0].length);
     if (isAimsSection(body)) {
       const unit = (m[1] ?? m[3]).toLowerCase();
-      skipped.push({ what: labelOf(body), where: `${unit} ${m[2] ?? m[4]}` });
+      skipped.push({ what: labelOf(body), where: `${unit} ${m[2] ?? m[4]}`, about: aboutOf(body) });
     } else {
       kept.push(section);
     }
@@ -112,12 +127,23 @@ function stripHeadingSections(text: string): { text: string; skipped: Skipped[] 
   const out: string[] = [];
   const skipped: Skipped[] = [];
   let droppingBelow = 0; // heading level being dropped; 0 = keeping
+  let dropped: string[] = []; // the lines of the section being dropped, for its `about`
+
+  const finish = () => {
+    const last = skipped.at(-1);
+    if (last && dropped.length) last.about = aboutOf(dropped.join("\n"));
+    dropped = [];
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const heading = lines[i].match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = heading[1].length;
-      if (droppingBelow && level > droppingBelow) continue;
+      if (droppingBelow && level > droppingBelow) {
+        dropped.push(lines[i]);
+        continue;
+      }
+      if (droppingBelow) finish();
       droppingBelow = 0;
       const body = [heading[2], ...lines.slice(i + 1, i + 12)].join("\n");
       if (isAimsSection(body)) {
@@ -126,25 +152,30 @@ function stripHeadingSections(text: string): { text: string; skipped: Skipped[] 
         continue;
       }
     }
-    if (!droppingBelow) out.push(lines[i]);
+    if (droppingBelow) dropped.push(lines[i]);
+    else out.push(lines[i]);
   }
+  if (droppingBelow) finish();
   return { text: out.join("\n").trim(), skipped: mergeSkipped(skipped) };
 }
 
-/** "Module aims (slide 2)", "Module aims (slide 3)" → "Module aims (slides 2, 3)". */
+/**
+ * "Module aims (slide 2)", "Module aims (slide 3)" → "Module aims (slides 2, 3)". The
+ * same aims slide pasted twice is said once in `about`.
+ */
 export function mergeSkipped(items: Skipped[]): Skipped[] {
-  const byWhat = new Map<string, string[]>();
-  for (const s of items) {
-    const key = s.what;
-    byWhat.set(key, [...(byWhat.get(key) ?? []), s.where]);
-  }
-  return [...byWhat].map(([what, wheres]) => {
-    const unique = [...new Set(wheres)];
+  const byWhat = new Map<string, Skipped[]>();
+  for (const s of items) byWhat.set(s.what, [...(byWhat.get(s.what) ?? []), s]);
+  return [...byWhat].map(([what, group]) => {
+    const unique = [...new Set(group.map((s) => s.where))];
     const unit = unique[0].split(" ")[0];
     const sameUnit = unique.length > 1 && unique.every((w) => w.startsWith(`${unit} `));
+    const abouts = [...new Set(group.map((s) => s.about?.trim()).filter((a): a is string => !!a))];
     return {
       what,
       where: sameUnit ? `${unit}s ${unique.map((w) => w.split(" ")[1]).join(", ")}` : unique.join(", "),
+      ...(abouts.length ? { about: abouts.join("\n\n").slice(0, 1500) } : {}),
+      ...(group.some((s) => s.added) ? { added: true } : {}),
     };
   });
 }

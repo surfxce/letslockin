@@ -73,7 +73,14 @@ export function readSkipped(json: string | null): Skipped[] {
   try {
     const parsed = JSON.parse(json);
     return Array.isArray(parsed)
-      ? parsed.filter((s) => s && typeof s.what === "string").map((s) => ({ what: s.what, where: String(s.where ?? "") }))
+      ? parsed
+          .filter((s) => s && typeof s.what === "string")
+          .map((s) => ({
+            what: s.what,
+            where: String(s.where ?? ""),
+            ...(typeof s.about === "string" && s.about.trim() ? { about: s.about.trim() } : {}),
+            ...(s.added === true ? { added: true } : {}),
+          }))
       : [];
   } catch {
     return [];

@@ -83,7 +83,7 @@ describe("lectureSources", () => {
     ]);
     expect(out.transcript).toContain("the aims of this module");
     expect(out.slidesText).toBe("--- Slide 2 ---\nlacZ");
-    expect(out.skipped).toEqual([{ what: "Learning objectives", where: "slide 1" }]);
+    expect(out.skipped).toEqual([expect.objectContaining({ what: "Learning objectives", where: "slide 1" })]);
   });
 
   it("falls back to slides alone, and refuses a lecture with no text", () => {

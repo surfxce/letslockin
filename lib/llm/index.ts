@@ -1,4 +1,4 @@
-import { ClaudeCliProvider } from "@/lib/llm/cli";
+import { ClaudeCliProvider, cliConfigFromEnv } from "@/lib/llm/cli";
 import { FakeProvider } from "@/lib/llm/fake";
 import { LocalProvider } from "@/lib/llm/local";
 import type { LlmProvider } from "@/lib/llm/provider";
@@ -11,24 +11,33 @@ import type { LlmProvider } from "@/lib/llm/provider";
  * switches to the day it runs for anyone but its author.
  */
 
-let claude: LlmProvider | undefined;
+/** One Claude Code provider per model, so a change in Settings takes effect at the next job. */
+const claude = new Map<string, LlmProvider>();
 let local: LocalProvider | undefined;
 
 export function isFake(): boolean {
   return process.env.LOCKIN_PROVIDER === "fake";
 }
 
-/** The Claude Code provider, or the fake one when the environment asks for it. */
-export function getProvider(): LlmProvider {
-  if (claude) return claude;
+/** The Claude Code provider for a model ("sonnet", "opus"…), or the fake one when the
+ *  environment asks for it. */
+export function getProvider(model?: string): LlmProvider {
   const kind = process.env.LOCKIN_PROVIDER ?? "cli";
+  const key = kind === "fake" ? "fake" : (model ?? "");
+  const cached = claude.get(key);
+  if (cached) return cached;
   switch (kind) {
-    case "cli":
-      claude = new ClaudeCliProvider();
-      return claude;
-    case "fake":
-      claude = new FakeProvider();
-      return claude;
+    case "cli": {
+      const cfg = cliConfigFromEnv();
+      const provider = new ClaudeCliProvider(model ? { ...cfg, model } : cfg);
+      claude.set(key, provider);
+      return provider;
+    }
+    case "fake": {
+      const provider = new FakeProvider();
+      claude.set(key, provider);
+      return provider;
+    }
     case "api":
       throw new Error("the Anthropic SDK adapter is not built yet — set LOCKIN_PROVIDER=cli");
     default:
