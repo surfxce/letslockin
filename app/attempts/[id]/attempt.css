@@ -1,0 +1,43 @@
+/* The sitting page: the notes sheet after marking (ns-) and the answer boxes (af-). */
+
+/* ------------------------------------------------------------ notes sheet */
+.ns { background: var(--bg-soft); border-radius: 8px; padding: 16px 18px 14px; margin: 0 0 22px; }
+.ns-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
+.ns-titles { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ns-title { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: 0; }
+.ns-count { font-size: 12.5px; color: var(--text-faint); white-space: nowrap; }
+.ns-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ns-actions .btn { background: var(--bg); }
+.ns-actions .btn.quiet { background: transparent; }
+.ns-actions .btn.quiet:hover { background: var(--hover); }
+
+.ns-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 4px; font-size: 12.5px; color: var(--text-soft); }
+.ns-key > span { display: inline-flex; align-items: center; gap: 6px; }
+.ns-key .ns-mark { width: 16px; height: 16px; margin-top: 0; font-size: 10px; }
+.ns-key .ns-mark.ns-missed { font-size: 12px; }
+
+.ns-sections { display: flex; flex-direction: column; }
+.ns-section { padding: 10px 0 2px; }
+.ns-section + .ns-section { border-top: 1px solid var(--rule); margin-top: 8px; }
+.ns-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; font-size: 13.5px; font-weight: 600; margin: 0 0 6px; color: var(--text); }
+.ns-from { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-faint); }
+
+.ns-points { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.5; }
+.ns-points li { display: flex; gap: 9px; align-items: flex-start; }
+.ns-mark {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; margin-top: 1px;
+  display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; line-height: 1;
+}
+.ns-mark.ns-wrong { background: var(--t-red-bg); color: var(--s-red); }
+.ns-mark.ns-missed { background: var(--t-orange-bg); color: var(--s-orange); font-size: 13px; }
+
+.ns-note { margin: 10px 0 0; font-size: 13px; color: var(--text-soft); }
+.ns-clear { display: flex; align-items: center; gap: 6px; color: var(--s-green); margin-top: 6px; }
+.ns-fallback-text { width: 100%; font-family: var(--mono); font-size: 12px; }
+
+/* ------------------------------------------------------------ answer boxes */
+.af-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; min-height: 18px; }
+.af-status { display: inline-flex; align-items: center; gap: 4px; }
+.af-status::before { content: "·"; color: var(--text-faint); margin-right: 4px; }
+.af-saved { color: var(--text-faint); }
+.af-local { color: var(--s-orange); }

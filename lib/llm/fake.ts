@@ -145,12 +145,12 @@ export class FakeProvider implements LlmProvider {
     if (input.kind === "leftout") {
       return { answer: `What the lecture said under "${input.what}" (${input.where || "somewhere"}).`, section: null };
     }
+    // Line by line first: a dot point is a sentence of its own even without a full stop.
     const sentences = input.summary
       .split("\n")
-      .filter((l) => !/^\s*(?:#|!\[)/.test(l))
-      .join(" ")
-      .split(/(?<=[.!?])\s+/)
-      .map((s) => s.replace(/^[-*\s]+/, "").trim())
+      .filter((l) => l.trim() && !/^\s*(?:#|!\[|\||>)/.test(l))
+      .flatMap((l) => l.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").split(/(?<=[.!?])\s+/))
+      .map((s) => s.replace(/\*\*|\*/g, "").trim())
       .filter((s) => s.length > 20);
     if (input.kind === "breakdown") {
       return {

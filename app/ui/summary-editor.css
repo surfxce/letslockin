@@ -1,0 +1,94 @@
+/* The summary editor (app/ui/SummaryEditor.tsx). Every class starts "ed-". Selectors
+   that adjust .prose use two classes, so they win whichever stylesheet loads first. */
+
+.ed { margin: 4px 0 0; }
+
+/* ------------------------------------------------------------------ toolbar */
+/* Sticks under the top bar (46px) while the summary scrolls. */
+.ed-bar {
+  position: sticky; top: 46px; z-index: 20;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 6px 8px; margin: 0 0 12px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+
+.ed-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--bg-sunk); }
+.ed-seg-btn {
+  height: 24px; padding: 0 10px; border: 0; border-radius: 5px; background: none;
+  font: inherit; font-size: 13px; color: var(--text-soft); cursor: pointer; white-space: nowrap;
+}
+.ed-seg-btn:hover { color: var(--text); }
+.ed-seg-btn[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 500; box-shadow: var(--shadow); }
+
+.ed-group { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.ed-tool {
+  height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 5px; background: none;
+  font: inherit; font-size: 13px; line-height: 1; color: var(--text-soft); cursor: pointer; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.ed-tool:hover { background: var(--hover); color: var(--text); }
+.ed-tool:active { background: var(--press); }
+.ed-tool[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.ed-b { font-weight: 700; }
+.ed-i { font-style: italic; font-family: Georgia, "Times New Roman", serif; font-size: 14px; }
+
+.ed-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--rule-strong); flex: none; }
+.ed-spacer { flex: 1; }
+.ed-status { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 4px; }
+
+@media (max-width: 720px) {
+  .ed-sep { display: none; }
+  .ed-status { max-width: 100%; order: 10; flex-basis: 100%; }
+}
+
+/* ------------------------------------------------------------------ banners */
+.ed-banner { margin: 0 0 12px; }
+.ed-banner-body { min-width: 0; }
+.ed-banner-body p { margin: 0 0 8px; }
+.ed-lost { opacity: 0.8; }
+.ed-error { margin: 0 0 12px; }
+
+/* ------------------------------------------------------------------ formatted */
+/* The editable summary looks as it reads; a faint frame says it's being edited. */
+.ed-surface.prose {
+  min-height: 240px; padding: 18px 22px; border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--rule); outline: none; caret-color: var(--text);
+  transition: box-shadow 0.12s;
+}
+.ed-surface.prose:focus, .ed-surface.prose:focus-within { box-shadow: 0 0 0 1px var(--rule-strong), 0 0 0 4px var(--accent-soft); }
+.ed-surface.prose:focus-visible { outline: none; }
+
+/* The editor wraps every list item and table cell in a paragraph; the read view doesn't. */
+.ed-surface.prose li > p, .ed-surface.prose th > p, .ed-surface.prose td > p { margin: 0; }
+.ed-surface.prose .tableWrapper { overflow-x: auto; margin: 12px 0; }
+.ed-surface.prose .tableWrapper table { margin: 0; }
+.ed-surface.prose .selectedCell { background: var(--accent-soft); }
+
+/* Slide pictures: whole things to select, move or delete. */
+.ed-surface.prose .ed-figure { cursor: grab; border-radius: 8px; }
+.ed-surface.prose .ed-figure img { pointer-events: none; }
+.ed-surface.prose .ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ed-surface.prose .ed-figure-md {
+  display: none; margin-left: 8px; padding: 0; background: none;
+  color: var(--text-faint); font-size: 11.5px;
+}
+.ed-surface.prose .ed-figure:hover .ed-figure-md,
+.ed-surface.prose .ed-figure.ProseMirror-selectednode .ed-figure-md { display: inline; }
+
+.ed-inline-img {
+  display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--bg-sunk);
+  color: var(--text-soft); font-size: 13px; line-height: 1.6; white-space: nowrap;
+}
+
+.ed-loading { opacity: 0.5; }
+
+/* ------------------------------------------------------------------ Markdown */
+.ed-md {
+  display: block; width: 100%; min-height: 320px; padding: 16px 18px; border-radius: 8px;
+  font-family: var(--mono); font-size: 13.5px; line-height: 1.65; tab-size: 2;
+  background: var(--bg-soft); resize: none; field-sizing: content;
+}
+
+.ed-help { margin: 10px 2px 0; }

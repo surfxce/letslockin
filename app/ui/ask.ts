@@ -2,8 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { addToSummary, startAsk, type AskRequest, type EditResult, type Placement } from "@/app/study-actions";
+import {
+  addLeftOutToSummary,
+  addToSummary,
+  startAsk,
+  type AskRequest,
+  type EditResult,
+  type Placement,
+} from "@/app/study-actions";
 import type { AskResult } from "@/lib/ask";
+import { leftOutInsert } from "@/lib/summary-edit";
 
 /**
  * Asking the AI something from a lecture page and waiting for the answer. The worker
@@ -119,6 +127,23 @@ export async function addToLectureSummary(lectureId: string, markdown: string, p
   }
   try {
     return await addToSummary({ lectureId, markdown, place });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Puts a left-out part back. Into the open editor when there is one — the part is then
+ * only in the summary once the edit is saved, so it is not marked as added here.
+ */
+export async function addLeftOutPart(lectureId: string, part: { what: string; about: string }): Promise<EditResult> {
+  if (inserter) {
+    const { block, atStart } = leftOutInsert(part.what, part.about);
+    inserter(block, atStart ? { start: true } : { section: null });
+    return { ok: true, message: "Added to the summary you're editing — save it to keep it." };
+  }
+  try {
+    return await addLeftOutToSummary({ lectureId, what: part.what });
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }

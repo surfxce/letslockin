@@ -1,3 +1,4 @@
+import { ASK_LIMIT } from "@/lib/ask-history";
 import { prisma } from "@/lib/db";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { lectureSources, readSkipped } from "@/lib/sources";
@@ -37,8 +38,9 @@ export interface AskResult {
   model?: string;
 }
 
-/** The longest question or selection sent — a passage, not a whole summary. */
-export const MAX_ASK = 1500;
+/** The longest question or selection sent — a passage, not a whole summary. The same
+ *  limit the page's own boxes use, from a module the page can import. */
+export const MAX_ASK = ASK_LIMIT;
 
 const NOT_FOUND = /couldn'?t find this part/i;
 

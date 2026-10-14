@@ -51,6 +51,11 @@ export interface ClaudeCliConfig {
   /** For questions asked from a lecture page while the student waits: quick, but
    *  answering about the content, so not the smallest model. */
   askModel: string;
+  /** How hard the model thinks before preparing or marking a lecture (Claude Code's
+   *  --effort). Left to the CLI, a big model thinks at length about work that is
+   *  mostly careful reading and writing, and a lecture takes minutes longer. Null
+   *  leaves it to the CLI's own default. */
+  effort: string | null;
   timeoutMs: number;
   /** Extra flags, space-separated, from LOCKIN_CLI_FLAGS. Lets flag drift be fixed
    *  without a code change. */
@@ -64,6 +69,7 @@ export function cliConfigFromEnv(): ClaudeCliConfig {
     model: process.env.LOCKIN_MODEL ?? "sonnet",
     sortModel: process.env.LOCKIN_SORT_MODEL ?? "haiku",
     askModel: process.env.LOCKIN_ASK_MODEL ?? "sonnet",
+    effort: process.env.LOCKIN_EFFORT === "default" ? null : (process.env.LOCKIN_EFFORT ?? "medium"),
     // One digest call now does what three used to, so a double lecture needs room.
     timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000),
     extraArgs: (process.env.LOCKIN_CLI_FLAGS ?? "").split(" ").filter(Boolean),
@@ -75,6 +81,8 @@ export interface RunOptions {
   /** Folders the model may read files from — the slide decks, which it reads as pages
    *  it can see. Reading is the only tool it ever gets, and only for these. */
   readDirs?: string[];
+  /** --effort for this call: "low" for quick sorting and questions. */
+  effort?: string | null;
 }
 
 /** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). Gives back
@@ -85,12 +93,14 @@ function runClaude(
   opts: RunOptions = {},
 ): Promise<{ text: string; model: string | null }> {
   const reads = opts.readDirs?.length ? opts.readDirs : null;
+  const effort = opts.effort === undefined ? cfg.effort : opts.effort;
   const args = [
     "-p",
     "--output-format",
     "json",
     "--model",
     opts.model ?? cfg.model,
+    ...(effort ? ["--effort", effort] : []),
     // Text is inlined in the prompt; the only thing worth opening is a slide deck, so
     // Read is allowed only when there is one, and only in its folder. --allowed-tools
     // and --add-dir are variadic, so each is followed by another flag, and "none" is
@@ -288,12 +298,15 @@ export class ClaudeCliProvider implements LlmProvider {
   }
 
   sortFiles(input: SortFilesInput) {
-    return this.call("sort-files", sortVars(input), FolderSortSchema, { model: this.cfg.sortModel });
+    return this.call("sort-files", sortVars(input), FolderSortSchema, { model: this.cfg.sortModel, effort: "low" });
   }
 
   ask(input: AskInput) {
     const { prompt, vars } = askVars(input);
     // Someone chose Haiku to be quick: questions stay on it too.
-    return this.call(prompt, vars, AnswerSchema, { model: this.cfg.model === "haiku" ? "haiku" : this.cfg.askModel });
+    return this.call(prompt, vars, AnswerSchema, {
+      model: this.cfg.model === "haiku" ? "haiku" : this.cfg.askModel,
+      effort: "low",
+    });
   }
 }

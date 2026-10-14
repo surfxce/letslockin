@@ -189,8 +189,16 @@ export function formatAnswer(question: string, answer: string): string {
 
 /** A left-out part put back: aims and objectives at the top, anything else at the end. */
 export function addLeftOut(md: string, what: string, about: string): string {
-  const block = `## ${what.trim()}\n\n${about.trim()}`;
-  return /\b(aims?|objectives?|outcomes?|goals?)\b/i.test(what) ? insertAtStart(md, block) : insertIntoSection(md, null, block);
+  const { block, atStart } = leftOutInsert(what, about);
+  return atStart ? insertAtStart(md, block) : insertIntoSection(md, null, block);
+}
+
+/** A left-out part as it goes back into a summary, and whether it goes at the top. */
+export function leftOutInsert(what: string, about: string): { block: string; atStart: boolean } {
+  return {
+    block: `## ${what.trim()}\n\n${about.trim()}`,
+    atStart: /\b(aims?|objectives?|outcomes?|goals?)\b/i.test(what),
+  };
 }
 
 // ---------------------------------------------------------------------------

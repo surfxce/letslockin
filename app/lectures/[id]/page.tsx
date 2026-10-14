@@ -20,9 +20,14 @@ import { CopyButton } from "@/app/ui/CopyButton";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { Icon, type IconName } from "@/app/ui/Icon";
 import { JobProgress, type JobView } from "@/app/ui/JobProgress";
+import { AskButton, type AskHistoryItem } from "@/app/ui/AskButton";
+import { LeftOut } from "@/app/ui/LeftOut";
 import { ModelInfo, type ModelInfoData } from "@/app/ui/ModelInfo";
 import { PasteBox } from "@/app/ui/PasteBox";
-import { FeedbackLegend, LaqCard, Markdown, QuestionScore } from "@/app/ui/render";
+import { FeedbackLegend, LaqCard, QuestionScore } from "@/app/ui/render";
+import { SummaryView } from "@/app/ui/SummaryView";
+import type { GlossaryEntry } from "@/app/study-actions";
+import type { AskResult } from "@/lib/ask";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { questionBudget } from "@/lib/engines/mastery";
@@ -34,6 +39,7 @@ import { getSettings, readHeartbeat, type Mode } from "@/lib/settings";
 import type { SlideImages } from "@/lib/markdown";
 import { lectureDecks, pictured, sharedDecks, type Deck } from "@/lib/slides";
 import { readSkipped, readSlideNotes } from "@/lib/sources";
+import { summaryHeadings } from "@/lib/summary-edit";
 import { lectureRows, questionNumbers } from "@/lib/views";
 import { LAQ_STYLE_LABEL, usesAi } from "@/lib/modes";
 
@@ -74,7 +80,7 @@ export default async function LecturePage({
   const lecture = await prisma.lecture.findUnique({ where: { id }, include: LECTURE_INCLUDE });
   if (!lecture) notFound();
 
-  const [[row], settings, numbers, job, beat, localReady, decks, deckCopies, lastRun] = await Promise.all([
+  const [[row], settings, numbers, job, beat, localReady, decks, deckCopies, lastRun, glossary, asked] = await Promise.all([
     lectureRows({ ids: [id] }),
     getSettings(),
     questionNumbers(id),
@@ -90,6 +96,17 @@ export default async function LecturePage({
       where: { lectureId: id, kind: { in: ["PREPARE", "GENERATE"] }, status: "DONE" },
       orderBy: { finishedAt: "desc" },
       select: { kind: true, model: true, durationMs: true, finishedAt: true, result: true },
+    }),
+    prisma.glossaryTerm.findMany({
+      where: { lectureId: id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, term: true, explanation: true },
+    }),
+    prisma.job.findMany({
+      where: { lectureId: id, kind: "ASK", status: "DONE" },
+      orderBy: { finishedAt: "desc" },
+      take: 30,
+      select: { id: true, result: true, finishedAt: true },
     }),
   ]);
 
@@ -125,6 +142,7 @@ export default async function LecturePage({
     : null;
 
   const modelInfo = describeModels(lecture, lastRun);
+  const history = askHistory(asked);
 
   const tabs: Array<{ key: Tab; label: string; icon: IconName; n?: number }> = [
     { key: "summary", label: "Summary", icon: "book" },
@@ -178,12 +196,7 @@ export default async function LecturePage({
         </Prop>
         {skipped.length > 0 && (
           <Prop icon="scissors" label="Left out">
-            {skipped.map((s) => (
-              <Tag key={s.what + s.where} title="Not lecture content, so not summarised or examined">
-                {s.what}
-                {s.where ? ` · ${s.where}` : ""}
-              </Tag>
-            ))}
+            <LeftOut lectureId={lecture.id} items={skipped} canAsk={usesAi(settings.mode)} />
           </Prop>
         )}
       </div>
@@ -232,6 +245,7 @@ export default async function LecturePage({
           sat={scored.length > 0}
           slides={slideImages}
           decks={pdfDecks}
+          terms={glossary}
         />
       )}
       {tab === "laqs" && (
@@ -250,8 +264,39 @@ export default async function LecturePage({
       {tab === "details" && (
         <DetailsTab lecture={lecture} decks={decks} shared={deckCopies} sittingPerHour={settings.sittingPerHour} />
       )}
+
+      <AskButton
+        lectureId={lecture.id}
+        mode={settings.mode}
+        hasSummary={!!lecture.summaryMd?.trim()}
+        headings={summaryHeadings(lecture.summaryMd ?? "")}
+        history={history}
+        slides={slideImages}
+      />
     </main>
   );
+}
+
+/** Questions asked about this lecture, newest first, for the Ask panel's history. */
+function askHistory(jobs: Array<{ id: string; result: string | null; finishedAt: Date | null }>): AskHistoryItem[] {
+  return jobs.flatMap((j) => {
+    try {
+      const r = JSON.parse(j.result ?? "null") as AskResult | null;
+      if (r?.kind !== "question" || !r.question || !r.answer) return [];
+      return [
+        {
+          id: j.id,
+          question: r.question,
+          answer: r.answer,
+          section: r.section,
+          at: (j.finishedAt ?? new Date()).toISOString(),
+          ...(r.model ? { model: r.model } : {}),
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** Who wrote the summary and the LAQs, and the last AI run, for the ⓘ by the title. */
@@ -352,6 +397,7 @@ function SummaryTab({
   sat,
   slides,
   decks,
+  terms,
 }: {
   lecture: LecturePageData;
   mode: Mode;
@@ -360,6 +406,7 @@ function SummaryTab({
   sat: boolean;
   slides: SlideImages;
   decks: Deck[];
+  terms: GlossaryEntry[];
 }) {
   if (lecture.summaryMd) {
     return (
@@ -370,7 +417,7 @@ function SummaryTab({
             <p>Read this once, properly. Then come back — ideally tomorrow — and answer the LAQs without it.</p>
           </div>
         )}
-        <Markdown md={lecture.summaryMd} slides={slides} />
+        <SummaryView lectureId={lecture.id} md={lecture.summaryMd} slides={slides} mode={mode} terms={terms} />
         <hr className="divider" />
         <details>
           <summary className="small muted" style={{ cursor: "pointer" }}>

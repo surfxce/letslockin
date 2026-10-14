@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { Result } from "@/app/actions";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { LaqCard, Markdown, QuestionScore } from "@/app/ui/render";
+import { usePersistentText, writeText } from "@/app/ui/useDraft";
 import { geometricMean } from "@/lib/engines/geomean";
 import { formatScore, scoreTone } from "@/lib/format";
 import type { SlideImages } from "@/lib/markdown";
@@ -21,6 +22,8 @@ const PLACEHOLDER: Record<Kind, string> = {
 /**
  * Where a reply from an AI chat comes back in. The preview underneath is exactly
  * what will be saved, so a paste that did not parse is obvious before it is kept.
+ * What is pasted stays in this browser until it is saved, so leaving the page (or
+ * a failed save) never means finding the reply in the chat again.
  */
 export function PasteBox({
   kind,
@@ -41,7 +44,27 @@ export function PasteBox({
   /** Summary only: the lecture's slide pictures, for `![…](slide:N)` in the paste. */
   slides?: SlideImages;
 }) {
-  const [text, setText] = useState("");
+  const key = `lockin.paste.${kind}.${Object.values(hidden).join(".")}`;
+  const [text, setText, clear] = usePersistentText(key);
+  // Saved means no longer kept — forgotten as the save returns, because a save that
+  // changes the page can unmount this box before any success callback gets to run.
+  const save = useCallback(
+    async (prev: Result, fd: FormData) => {
+      const result = await action(prev, fd);
+      if (result?.ok) writeText(key, "");
+      return result;
+    },
+    [action, key],
+  );
+  const box = useRef<HTMLTextAreaElement>(null);
+  const shown = useRef(false);
+  // A paste kept from last time is no use folded away: open the section it is in.
+  useEffect(() => {
+    if (!text || shown.current) return;
+    shown.current = true;
+    const details = box.current?.closest("details");
+    if (details && !details.open) details.open = true;
+  }, [text]);
   const preview = useMemo(
     () => (text.trim() ? <Preview kind={kind} text={text} firstNumber={firstNumber} slides={slides} /> : null),
     [kind, text, firstNumber, slides],
@@ -54,11 +77,12 @@ export function PasteBox({
   }, [kind, text]);
 
   return (
-    <ActionForm action={action} className="paste" onSuccess={() => setText("")}>
+    <ActionForm action={save} className="paste" onSuccess={clear}>
       {Object.entries(hidden).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       <textarea
+        ref={box}
         name="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -72,6 +96,18 @@ export function PasteBox({
         <Submit disabled={!usable} pending="Saving…">
           {saveLabel}
         </Submit>
+        {text && (
+          <button
+            type="button"
+            className="btn quiet sm"
+            onClick={() => {
+              clear();
+              box.current?.focus();
+            }}
+          >
+            Clear
+          </button>
+        )}
         <FormResult />
       </div>
     </ActionForm>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { saveAttemptScores } from "@/app/actions";
 import { AnswerForm } from "@/app/attempts/[id]/AnswerForm";
+import { NotesSheet } from "@/app/attempts/[id]/NotesSheet";
 import { DueTag } from "@/app/ui/bits";
 import { CopyButton } from "@/app/ui/CopyButton";
 import { Icon } from "@/app/ui/Icon";
@@ -14,6 +15,7 @@ import { clockTime, formatScore, scoreTone, shortDate } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { lectureRows, questionNumbers } from "@/lib/views";
 import { usesAi } from "@/lib/modes";
+import { buildNotesSheet, notesFileName } from "@/lib/notes-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,7 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
             responseId: r.id,
             number: numbers.get(r.questionId) ?? 0,
             stem: r.question.stem,
+            draft: r.draftText,
           }))}
         />
       </main>
@@ -69,6 +72,21 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
   const [settings, [row]] = await Promise.all([getSettings(), lectureRows({ ids: [attempt.lectureId] })]);
   const unmarked = responses.filter((r) => r.mark === null);
   const needsPaste = unmarked.length > 0 && settings.mode === "manual";
+  const rows = responses.map((r) => ({ r, fb: feedbackFor(r), rubric: readRubric(r.question.rubric) }));
+  // What to write down, straight from the marking: no extra AI call.
+  const notes = buildNotesSheet({
+    lectureTitle: attempt.lecture.title,
+    sittingDate: attempt.sittingDate,
+    responses: rows.map(({ r, fb, rubric }) => ({
+      number: numbers.get(r.questionId) ?? 0,
+      stem: r.question.stem,
+      mark: r.mark,
+      items: fb.items,
+      gaps: r.gaps.map((g) => ({ type: g.type, text: g.text, concept: g.concept.name })),
+      blank: r.mark !== null && !r.answerText.trim(),
+      guide: rubric.criteria.map((c) => c.point),
+    })),
+  });
 
   return (
     <main className="page narrow">
@@ -132,42 +150,45 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      <NotesSheet
+        sheet={notes}
+        pending={unmarked.length}
+        manual={!usesAi(settings.mode)}
+        fileName={notesFileName(attempt.lecture.title, attempt.sittingDate)}
+      />
+
       <FeedbackLegend />
       <div className="q-scores" style={{ borderTop: 0 }}>
-        {responses.map((r) => {
-          const fb = feedbackFor(r);
-          const rubric = readRubric(r.question.rubric);
-          return (
-            <div key={r.id} className="sitting" style={{ marginBottom: 14 }}>
-              <QuestionScore
-                label={`LAQ ${numbers.get(r.questionId) ?? "?"}`}
-                mark={r.mark}
-                raw={fb.raw ?? undefined}
-                feedback={fb.items}
-                pending={r.mark === null && usesAi(settings.mode)}
-              />
-              <details style={{ marginTop: 10 }}>
-                <summary className="small muted" style={{ cursor: "pointer" }}>
-                  Question, your answer{rubric.criteria.length ? " and the marking guide" : ""}
-                </summary>
-                <Markdown md={r.question.stem} className="laq-stem" />
-                <pre className="model-answer" style={{ fontFamily: "var(--sans)" }}>
-                  {r.answerText || "(left blank)"}
-                </pre>
-                {rubric.criteria.length > 0 && (
-                  <ul className="criteria">
-                    {rubric.criteria.map((c, i) => (
-                      <li key={i}>
-                        <span className="mk">{c.marks ?? "·"}</span>
-                        <span>{c.point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </details>
-            </div>
-          );
-        })}
+        {rows.map(({ r, fb, rubric }) => (
+          <div key={r.id} className="sitting" style={{ marginBottom: 14 }}>
+            <QuestionScore
+              label={`LAQ ${numbers.get(r.questionId) ?? "?"}`}
+              mark={r.mark}
+              raw={fb.raw ?? undefined}
+              feedback={fb.items}
+              pending={r.mark === null && usesAi(settings.mode)}
+            />
+            <details style={{ marginTop: 10 }}>
+              <summary className="small muted" style={{ cursor: "pointer" }}>
+                Question, your answer{rubric.criteria.length ? " and the marking guide" : ""}
+              </summary>
+              <Markdown md={r.question.stem} className="laq-stem" />
+              <pre className="model-answer" style={{ fontFamily: "var(--sans)" }}>
+                {r.answerText || "(left blank)"}
+              </pre>
+              {rubric.criteria.length > 0 && (
+                <ul className="criteria">
+                  {rubric.criteria.map((c, i) => (
+                    <li key={i}>
+                      <span className="mk">{c.marks ?? "·"}</span>
+                      <span>{c.point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </div>
+        ))}
       </div>
 
       <p style={{ marginTop: 24 }}>
