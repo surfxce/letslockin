@@ -21,6 +21,7 @@ import {
 import { activeLocalModel } from "@/lib/models";
 import { getSettings, setApiKey, setSetting } from "@/lib/settings";
 import { readSkipped } from "@/lib/sources";
+import { cleanCrop, setFigureCrop, type Crop } from "@/lib/markdown";
 import { addLeftOut, insertAtStart, insertIntoSection, insertUnder } from "@/lib/summary-edit";
 
 /**
@@ -164,6 +165,32 @@ export async function addLeftOutToSummary(input: { lectureId: string; what: stri
   });
   refreshAll();
   return { ok: true, message: "Added to the summary." };
+}
+
+/**
+ * Crops one slide picture in the summary to the part the student chose, or shows the
+ * whole slide again (crop null). `figure` is the picture's place among the summary's
+ * slide pictures, as the page numbered them.
+ */
+export async function setSlideCrop(input: {
+  lectureId: string;
+  figure: number;
+  slide: number;
+  crop: Crop | null;
+}): Promise<EditResult> {
+  const crop = input.crop ? cleanCrop(input.crop) : null;
+  if (input.crop && !crop) return { ok: false, message: "That's too small to show — drag out a bigger box." };
+  const lecture = await prisma.lecture.findUnique({ where: { id: input.lectureId }, select: { summaryMd: true } });
+  if (!lecture?.summaryMd) return { ok: false, message: "This lecture has no summary." };
+  const next = setFigureCrop(lecture.summaryMd, input.figure, input.slide, crop);
+  if (next === null) {
+    return { ok: false, message: "Couldn't find that picture in the summary — it may have just changed. Try again." };
+  }
+  if (next !== lecture.summaryMd) {
+    await prisma.lecture.update({ where: { id: input.lectureId }, data: { summaryMd: next } });
+  }
+  refreshAll();
+  return { ok: true, message: crop ? "Cropped." : "Showing the whole slide." };
 }
 
 // ---------------------------------------------------------------------------

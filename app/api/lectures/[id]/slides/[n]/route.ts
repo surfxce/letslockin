@@ -1,15 +1,19 @@
-import { slidePng } from "@/lib/slides";
+import { parseCrop } from "@/lib/markdown";
+import { cropPng, slidePng } from "@/lib/slides";
 
 export const dynamic = "force-dynamic";
 
 /** One slide of a lecture as a picture, for the summary. Rendered on first request. */
-export async function GET(_request: Request, ctx: { params: Promise<{ id: string; n: string }> }) {
+export async function GET(request: Request, ctx: { params: Promise<{ id: string; n: string }> }) {
   const { id, n } = await ctx.params;
   const slide = Number(n);
   if (!Number.isInteger(slide) || slide < 1) return new Response("No such slide.", { status: 404 });
   let png: Buffer | null;
   try {
     png = await slidePng(id, slide);
+    // ?crop=x,y,w,h — the part the student cropped it to, as fractions of the slide.
+    const crop = parseCrop(new URL(request.url).searchParams.get("crop"));
+    if (png && crop) png = await cropPng(png, crop);
   } catch (err) {
     console.error(`slide ${slide} of lecture ${id} could not be drawn:`, err);
     return new Response("That slide could not be drawn.", { status: 500 });

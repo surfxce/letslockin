@@ -1,7 +1,7 @@
 import { Node, type JSONContent, type MarkdownToken } from "@tiptap/core";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 
-import { slideNumbers, type SlideImages } from "@/lib/markdown";
+import { markerCrops, slideNumbers, slidePictureUrl, type SlideImages } from "@/lib/markdown";
 import { plainInline } from "@/lib/summary-edit";
 
 /**
@@ -81,7 +81,7 @@ export function figureParts(attrs: ImageAttrs, slides?: SlideImages) {
   return {
     kind: shown.length ? ("slides" as const) : ("missing" as const),
     caption,
-    pictures: slides ? shown.map((n) => `${slides.base}/${n}`) : [],
+    pictures: slides ? shown.map((n) => slidePictureUrl(slides.base, n, markerCrops(attrs.src).get(n))) : [],
     label: slideLabel(numbers),
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderMarkdown } from "./markdown";
+import { cleanCrop, markerCrops, renderMarkdown, setFigureCrop, slideNumbers } from "./markdown";
 
 const slides = { base: "/api/lectures/abc/slides", ranges: [[1, 5]] as Array<[number, number]> };
 
@@ -45,5 +45,58 @@ describe("renderMarkdown", () => {
   it("still strips anything that could run", () => {
     const html = renderMarkdown('<img src="x" onerror="alert(1)"><script>alert(2)</script>[a](javascript:alert(3))');
     expect(html).not.toMatch(/onerror|<script|javascript:/);
+  });
+});
+
+describe("crops", () => {
+  const crop = { x: 0.1, y: 0.2, w: 0.5, h: 0.4 };
+
+  it("still reads a cropped marker as its slides", () => {
+    expect(slideNumbers("slide:7#crop=7:0.1,0.2,0.5,0.4")).toEqual([7]);
+    expect(slideNumbers("slide:7-8#crop=8:0,0,0.5,0.5")).toEqual([7, 8]);
+    expect(slideNumbers("slide#7")).toEqual([7]);
+    expect(markerCrops("slide:7-8#crop=7:0.1,0.2,0.5,0.4;8:0,0,1,0.5")).toEqual(
+      new Map([
+        [7, crop],
+        [8, { x: 0, y: 0, w: 1, h: 0.5 }],
+      ]),
+    );
+  });
+
+  it("keeps a crop inside the slide and refuses one too small to see", () => {
+    expect(cleanCrop({ x: 0.9, y: -1, w: 0.5, h: 2 })).toEqual({ x: 0.9, y: 0, w: 0.1, h: 1 });
+    expect(cleanCrop({ x: 0.5, y: 0.5, w: 0.01, h: 0.5 })).toBeNull();
+    expect(cleanCrop({ x: NaN, y: 0, w: 1, h: 1 })).toBeNull();
+  });
+
+  it("shows a cropped picture, with a Crop button only where asked", () => {
+    const md = "![Fed state](slide:2#crop=2:0.1,0.2,0.5,0.4)";
+    expect(renderMarkdown(md, slides)).toContain('<img src="/api/lectures/abc/slides/2?crop=0.1,0.2,0.5,0.4"');
+    expect(renderMarkdown(md, slides)).not.toContain("slide-crop");
+    const html = renderMarkdown(`${md}\n\n![Fasting](slide:3)`, { ...slides, croppable: true });
+    expect(html).toContain('class="slide-crop" data-fig="0" data-slide="2" data-crop="0.1,0.2,0.5,0.4"');
+    expect(html).toContain('class="slide-crop" data-fig="1" data-slide="3" data-crop=""');
+  });
+
+  it("writes a crop into the right marker, and takes it out again", () => {
+    const md = "Intro `![not this](slide:1)`\n\n![A](Slide 2)\n\n```\n![code](slide:2)\n```\n\n![B](slide:2 \"T\")";
+    const once = setFigureCrop(md, 1, 2, crop)!;
+    expect(once).toContain("![A](Slide 2)");
+    expect(once).toContain('![B](slide:2#crop=2:0.1,0.2,0.5,0.4 "T")');
+    expect(once).toContain("```\n![code](slide:2)\n```");
+    expect(setFigureCrop(once, 1, 2, null)).toContain('![B](slide:2 "T")');
+    // A slide this picture doesn't show, or a picture that isn't there: nothing changes.
+    expect(setFigureCrop(md, 1, 9, crop)).toBeNull();
+    expect(setFigureCrop(md, 5, 2, crop)).toBeNull();
+    expect(setFigureCrop(once, 1, 2, crop)).toBe(once);
+  });
+
+  it("crops one slide of a pair, and the renderer counts pictures the same way", () => {
+    const md = setFigureCrop("![One](slide:1)\n\n![Pair](slide:3-4)", 1, 4, crop)!;
+    expect(md).toContain("![Pair](slide:3-4#crop=4:0.1,0.2,0.5,0.4)");
+    const html = renderMarkdown(md, { ...slides, croppable: true });
+    expect(html).toContain('<img src="/api/lectures/abc/slides/3"');
+    expect(html).toContain('<img src="/api/lectures/abc/slides/4?crop=0.1,0.2,0.5,0.4"');
+    expect(html).toContain('data-fig="1" data-slide="4"');
   });
 });

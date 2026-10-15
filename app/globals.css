@@ -495,6 +495,21 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .slide-fig.multi a { max-width: none; }
 .slide-fig.multi figcaption { grid-column: 1 / -1; }
 .slide-fig .slide-error { color: var(--s-orange); }
+/* A slide picture with its Crop button, on the lecture page's own summary */
+.slide-fig .slide-shot { position: relative; display: block; max-width: 680px; }
+.slide-fig .slide-shot a { max-width: none; }
+.slide-fig.multi .slide-shot { max-width: none; }
+.slide-crop { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 9px; border-radius: 5px; border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow); opacity: 0; transition: opacity 0.12s; }
+.slide-shot:hover .slide-crop, .slide-crop:focus-visible { opacity: 1; }
+@media (hover: none) { .slide-crop { opacity: 0.9; } }
+.crop-frame { position: relative; overflow: hidden; border-radius: 6px; border: 1px solid var(--rule); background: #fff; cursor: crosshair; touch-action: none; user-select: none; }
+.crop-frame img { display: block; width: 100%; height: auto; max-height: 68vh; object-fit: contain; pointer-events: none; }
+.crop-box { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(15, 15, 15, 0.5); cursor: move; }
+.crop-handle { position: absolute; width: 12px; height: 12px; background: var(--bg); border: 2px solid var(--accent); border-radius: 3px; }
+.crop-handle.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.crop-handle.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.crop-handle.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.crop-handle.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
 .slide-fig.missing { padding: 9px 12px; border-left: 3px solid var(--rule-strong); background: var(--bg-soft); border-radius: 0 6px 6px 0; max-width: 680px; }
 .slide-fig.missing figcaption { margin: 0; }
 .slide-notes { margin: 10px 0 0; display: grid; gap: 8px; }

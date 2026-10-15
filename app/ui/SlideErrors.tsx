@@ -21,7 +21,7 @@ export function SlideErrors({ watch }: { watch: string }) {
       } catch {
         why = "Lockin's server didn't answer.";
       }
-      img.closest("a")?.remove();
+      (img.closest(".slide-shot") ?? img.closest("a"))?.remove();
       const caption = figure.querySelector("figcaption");
       if (caption && !caption.querySelector(".slide-error")) {
         const note = document.createElement("span");

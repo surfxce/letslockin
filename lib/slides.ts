@@ -160,3 +160,16 @@ export async function renderPage(file: string, page: number): Promise<Buffer> {
 async function countPdfPages(file: string): Promise<number> {
   return (await document(file)).numPages;
 }
+
+/** Part of a slide's picture, for a summary that shows only the bit that matters. */
+export async function cropPng(png: Buffer, crop: { x: number; y: number; w: number; h: number }): Promise<Buffer> {
+  const { createCanvas, loadImage } = await canvas();
+  const image = await loadImage(png);
+  const sx = Math.round(crop.x * image.width);
+  const sy = Math.round(crop.y * image.height);
+  const sw = Math.max(1, Math.min(image.width - sx, Math.round(crop.w * image.width)));
+  const sh = Math.max(1, Math.min(image.height - sy, Math.round(crop.h * image.height)));
+  const out = createCanvas(sw, sh);
+  out.getContext("2d").drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+  return out.toBuffer("image/png");
+}

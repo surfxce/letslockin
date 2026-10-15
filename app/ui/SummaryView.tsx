@@ -6,6 +6,7 @@ import type { GlossaryEntry } from "@/app/study-actions";
 import { GlossaryHighlights, GlossaryList, SelectionTools } from "@/app/ui/SummaryTools";
 import { Icon } from "@/app/ui/Icon";
 import { Markdown } from "@/app/ui/render";
+import { SlideCropper } from "@/app/ui/SlideCropper";
 import { SummaryEditor } from "@/app/ui/SummaryEditor";
 import type { SlideImages } from "@/lib/markdown";
 import type { Mode } from "@/lib/modes";
@@ -118,7 +119,7 @@ export function SummaryView({
   // student is making. The same element between renders leaves the summary alone.
   const slidesKey = JSON.stringify(slides);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- slides arrive as a new object on every refresh
-  const body = useMemo(() => <Markdown md={md} slides={slides} />, [md, slidesKey]);
+  const body = useMemo(() => <Markdown md={md} slides={{ ...slides, croppable: true }} />, [md, slidesKey]);
   useReadingPlace(lectureId, !editing);
 
   if (editing) {
@@ -141,6 +142,7 @@ export function SummaryView({
       </div>
       <div id={CONTAINER}>{body}</div>
       <SelectionTools lectureId={lectureId} mode={mode} containerId={CONTAINER} slides={slides} />
+      <SlideCropper lectureId={lectureId} containerId={CONTAINER} base={slides.base} />
       <GlossaryHighlights containerId={CONTAINER} terms={terms} watch={md} />
       <GlossaryList terms={terms} />
     </>
