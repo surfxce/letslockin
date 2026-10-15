@@ -98,6 +98,9 @@ export function FeedbackLegend() {
       <span className="fb-wrong">
         <span className="fb-icon">{FB_ICON.wrong}</span> got wrong — the correct fact
       </span>
+      <span className="fb-note">
+        <span className="fb-icon">{FB_ICON.note}</span> partly right — some of the marks
+      </span>
     </div>
   );
 }

@@ -30,6 +30,7 @@
 }
 .ns-mark.ns-wrong { background: var(--t-red-bg); color: var(--s-red); }
 .ns-mark.ns-missed { background: var(--t-orange-bg); color: var(--s-orange); font-size: 13px; }
+.ns-mark.ns-partial { background: var(--bg-sunk); color: var(--text-soft); }
 
 .ns-note { margin: 10px 0 0; font-size: 13px; color: var(--text-soft); }
 .ns-clear { display: flex; align-items: center; gap: 6px; color: var(--s-green); margin-top: 6px; }

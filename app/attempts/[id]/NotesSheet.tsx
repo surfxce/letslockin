@@ -5,7 +5,7 @@ import "./attempt.css";
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/app/ui/Icon";
-import { MISSED_MARK, WRONG_MARK, type NotesSheet as Sheet } from "@/lib/notes-sheet";
+import { MISSED_MARK, PARTIAL_MARK, WRONG_MARK, type NotesSheet as Sheet } from "@/lib/notes-sheet";
 import { plainInline } from "@/lib/summary-edit";
 
 /**
@@ -93,6 +93,9 @@ export function NotesSheet({
               <span className="ns-mark ns-wrong">{WRONG_MARK}</span> had it wrong — the correct fact
             </span>
             <span>
+              <span className="ns-mark ns-partial">{PARTIAL_MARK}</span> partly right — what was short
+            </span>
+            <span>
               <span className="ns-mark ns-missed">{MISSED_MARK}</span> missed — add it
             </span>
           </p>
@@ -110,6 +113,15 @@ export function NotesSheet({
                         {WRONG_MARK}
                       </span>
                       <span className="sr-only">Had it wrong: </span>
+                      <span>{plainInline(t)}</span>
+                    </li>
+                  ))}
+                  {s.partial.map((t, j) => (
+                    <li key={`p${j}`}>
+                      <span className="ns-mark ns-partial" aria-hidden="true">
+                        {PARTIAL_MARK}
+                      </span>
+                      <span className="sr-only">Partly right: </span>
                       <span>{plainInline(t)}</span>
                     </li>
                   ))}

@@ -37,6 +37,8 @@ export interface NotesSection {
   from: number[];
   /** What was wrong, as the correct fact. Copied first. */
   wrong: string[];
+  /** Partly right: marks given for a point, but not all of them — what was short. */
+  partial: string[];
   /** What was left out. */
   missed: string[];
 }
@@ -53,6 +55,7 @@ export interface NotesSheet {
 
 export const WRONG_MARK = "✗";
 export const MISSED_MARK = "+";
+export const PARTIAL_MARK = "~";
 
 const STEM_WORDS = 8;
 const BLANK_TEXT = /^left blank\.?$/i;
@@ -66,7 +69,7 @@ export function buildNotesSheet(input: NotesSheetInput): NotesSheet {
   const group = (key: string, heading: string, number: number) => {
     let g = groups.get(key);
     if (!g) {
-      g = { heading, by: key.startsWith("concept:") ? "concept" : "question", from: [], wrong: [], missed: [] };
+      g = { heading, by: key.startsWith("concept:") ? "concept" : "question", from: [], wrong: [], partial: [], missed: [] };
       groups.set(key, g);
     }
     if (!g.from.includes(number)) g.from.push(number);
@@ -77,6 +80,15 @@ export function buildNotesSheet(input: NotesSheetInput): NotesSheet {
     if (r.mark === null) continue;
     const laqKey = `laq:${r.number}`;
     const laqHeading = `LAQ ${r.number} — ${stemOpening(r.stem)}`;
+
+    // Points earned in part: what the marker said was short of full marks.
+    if (r.mark < 10) {
+      const partial = r.items
+        .filter((i) => i.kind === "note")
+        .map((i) => tidy(i.text.replace(PART_SCORE, " — ")))
+        .filter((text) => text && !PRAISE.test(text));
+      if (partial.length) group(laqKey, laqHeading, r.number).partial.push(...partial);
+    }
 
     // AI marking: the gaps are the wrong/missed items, tagged with what they are about.
     const gaps = r.gaps.filter((g) => isGap(g.type) && tidy(g.text));
@@ -99,13 +111,6 @@ export function buildNotesSheet(input: NotesSheetInput): NotesSheet {
 
     const wrong = r.items.filter((i) => i.kind === "wrong").map((i) => tidy(i.text));
     const missed = r.items.filter((i) => i.kind === "missed" && !BLANK_TEXT.test(i.text.trim())).map((i) => tidy(i.text));
-    // A note earns a place only when it is all the marking says about lost marks.
-    if (!wrong.some(Boolean) && !missed.some(Boolean) && r.mark < 10) {
-      for (const i of r.items) {
-        const text = tidy(i.text.replace(PART_SCORE, " — "));
-        if (i.kind === "note" && text && !PRAISE.test(text)) missed.push(text);
-      }
-    }
     if (!wrong.some(Boolean) && !missed.some(Boolean)) continue;
     const g = group(laqKey, laqHeading, r.number);
     g.wrong.push(...wrong.filter(Boolean));
@@ -124,15 +129,16 @@ export function buildNotesSheet(input: NotesSheetInput): NotesSheet {
   const sections: NotesSection[] = [];
   for (const g of groups.values()) {
     const wrong = once(g.wrong);
+    const partial = once(g.partial);
     const missed = once(g.missed);
-    if (wrong.length || missed.length) sections.push({ ...g, wrong, missed });
+    if (wrong.length || partial.length || missed.length) sections.push({ ...g, wrong, partial, missed });
   }
 
-  const count = sections.reduce((n, s) => n + s.wrong.length + s.missed.length, 0);
+  const count = sections.reduce((n, s) => n + s.wrong.length + s.partial.length + s.missed.length, 0);
   if (count === 0) return { sections, markdown: "", plain: "", count };
 
   const title = `Notes to copy — ${input.lectureTitle.trim() || "Lecture"}, ${longDate(input.sittingDate)}`;
-  const key = `${WRONG_MARK} had it wrong — the correct fact · ${MISSED_MARK} missed — add it`;
+  const key = `${WRONG_MARK} had it wrong — the correct fact · ${PARTIAL_MARK} partly right — what was short · ${MISSED_MARK} missed — add it`;
 
   const md: string[] = [`## ${title}`, "", `*${key}*`];
   const plain: string[] = [title, key];
@@ -142,6 +148,11 @@ export function buildNotesSheet(input: NotesSheetInput): NotesSheet {
     for (const t of s.wrong) {
       md.push(`- ${WRONG_MARK} ${t}`);
       plain.push(`${WRONG_MARK} ${plainInline(t)}`);
+    }
+    for (const t of s.partial) {
+      // A "~" at the start of a point can read as strikethrough in some editors.
+      md.push(`- \\${PARTIAL_MARK} ${t}`);
+      plain.push(`${PARTIAL_MARK} ${plainInline(t)}`);
     }
     for (const t of s.missed) {
       // "- + …" would be read as a list inside a list; escaped, it shows as "+".

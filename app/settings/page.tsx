@@ -79,6 +79,17 @@ export default async function SettingsPage() {
       </p>
       <ModelPicker initial={models} showInstalled />
 
+      <h2>Getting started</h2>
+      <div className="setting">
+        <div>
+          <div className="st">Onboarding</div>
+          <div className="sd">The walkthrough from the first time you opened Lockin: adding lectures, choosing the AI, practising and reminders.</div>
+        </div>
+        <a href="#intro" className="btn">
+          <Icon name="refresh" size={14} /> Repeat onboarding
+        </a>
+      </div>
+
       <h2>Reminders</h2>
       <NotifyToggle enabled={settings.notify} />
 

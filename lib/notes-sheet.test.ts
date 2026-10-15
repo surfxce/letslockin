@@ -68,6 +68,7 @@ describe("buildNotesSheet", () => {
         by: "question",
         from: [3],
         wrong: ["Type 2 is not autoimmune"],
+        partial: [],
         missed: ["Beta-cell exhaustion over time"],
       },
     ]);
@@ -92,9 +93,8 @@ describe("buildNotesSheet", () => {
     expect(s.count).toBe(2);
   });
 
-  it("uses a note only when it is all the marking says about lost marks", () => {
+  it("keeps partly earned points apart, with praise dropped and scores stripped", () => {
     const s = sheet([
-      // Notes alongside a real gap add nothing.
       base({
         number: 1,
         items: [
@@ -102,7 +102,6 @@ describe("buildNotesSheet", () => {
           { kind: "note", text: "Overall a reasonable answer" },
         ],
       }),
-      // Notes are the only explanation: kept, praise dropped, scores stripped.
       base({
         number: 2,
         mark: 7,
@@ -115,10 +114,12 @@ describe("buildNotesSheet", () => {
       // Full marks: nothing to copy, whatever the notes say.
       base({ number: 3, mark: 10, items: [{ kind: "note", text: "Could mention adrenaline" }] }),
     ]);
-    expect(s.sections.map((x) => [x.heading, x.missed])).toEqual([
-      ["LAQ 1 — Question 1", ["Ketone bodies in DKA"]],
-      ["LAQ 2 — Question 2", ["Counter-regulatory hormones — named glucagon but not cortisol"]],
+    expect(s.sections.map((x) => [x.heading, x.partial, x.missed])).toEqual([
+      ["LAQ 1 — Question 1", ["Overall a reasonable answer"], ["Ketone bodies in DKA"]],
+      ["LAQ 2 — Question 2", ["Counter-regulatory hormones — named glucagon but not cortisol"], []],
     ]);
+    expect(s.markdown).toContain("- \\~ Counter-regulatory hormones — named glucagon but not cortisol");
+    expect(s.plain).toContain("~ Counter-regulatory hormones");
   });
 
   it("lists the marking guide for an answer left blank", () => {
@@ -169,7 +170,7 @@ describe("buildNotesSheet", () => {
       [
         "## Notes to copy — Insulin and diabetes, Wednesday 14 Oct 2026",
         "",
-        "*✗ had it wrong — the correct fact · + missed — add it*",
+        "*✗ had it wrong — the correct fact · ~ partly right — what was short · + missed — add it*",
         "",
         "### Islet cells",
         "",
@@ -181,7 +182,7 @@ describe("buildNotesSheet", () => {
     expect(s.plain).toBe(
       [
         "Notes to copy — Insulin and diabetes, Wednesday 14 Oct 2026",
-        "✗ had it wrong — the correct fact · + missed — add it",
+        "✗ had it wrong — the correct fact · ~ partly right — what was short · + missed — add it",
         "",
         "Islet cells",
         "✗ Insulin is made by beta cells.",
