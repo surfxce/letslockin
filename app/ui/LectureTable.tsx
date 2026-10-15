@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DueTag, ScoreTag, StatusTag, Tag } from "@/app/ui/bits";
 import { Icon, type IconName } from "@/app/ui/Icon";
 import { Menu } from "@/app/ui/Menu";
+import { exportHref, NO_MODULE } from "@/lib/export";
 import { formatScore, scoreTone, shortDate, tagTone } from "@/lib/format";
 import { STATUS_LABEL, STATUS_ORDER, type LectureRow } from "@/lib/status";
 
@@ -248,7 +249,13 @@ export function LectureTable({
           </thead>
           <tbody>
             {groups.map((g) => (
-              <Group key={g.name || "all"} group={g} grouped={view.group !== "none"} cols={cols}>
+              <Group
+                key={g.name || "all"}
+                group={g}
+                grouped={view.group !== "none"}
+                cols={cols}
+                exportLink={view.group === "module" ? moduleExport(g.rows) : null}
+              >
                 {g.rows.map((r) => (
                   <tr key={r.id} onClick={() => router.push(`/lectures/${r.id}`)}>
                     <td className="c-name">
@@ -305,15 +312,24 @@ export function LectureTable({
   );
 }
 
+/** Where a module group's summaries export from — when its lectures are one module of one course. */
+function moduleExport(rows: LectureRow[]): string | null {
+  if (!rows.some((r) => r.hasSummary)) return null;
+  if (new Set(rows.map((r) => r.courseId)).size !== 1 || new Set(rows.map((r) => r.moduleId)).size !== 1) return null;
+  return exportHref({ courseId: rows[0].courseId, moduleId: rows[0].moduleId ?? NO_MODULE });
+}
+
 function Group({
   group,
   grouped,
   cols,
+  exportLink,
   children,
 }: {
   group: { name: string; rows: LectureRow[]; avg?: number | null };
   grouped: boolean;
   cols: number;
+  exportLink?: string | null;
   children: React.ReactNode;
 }) {
   if (!grouped) return <>{children}</>;
@@ -328,6 +344,11 @@ function Group({
               <span className="small muted">
                 average <span className={`tag score t-${scoreTone(group.avg)}`}>{formatScore(group.avg)}</span>
               </span>
+            )}
+            {exportLink && (
+              <Link href={exportLink} className="group-export" title={`Export ${group.name} as a PDF`}>
+                <Icon name="download" size={13} /> Export PDF
+              </Link>
             )}
           </div>
         </td>

@@ -28,6 +28,7 @@ export interface LectureRow {
   ordinal: number;
   courseId: string;
   courseCode: string;
+  moduleId: string | null;
   moduleTitle: string | null;
   deliveredOn: string;
   durationHours: number;

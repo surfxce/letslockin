@@ -3,10 +3,14 @@ import { contextBridge, ipcRenderer } from "electron";
 /**
  * The only bridge across contextIsolation. `desktop` lets the page leave reminders to
  * the main process (which can notify with no window open) and make room for the
- * macOS window buttons; `pickFolder` is a native folder picker for importing. In a
- * plain browser tab this object is simply absent.
+ * macOS window buttons; `pickFolder` is a native folder picker for importing;
+ * `savePdf` prints the export page to a PDF file, which `openFile`/`showFile` then
+ * open. In a plain browser tab this object is simply absent.
  */
 contextBridge.exposeInMainWorld("lockin", {
   desktop: true,
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke("lockin:pickFolder"),
+  savePdf: (pathname: string, title: string) => ipcRenderer.invoke("lockin:savePdf", pathname, title),
+  openFile: (file: string): Promise<void> => ipcRenderer.invoke("lockin:openFile", file),
+  showFile: (file: string): Promise<void> => ipcRenderer.invoke("lockin:showFile", file),
 });

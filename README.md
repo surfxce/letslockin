@@ -71,7 +71,16 @@ summary, and adds the answer under a heading of your choice. Select any text to 
 **broken down**, then *Add to glossary*: the words are underlined wherever they appear and
 show the explanation on hover. **Edit** switches the summary to an editor — formatted, or as
 Markdown — with headings and dot points at three levels (Tab and Shift+Tab move a point).
-Lockin remembers how far down each summary you had read.
+Lockin remembers how far down each summary you had read. Hover a slide picture and press
+**Crop** to keep just the part that matters.
+
+**Exporting.** *Export PDF* — on a course, on a module's group in the lecture table, or on a
+lecture — opens a preview of the summaries as a document: a title page with contents, then
+each lecture on new pages with its slide pictures (crops and all), formatting and glossary.
+Choose the whole course, a module, or tick particular lectures; leave out pictures, the
+glossary or the title page; A4 or Letter. In the desktop app *Save as PDF* writes the file
+itself, with page numbers and a bookmark for each lecture; in a browser it opens the print
+window, where *Save as PDF* is one of the printers.
 
 The home page is a database of every lecture: sort by date, weakest first or due soonest,
 group by module (with each module's average) or status, and search.

@@ -22,7 +22,7 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
       createdAt: true,
       summaryMd: true,
       course: { select: { code: true, examDate: true } },
-      module: { select: { title: true } },
+      module: { select: { id: true, title: true } },
       _count: { select: { questions: true, materials: true } },
       attempts: {
         where: { geometricMean: { not: null } },
@@ -88,6 +88,7 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
       ordinal: ordinals.get(l.id) ?? 0,
       courseId: l.courseId,
       courseCode: l.course.code,
+      moduleId: l.module?.id ?? null,
       moduleTitle: l.module?.title ?? null,
       deliveredOn: l.deliveredOn.toISOString(),
       durationHours: l.durationHours,

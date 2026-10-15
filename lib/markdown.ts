@@ -8,6 +8,8 @@ export interface SlideImages {
   ranges: Array<[number, number]>;
   /** Puts a Crop button on each slide picture — only on the lecture page's own summary. */
   croppable?: boolean;
+  /** For a printed copy: pictures load straight away and aren't links to the slide. */
+  print?: boolean;
 }
 
 /** The part of a slide a picture shows, as fractions of its width and height. */
@@ -147,8 +149,9 @@ function slideFigure(
   const pictures = shown
     .map((n) => {
       const crop = marker?.crops.get(n) ?? null;
-      const full = `${slides.base}/${n}`;
-      const picture = `<a href="${full}" target="_blank" rel="noopener"><img src="${slidePictureUrl(slides.base, n, crop)}" alt="${caption}" loading="lazy"></a>`;
+      const src = slidePictureUrl(slides.base, n, crop);
+      if (slides.print) return `<img src="${src}" alt="${caption}">`;
+      const picture = `<a href="${slides.base}/${n}" target="_blank" rel="noopener"><img src="${src}" alt="${caption}" loading="lazy"></a>`;
       if (!slides.croppable || !marker) return picture;
       const button =
         `<button type="button" class="slide-crop" data-fig="${marker.index}" data-slide="${n}" ` +

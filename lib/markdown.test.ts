@@ -78,6 +78,12 @@ describe("crops", () => {
     expect(html).toContain('class="slide-crop" data-fig="1" data-slide="3" data-crop=""');
   });
 
+  it("prints pictures as plain, eagerly loaded images, crop and all", () => {
+    const html = renderMarkdown("![Fed state](slide:2#crop=2:0.1,0.2,0.5,0.4)", { ...slides, croppable: true, print: true });
+    expect(html).toContain('<figure class="slide-fig"><img src="/api/lectures/abc/slides/2?crop=0.1,0.2,0.5,0.4" alt="Fed state">');
+    expect(html).not.toMatch(/<a |loading=|slide-crop/);
+  });
+
   it("writes a crop into the right marker, and takes it out again", () => {
     const md = "Intro `![not this](slide:1)`\n\n![A](Slide 2)\n\n```\n![code](slide:2)\n```\n\n![B](slide:2 \"T\")";
     const once = setFigureCrop(md, 1, 2, crop)!;

@@ -36,6 +36,7 @@ import { clockTime, dateInput, formatScore, hours, longDate, plural, scoreTone, 
 import { readSteps } from "@/lib/jobs";
 import { activeLocalModel } from "@/lib/models";
 import { getSettings, readHeartbeat, type Mode } from "@/lib/settings";
+import { exportHref } from "@/lib/export";
 import type { SlideImages } from "@/lib/markdown";
 import { lectureDecks, pictured, sharedDecks, type Deck } from "@/lib/slides";
 import { readSkipped, readSlideNotes } from "@/lib/sources";
@@ -224,6 +225,16 @@ export default async function LecturePage({
           <span className="small muted">
             {plural(budget, "question")}, closed book — your weakest concepts are asked first.
           </span>
+        )}
+        {lecture.summaryMd && (
+          <Link
+            href={exportHref({ courseId: lecture.courseId, lectureIds: [lecture.id] })}
+            className="btn lg"
+            title="Save this summary as a PDF"
+            style={{ marginLeft: "auto" }}
+          >
+            <Icon name="download" /> Export PDF
+          </Link>
         )}
       </div>
 

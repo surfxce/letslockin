@@ -1,7 +1,8 @@
 /* Lockin — a quiet, Notion-like surface: white canvas, soft grey rules, coloured
    select tags carrying meaning (scores, status, due dates), one blue for actions. */
 
-:root {
+/* An exported document is paper: light even when the app is dark. */
+:root, .export-doc {
   --bg: #ffffff;
   --bg-soft: #f7f7f5;
   --bg-sunk: #f1f1ef;
@@ -40,7 +41,8 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
+/* Screen only: printing — and so every PDF — is always light. */
+@media screen and (prefers-color-scheme: dark) {
   :root {
     --bg: #191919;
     --bg-soft: #202020;
@@ -91,7 +93,7 @@ p a, .link { color: var(--accent-text); text-decoration: underline; text-decorat
 ::selection { background: rgba(35, 131, 226, 0.28); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 code { font-family: var(--mono); font-size: 0.86em; background: var(--bg-sunk); color: #eb5757; padding: 1px 5px; border-radius: 4px; }
-@media (prefers-color-scheme: dark) { code { color: #ff7369; } }
+@media screen and (prefers-color-scheme: dark) { code { color: #ff7369; } .export-doc code { color: #eb5757; } }
 .muted { color: var(--text-soft); }
 .faint { color: var(--text-faint); }
 .small { font-size: 13px; }
@@ -255,6 +257,8 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .group-head td { background: var(--bg) !important; cursor: default; padding-top: 18px; height: auto; border-right: 0; }
 .group-head .g { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
 .group-head .g .count { color: var(--text-faint); font-weight: 400; }
+.group-head .group-export { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 6px; border-radius: 4px; font-size: 12.5px; font-weight: 400; color: var(--text-soft); }
+.group-head .group-export:hover { background: var(--hover); color: var(--text); }
 .db-foot { display: flex; align-items: center; gap: 12px; padding: 8px 9px; color: var(--text-faint); font-size: 13px; }
 .db-foot a { color: var(--text-soft); display: inline-flex; gap: 6px; align-items: center; padding: 2px 6px; border-radius: 4px; }
 .db-foot a:hover { background: var(--hover); color: var(--text); }
@@ -562,3 +566,60 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
   .model-card.recommended { order: -1; }
 }
 .modal.wide { width: 820px; }
+
+/* ----- Export: summaries as a PDF ----- */
+.export-panel, .export-doc { max-width: 210mm; margin-left: auto; margin-right: auto; }
+.export-options { display: grid; gap: 12px; margin: 18px 0 16px; }
+.export-options[aria-busy="true"] + .export-save .btn.primary { opacity: 0.6; }
+.export-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.export-row .lab { width: 62px; font-size: 13px; color: var(--text-soft); }
+.export-picks { margin-left: 76px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 8px; max-height: 300px; overflow: auto; }
+.export-picks ul { list-style: none; margin: 0; padding: 0; }
+.export-picks li { padding: 2px 0; }
+.export-picks .ord { font-family: var(--mono); font-size: 12px; color: var(--text-faint); margin-right: 2px; }
+.export-picks .check.off { color: var(--text-faint); }
+.export-save { margin: 4px 0 28px; }
+.export-save p { margin: 8px 0 0; }
+@media (max-width: 720px) {
+  .export-row .lab { width: 100%; }
+  .export-picks { margin-left: 0; }
+}
+
+/* On screen the document is a sheet of paper; printed, it is just the pages. */
+.export-doc { background: var(--bg); color: var(--text); padding: 18mm 15mm; border: 1px solid var(--rule); border-radius: 4px; box-shadow: 0 2px 12px rgba(15, 15, 15, 0.08); }
+.export-doc .export-lecture + .export-lecture, .export-doc .export-cover + .export-lecture { break-before: page; margin-top: 44px; padding-top: 40px; border-top: 1px dashed var(--rule-strong); }
+.export-kicker { font-family: var(--mono); font-size: 12px; color: var(--text-soft); margin: 0 0 6px; }
+.export-title { font-size: 28px; line-height: 1.25; margin: 0 0 18px; break-after: avoid; }
+.export-course { font-size: 34px; line-height: 1.2; margin: 10px 0 6px; }
+.export-scope { font-size: 17px; color: var(--text-soft); margin: 0 0 4px; }
+.export-meta { font-size: 13px; color: var(--text-faint); margin: 0 0 36px; }
+.export-contents-head { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-soft); margin: 0 0 6px; }
+.export-contents { list-style: none; padding: 0; margin: 0; }
+.export-contents li { border-bottom: 1px solid var(--rule); break-inside: avoid; }
+.export-contents a { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 7px 0; }
+.export-contents .ord { font-family: var(--mono); font-size: 12px; color: var(--text-faint); }
+.export-contents .t { font-weight: 550; }
+.export-contents .m { font-size: 12px; color: var(--text-soft); text-align: right; }
+.export-glossary { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.export-glossary h2 { font-size: 17px; margin: 0 0 6px; break-after: avoid; }
+.export-glossary dl { margin: 0; }
+.export-glossary dl > div { display: grid; grid-template-columns: minmax(110px, 28%) minmax(0, 1fr); gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--rule); break-inside: avoid; font-size: 14px; }
+.export-glossary dt { font-weight: 600; }
+.export-glossary dd { margin: 0; }
+/* Nothing scrolls on paper: tables and code wrap instead. */
+.export-doc .prose table { display: table; }
+.export-doc .prose pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.export-doc .prose :is(h1, h2, h3, h4) { break-after: avoid; }
+.export-doc :is(.slide-fig, .prose tr, .prose pre, .prose blockquote) { break-inside: avoid; }
+.export-doc .slide-fig > img { max-width: 680px; }
+
+@media print {
+  /* Only the document prints: no top bar, panel, onboarding or dev overlay. */
+  body:has(.export-page) > :not(.export-page):not(:has(.export-page)) { display: none !important; }
+  .export-page { max-width: none; margin: 0; padding: 0; }
+  .export-panel { display: none; }
+  .export-doc { max-width: none; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .export-doc .export-lecture + .export-lecture, .export-doc .export-cover + .export-lecture { margin-top: 0; padding-top: 0; border-top: 0; }
+  /* A tall crop still fits on its page. */
+  .export-doc .slide-fig img { max-height: 125mm; object-fit: contain; }
+}

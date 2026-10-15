@@ -8,6 +8,7 @@ import { Icon } from "@/app/ui/Icon";
 import { LectureTable } from "@/app/ui/LectureTable";
 import { prisma } from "@/lib/db";
 import { daysUntil, dueLabel, plural, tagTone } from "@/lib/format";
+import { exportHref } from "@/lib/export";
 import { getSettings } from "@/lib/settings";
 import { dueLectures, lectureRows } from "@/lib/views";
 import { usesAi } from "@/lib/modes";
@@ -130,6 +131,11 @@ export default async function Home({
           </>
         ) : (
           <CourseMenu courses={courses.map((c) => ({ id: c.id, code: c.code, title: c.title }))} />
+        )}
+        {rows.some((r) => r.hasSummary) && (
+          <Link href={exportHref({ courseId: active?.id ?? null })} className="btn" title="Save summaries as a PDF">
+            <Icon name="download" /> Export PDF
+          </Link>
         )}
         {usesAi(settings.mode) && toPrepare.length > 0 && (
           <form action={prepareLectures}>

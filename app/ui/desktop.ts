@@ -7,6 +7,14 @@ declare global {
     lockin?: {
       desktop?: boolean;
       pickFolder(): Promise<string | null>;
+      /** Prints an /export address to a PDF the user names; null when they cancel. */
+      savePdf?(
+        pathname: string,
+        title: string,
+      ): Promise<{ ok: true; path: string; name: string } | { ok: false; message: string } | null>;
+      /** Only files savePdf saved this session. */
+      openFile?(path: string): Promise<void>;
+      showFile?(path: string): Promise<void>;
     };
     /** Set while answering closed-book, so a background refresh never disturbs typing. */
     __lockinHoldRefresh?: boolean;
