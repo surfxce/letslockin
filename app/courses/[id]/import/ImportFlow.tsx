@@ -149,7 +149,7 @@ function Grouping({ scan, courseId, modules, mode }: { scan: ScanState; courseId
                 ? `${who} reads the start of every file and works out what goes where — for messy folders. ${
                     mode === "local" ? "A few minutes." : "Usually under a minute."
                   }`
-                : "Needs Claude Code or an offline model — you're in copy & paste mode."}
+                : "Needs a cloud AI or an offline model — you're in copy & paste mode."}
             </span>
           </span>
         </label>

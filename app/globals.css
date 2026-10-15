@@ -473,6 +473,12 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .stepper output { min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); line-height: 30px; }
 @media (max-width: 620px) { .setting { flex-wrap: wrap; } }
 
+/* The chosen cloud AI's own settings, under the choice */
+.engine-panel { padding: 12px 14px; margin: 4px 0 6px; border-radius: 8px; background: var(--bg-soft); }
+.engine-panel p { margin: 0 0 8px; }
+.engine-row { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin: 6px 0; }
+.engine-row > .small:first-child { min-width: 64px; }
+
 /* Answering */
 .answer { padding: 20px 22px; border-radius: 8px; background: var(--bg); box-shadow: var(--shadow); }
 .answer + .answer { margin-top: 16px; }

@@ -97,8 +97,27 @@ export async function slidePng(lectureId: string, slide: number): Promise<Buffer
   return pagePng(lectureId, at.deck, at.page);
 }
 
+/** Where a page's picture is kept once drawn. */
+function pngPath(lectureId: string, materialId: string, page: number): string {
+  return path.join(materialsDir(), lectureId, "slides", materialId, `${page}.png`);
+}
+
+/** A page's picture as a file, drawn first if it never was — for engines that take image files. */
+export async function pagePngFile(
+  lectureId: string,
+  deck: { materialId: string; file: string },
+  page: number,
+): Promise<string> {
+  const file = pngPath(lectureId, deck.materialId, page);
+  if (!(await readFile(file).then(() => true, () => false))) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, await renderPage(deck.file, page));
+  }
+  return file;
+}
+
 export async function pagePng(lectureId: string, deck: Deck, page: number): Promise<Buffer> {
-  const cached = path.join(materialsDir(), lectureId, "slides", deck.materialId, `${page}.png`);
+  const cached = pngPath(lectureId, deck.materialId, page);
   const hit = await readFile(cached).catch(() => null);
   if (hit) return hit;
   const png = await renderPage(deck.file, page);

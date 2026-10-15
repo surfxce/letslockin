@@ -3,29 +3,19 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { setMode, setNotify } from "@/app/actions";
-import { setCloudSettings, setLaqSettings } from "@/app/study-actions";
+import { setLaqSettings } from "@/app/study-actions";
 import "@/app/ui/desktop";
-import {
-  CLOUD_MODEL_LABEL,
-  CLOUD_MODELS,
-  LAQ_STYLE_LABEL,
-  LAQ_STYLES,
-  MAX_PER_HOUR,
-  type CloudModel,
-  type LaqStyle,
-  type Mode,
-} from "@/lib/modes";
+import { LAQ_STYLE_LABEL, LAQ_STYLES, MAX_PER_HOUR, type LaqStyle, type Mode } from "@/lib/modes";
 
 /** Choosing a mode saves it; there is no separate save button to forget. */
 export function ModePicker({
   mode,
-  cliFound,
-  cliVersion,
+  engine,
   localModel,
 }: {
   mode: Mode;
-  cliFound: boolean;
-  cliVersion: string | null;
+  /** The cloud AI chosen, and whether it is ready to use. */
+  engine: { label: string; ready: boolean; detail: string | null };
   /** Name of the linked local model, if one is downloaded. */
   localModel: string | null;
 }) {
@@ -37,20 +27,20 @@ export function ModePicker({
         <span>
           <span className="ct">
             Automatic
-            {cliFound ? (
-              <span className="tag t-green">Claude Code {cliVersion ? `· ${cliVersion}` : "found"}</span>
+            {engine.ready ? (
+              <span className="tag t-green">
+                {engine.label}
+                {engine.detail ? ` · ${engine.detail}` : ""}
+              </span>
             ) : (
-              <span className="tag t-red">Claude Code not found</span>
+              <span className="tag t-red">
+                {engine.label} {engine.detail ?? "not set up"}
+              </span>
             )}
           </span>
           <span className="cd">
-            Lockin prepares lectures itself with Claude Code on this computer, one lecture at a time, and marks your answers.
-            {!cliFound && (
-              <>
-                {" "}
-                Install it with <code>npm i -g @anthropic-ai/claude-code</code> and run <code>claude</code> once to sign in.
-              </>
-            )}
+            Lockin prepares lectures itself with a cloud AI — Claude Code, ChatGPT Codex, Google Antigravity or an API
+            key, chosen below — one lecture at a time, and marks your answers.
           </span>
         </span>
       </label>
@@ -137,77 +127,6 @@ export function NotifyToggle({ enabled }: { enabled: boolean }) {
             <span />
           </label>
         </div>
-      </div>
-    </>
-  );
-}
-
-/** Which Claude prepares lectures, and whether the offline model steps in when it fails. */
-export function CloudModelPicker({
-  model,
-  fallbackLocal,
-  offlineModel,
-}: {
-  model: CloudModel;
-  fallbackLocal: boolean;
-  /** The downloaded model a failure falls back to, if there is one. */
-  offlineModel: string | null;
-}) {
-  const [picked, setPicked] = useState(model);
-  const [fallback, setFallback] = useState(fallbackLocal);
-  const [, start] = useTransition();
-  const blurb: Record<CloudModel, string> = {
-    sonnet: "Fast and thorough — the right size for summaries, LAQs and marking.",
-    opus: "The most thorough, and the slowest: a lecture takes noticeably longer.",
-    haiku: "The quickest and lightest. Fine for short lectures; less depth in summaries.",
-  };
-  return (
-    <>
-      <div className="setting" style={{ alignItems: "flex-start" }}>
-        <div>
-          <div className="st">Claude model</div>
-          <div className="sd">{blurb[picked]} Questions you ask on a lecture page use Sonnet unless you pick Haiku.</div>
-        </div>
-        <div className="seg" role="radiogroup" aria-label="Claude model">
-          {CLOUD_MODELS.map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={picked === m}
-              className={picked === m ? "on" : undefined}
-              onClick={() => {
-                setPicked(m);
-                start(() => setCloudSettings({ cloudModel: m }));
-              }}
-            >
-              {CLOUD_MODEL_LABEL[m]}
-              {m === "sonnet" && <span className="faint"> · default</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="setting">
-        <div>
-          <div className="st">If Claude fails, use the offline model</div>
-          <div className="sd">
-            {offlineModel
-              ? `When Claude Code can't do a job — signed out, over a usage limit, offline — ${offlineModel} on this computer does it instead. Claude is always tried first.`
-              : "Download an offline model below and Lockin uses it whenever Claude Code can't do a job — signed out, over a usage limit, offline. Claude is always tried first."}
-          </div>
-        </div>
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={fallback}
-            onChange={(e) => {
-              setFallback(e.target.checked);
-              start(() => setCloudSettings({ fallbackLocal: e.target.checked }));
-            }}
-            aria-label="Fall back to the offline model"
-          />
-          <span />
-        </label>
       </div>
     </>
   );

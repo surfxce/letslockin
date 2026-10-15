@@ -25,7 +25,11 @@ export interface DigestInput {
 
 /** A lecture's slide decks, for a model that can look at them and for the picture markers. */
 export interface SlidesInfo {
+  /** The lecture they belong to: slide pictures are kept with it. */
+  lectureId: string;
   decks: Array<{
+    /** The deck's material, for its kept slide pictures. */
+    materialId: string;
     /** Absolute path of the stored file. */
     file: string;
     name: string;

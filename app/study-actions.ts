@@ -6,9 +6,20 @@ import { knownLeftOut, MAX_ASK, saveLeftOut, type AskPayload, type AskResult } f
 import { prisma } from "@/lib/db";
 import { cleanTerm } from "@/lib/glossary";
 import { enqueue } from "@/lib/jobs";
-import { CLOUD_MODELS, LAQ_STYLES, perHour, usesAi, type CloudModel, type LaqStyle } from "@/lib/modes";
+import {
+  API_SERVICE_LIST,
+  CLOUD_ENGINES,
+  CLOUD_MODELS,
+  LAQ_STYLES,
+  perHour,
+  usesAi,
+  type ApiService,
+  type CloudEngine,
+  type CloudModel,
+  type LaqStyle,
+} from "@/lib/modes";
 import { activeLocalModel } from "@/lib/models";
-import { getSettings, setSetting } from "@/lib/settings";
+import { getSettings, setApiKey, setSetting } from "@/lib/settings";
 import { readSkipped } from "@/lib/sources";
 import { addLeftOut, insertAtStart, insertIntoSection, insertUnder } from "@/lib/summary-edit";
 
@@ -208,4 +219,53 @@ export async function setCloudSettings(input: { cloudModel?: CloudModel; fallbac
   if (input.cloudModel && CLOUD_MODELS.includes(input.cloudModel)) await setSetting("cloudModel", input.cloudModel);
   if (input.fallbackLocal !== undefined) await setSetting("fallbackLocal", !!input.fallbackLocal);
   refreshAll();
+}
+
+/** Which cloud AI "auto" mode uses, and how it is set up. */
+export async function setEngineSettings(input: {
+  cloudEngine?: CloudEngine;
+  codexModel?: string;
+  agyModel?: string;
+  apiService?: ApiService;
+  apiBaseUrl?: string;
+  apiModel?: string;
+  apiVision?: boolean;
+}): Promise<void> {
+  if (input.cloudEngine && CLOUD_ENGINES.includes(input.cloudEngine)) await setSetting("cloudEngine", input.cloudEngine);
+  if (input.apiService && API_SERVICE_LIST.includes(input.apiService)) await setSetting("apiService", input.apiService);
+  for (const k of ["codexModel", "agyModel", "apiBaseUrl", "apiModel"] as const) {
+    if (typeof input[k] === "string") await setSetting(k, input[k]!.trim().slice(0, 300));
+  }
+  if (input.apiVision !== undefined) await setSetting("apiVision", !!input.apiVision);
+  refreshAll();
+}
+
+/** Saves the API key, or forgets it when given nothing. Never sent back to a page. */
+export async function saveApiKey(key: string | null): Promise<{ ok: boolean; message: string }> {
+  const clean = (key ?? "").trim();
+  if (clean.length > 500 || /\s/.test(clean)) return { ok: false, message: "That doesn't look like an API key." };
+  await setApiKey(clean || null);
+  refreshAll();
+  return { ok: true, message: clean ? "Key saved." : "Key removed." };
+}
+
+/**
+ * Asks the chosen cloud AI one tiny question, so a sign-in, key or model name that is
+ * wrong shows up here rather than half-way through preparing a lecture.
+ */
+export async function testCloudEngine(): Promise<{ ok: boolean; message: string }> {
+  const started = Date.now();
+  try {
+    const { cloudProvider } = await import("@/lib/llm");
+    const provider = await cloudProvider();
+    await provider.ask({
+      kind: "breakdown",
+      lectureTitle: "A quick test",
+      summary: "Insulin lowers blood glucose by moving GLUT4 to the surface of muscle and fat cells.",
+      selection: "GLUT4",
+    });
+    return { ok: true, message: `Working — ${provider.lastModel} answered in ${((Date.now() - started) / 1000).toFixed(0)}s.` };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
 }

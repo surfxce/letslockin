@@ -1,7 +1,18 @@
 import { prisma } from "@/lib/db";
-import { CLOUD_MODELS, LAQ_STYLES, perHour, type CloudModel, type LaqStyle, type Mode } from "@/lib/modes";
+import {
+  API_SERVICE_LIST,
+  CLOUD_ENGINES,
+  CLOUD_MODELS,
+  LAQ_STYLES,
+  perHour,
+  type ApiService,
+  type CloudEngine,
+  type CloudModel,
+  type LaqStyle,
+  type Mode,
+} from "@/lib/modes";
 
-export type { CloudModel, LaqStyle, Mode } from "@/lib/modes";
+export type { ApiService, CloudEngine, CloudModel, LaqStyle, Mode } from "@/lib/modes";
 
 export interface Settings {
   mode: Mode;
@@ -19,8 +30,22 @@ export interface Settings {
   laqStyle: LaqStyle;
   /** Which Claude prepares lectures and marks in "auto" mode. */
   cloudModel: CloudModel;
-  /** When Claude fails, do the job on the downloaded offline model instead, if there is one. */
+  /** When the cloud AI fails, do the job on the downloaded offline model instead, if there is one. */
   fallbackLocal: boolean;
+  /** Which cloud AI "auto" mode uses. */
+  cloudEngine: CloudEngine;
+  /** Codex's model; empty for whatever Codex is set to use. */
+  codexModel: string;
+  /** Antigravity's model; empty for its own choice. */
+  agyModel: string;
+  /** What the API key is for. Claude on the API uses `cloudModel`. */
+  apiService: ApiService;
+  /** For "custom": the service's address, ending in /v1 or similar. */
+  apiBaseUrl: string;
+  /** For services other than Anthropic: the model name. */
+  apiModel: string;
+  /** The API model takes images, so it is shown the slides as pictures. */
+  apiVision: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -33,6 +58,13 @@ const DEFAULTS: Settings = {
   laqStyle: "mixed",
   cloudModel: "sonnet",
   fallbackLocal: true,
+  cloudEngine: "claude",
+  codexModel: "",
+  agyModel: "",
+  apiService: "anthropic",
+  apiBaseUrl: "",
+  apiModel: "",
+  apiVision: true,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -52,12 +84,43 @@ export async function getSettings(): Promise<Settings> {
   if (!LAQ_STYLES.includes(out.laqStyle)) out.laqStyle = DEFAULTS.laqStyle;
   if (!CLOUD_MODELS.includes(out.cloudModel)) out.cloudModel = DEFAULTS.cloudModel;
   out.fallbackLocal = out.fallbackLocal !== false;
+  if (!CLOUD_ENGINES.includes(out.cloudEngine)) out.cloudEngine = DEFAULTS.cloudEngine;
+  if (!API_SERVICE_LIST.includes(out.apiService)) out.apiService = DEFAULTS.apiService;
+  for (const k of ["codexModel", "agyModel", "apiBaseUrl", "apiModel"] as const) {
+    if (typeof out[k] !== "string") out[k] = "";
+  }
+  out.apiVision = out.apiVision !== false;
   return out;
 }
 
 export async function setSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
   const json = JSON.stringify(value);
   await prisma.setting.upsert({ where: { key }, update: { value: json }, create: { key, value: json } });
+}
+
+/**
+ * The API key, kept apart from the other settings so it is never handed to a page:
+ * pages are told only whether there is one.
+ */
+const API_KEY = "apiKey";
+
+export async function getApiKey(): Promise<string | null> {
+  const row = await prisma.setting.findUnique({ where: { key: API_KEY } });
+  try {
+    const key = row ? JSON.parse(row.value) : null;
+    return typeof key === "string" && key ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setApiKey(key: string | null) {
+  if (!key) {
+    await prisma.setting.deleteMany({ where: { key: API_KEY } });
+    return;
+  }
+  const value = JSON.stringify(key);
+  await prisma.setting.upsert({ where: { key: API_KEY }, update: { value }, create: { key: API_KEY, value } });
 }
 
 /** Written by the worker on every loop, so the UI can tell a stalled queue from an idle one. */

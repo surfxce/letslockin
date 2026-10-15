@@ -76,3 +76,40 @@ export function laqStyleNote(style: LaqStyle | undefined): string {
   }
   return "";
 }
+
+/**
+ * Which cloud AI does the work in "auto" mode: a command-line tool signed in with the
+ * student's own plan, or an API key.
+ */
+export type CloudEngine = "claude" | "codex" | "antigravity" | "api";
+
+export const CLOUD_ENGINES: CloudEngine[] = ["claude", "codex", "antigravity", "api"];
+
+export const CLOUD_ENGINE_LABEL: Record<CloudEngine, string> = {
+  claude: "Claude Code",
+  codex: "ChatGPT Codex",
+  antigravity: "Google Antigravity",
+  api: "API key",
+};
+
+/** Services an API key can be for. All but Anthropic speak OpenAI's chat format. */
+export type ApiService = "anthropic" | "openai" | "gemini" | "openrouter" | "groq" | "custom";
+
+export const API_SERVICES: Record<
+  ApiService,
+  { label: string; baseUrl: string; keys: string; modelHint: string }
+> = {
+  anthropic: { label: "Anthropic (Claude)", baseUrl: "", keys: "console.anthropic.com", modelHint: "" },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", keys: "platform.openai.com/api-keys", modelHint: "a GPT model name from OpenAI's model list" },
+  gemini: {
+    label: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    keys: "aistudio.google.com/apikey",
+    modelHint: "a Gemini model name from Google AI Studio",
+  },
+  openrouter: { label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", keys: "openrouter.ai/keys", modelHint: "a model id from openrouter.ai/models, such as provider/model" },
+  groq: { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", keys: "console.groq.com/keys", modelHint: "a model id from console.groq.com" },
+  custom: { label: "Another service", baseUrl: "", keys: "", modelHint: "the model name the service expects" },
+};
+
+export const API_SERVICE_LIST = Object.keys(API_SERVICES) as ApiService[];

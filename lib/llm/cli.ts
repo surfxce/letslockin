@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ZodType } from "zod";
 
+import { CloudError } from "@/lib/llm/base";
 import {
   askVars,
   digestVars,
@@ -32,7 +33,7 @@ import type {
 } from "@/lib/llm/provider";
 
 
-export class ClaudeCliError extends Error {
+export class ClaudeCliError extends CloudError {
   constructor(
     message: string,
     readonly detail?: { stderr?: string; stdout?: string; code?: number | null },

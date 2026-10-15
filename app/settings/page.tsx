@@ -1,23 +1,27 @@
 import Link from "next/link";
 
-import { CloudModelPicker, LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
+import { CloudSettings } from "@/app/settings/CloudSettings";
+import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
 import { Icon } from "@/app/ui/Icon";
 import { ModelPicker } from "@/app/ui/ModelPicker";
 import { prisma } from "@/lib/db";
 import { plural, tagTone } from "@/lib/format";
-import { detectCli } from "@/lib/llm/detect";
+import { detectAntigravity, detectCli, detectCodex } from "@/lib/llm/detect";
 import { findModel } from "@/lib/llm/catalog";
-import { CLOUD_MODEL_LABEL, MODE_LABEL, usesAi } from "@/lib/modes";
+import { API_SERVICES, CLOUD_ENGINE_LABEL, CLOUD_MODEL_LABEL, usesAi } from "@/lib/modes";
 import { modelsPayload } from "@/lib/payloads";
-import { getSettings, readHeartbeat } from "@/lib/settings";
+import { getApiKey, getSettings, readHeartbeat } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [settings, cli, beat, models, courses] = await Promise.all([
+  const [settings, cli, codex, agy, apiKey, beat, models, courses] = await Promise.all([
     getSettings(),
     detectCli(),
+    detectCodex(),
+    detectAntigravity(),
+    getApiKey(),
     readHeartbeat(),
     modelsPayload(),
     prisma.course.findMany({ orderBy: { createdAt: "asc" }, include: { _count: { select: { lectures: true } } } }),
@@ -25,7 +29,26 @@ export default async function SettingsPage() {
   const linked = findModel(models.active);
   // The fallback is the model chosen for local mode, else any that is downloaded.
   const offline = linked ?? models.installed.map((m) => findModel(m.id)).find(Boolean) ?? null;
-  const engine = settings.mode === "local" ? (linked?.name ?? "no model yet") : CLOUD_MODEL_LABEL[settings.cloudModel];
+  // What the chosen cloud AI is, for the Automatic choice and the worker line.
+  const engine = (() => {
+    const label = CLOUD_ENGINE_LABEL[settings.cloudEngine];
+    switch (settings.cloudEngine) {
+      case "codex":
+        return { label, ready: codex.found, detail: codex.found ? settings.codexModel || null : "not found" };
+      case "antigravity":
+        return { label, ready: agy.found, detail: agy.found ? settings.agyModel || null : "not found" };
+      case "api": {
+        const anthropic = settings.apiService === "anthropic";
+        const ready = (!!apiKey || settings.apiService === "custom") && (anthropic || !!settings.apiModel);
+        const service = API_SERVICES[settings.apiService].label;
+        const model = anthropic ? CLOUD_MODEL_LABEL[settings.cloudModel] : settings.apiModel;
+        return { label: service, ready, detail: ready ? model : "needs a key and a model" };
+      }
+      default:
+        return { label, ready: cli.found, detail: cli.found ? CLOUD_MODEL_LABEL[settings.cloudModel] : "not found" };
+    }
+  })();
+  const worker = settings.mode === "local" ? (linked?.name ?? "no model yet") : `${engine.label}${engine.detail && engine.ready ? ` · ${engine.detail}` : ""}`;
 
   return (
     <main className="page narrow">
@@ -35,12 +58,21 @@ export default async function SettingsPage() {
       </p>
 
       <h2>Summaries and LAQs</h2>
-      <ModePicker mode={settings.mode} cliFound={cli.found} cliVersion={cli.version} localModel={linked?.name ?? null} />
+      <ModePicker mode={settings.mode} engine={engine} localModel={linked?.name ?? null} />
       {settings.mode === "auto" && (
-        <CloudModelPicker
-          model={settings.cloudModel}
+        <CloudSettings
+          engine={settings.cloudEngine}
+          cloudModel={settings.cloudModel}
           fallbackLocal={settings.fallbackLocal}
           offlineModel={offline?.name ?? null}
+          codexModel={settings.codexModel}
+          agyModel={settings.agyModel}
+          apiService={settings.apiService}
+          apiBaseUrl={settings.apiBaseUrl}
+          apiModel={settings.apiModel}
+          apiVision={settings.apiVision}
+          apiKeySaved={apiKey ? `…${apiKey.slice(-4)}` : null}
+          tools={{ claude: cli, codex, antigravity: agy }}
         />
       )}
       {usesAi(settings.mode) && (
@@ -50,8 +82,7 @@ export default async function SettingsPage() {
             <div className="sd">
               {beat?.alive ? (
                 <>
-                  Running on {MODE_LABEL[settings.mode]} (<code>{engine}</code>) — prepares one lecture at a time, and
-                  marks answers first.
+                  Running on <code>{worker}</code> — prepares one lecture at a time, and marks answers first.
                 </>
               ) : (
                 <>

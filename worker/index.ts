@@ -17,13 +17,13 @@ import { findModel } from "@/lib/llm/catalog";
 import { prisma } from "@/lib/db";
 import type { SortedFolder } from "@/lib/group";
 import { closeSteps, enterStage, setStageDetail, SIDE_LANES } from "@/lib/jobs";
-import { getLocalProvider, getProvider, isFake, type LlmProvider } from "@/lib/llm";
-import { ClaudeCliError } from "@/lib/llm/cli";
+import { cloudProvider, getLocalProvider, isFake, type LlmProvider } from "@/lib/llm";
+import { CloudError } from "@/lib/llm/base";
 import type { SortFile } from "@/lib/llm/provider";
 import { downloadModelFile, modelSource } from "@/lib/llm/download";
 import { activeLocalModel, fallbackLocalModel, modelsDir, registerModel } from "@/lib/models";
 import { readSlidePictures } from "@/lib/ocr";
-import { MODE_LABEL } from "@/lib/modes";
+import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, setSetting } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
@@ -101,11 +101,11 @@ async function currentProvider(): Promise<LlmProvider | null> {
     const active = await activeLocalModel();
     return active ? getLocalProvider(active.path, active.model.name) : null;
   }
-  return getProvider((await getSettings()).cloudModel);
+  return cloudProvider();
 }
 
 /**
- * Claude first; if it fails — signed out, rate limited, a reply that would not parse —
+ * The cloud AI first; if it fails — signed out, rate limited, a reply that would not parse —
  * the offline model does the job instead, when one is downloaded and Settings allow.
  * A lecture with nothing to read fails the same way on any model, so that is not
  * retried.
@@ -119,14 +119,14 @@ async function withFallback<T>(
     return { result: await work(primary), used: primary, fellBack: null };
   } catch (err) {
     const cloudFailed =
-      err instanceof ClaudeCliError || (err instanceof Error && (err.name === "ZodError" || err instanceof SyntaxError));
+      err instanceof CloudError || (err instanceof Error && (err.name === "ZodError" || err instanceof SyntaxError));
     const { mode, fallbackLocal } = await getSettings();
     if (!cloudFailed || mode !== "auto" || !fallbackLocal || isFake()) throw err;
     const model = await fallbackLocalModel();
     if (!model) throw err;
     const why = err instanceof Error ? err.message : String(err);
     const local = getLocalProvider(model.path, model.model.name);
-    console.warn(`Claude Code failed (${why}); doing it on ${model.model.name} instead`);
+    console.warn(`${primary.lastModel} failed (${why}); doing it on ${model.model.name} instead`);
     onFallback?.(why, local);
     return { result: await work(local), used: local, fellBack: why };
   }
@@ -166,7 +166,7 @@ async function runOne(): Promise<boolean> {
       (_why, local) => {
         fallback = local;
         local.onProgress = progress;
-        progress("Claude Code failed — the offline model is doing it instead");
+        progress("The cloud AI failed — the offline model is doing it instead");
       },
     );
     const current = await prisma.job.findUnique({ where: { id: job.id }, select: { steps: true } });
@@ -393,8 +393,9 @@ let lastBeat = 0;
 async function heartbeat() {
   if (Date.now() - lastBeat < HEARTBEAT_MS) return;
   lastBeat = Date.now();
-  const { mode } = await getSettings();
-  const value = JSON.stringify({ at: new Date().toISOString(), pid: process.pid, provider: MODE_LABEL[mode] });
+  const { mode, cloudEngine } = await getSettings();
+  const provider = mode === "auto" ? CLOUD_ENGINE_LABEL[cloudEngine] : MODE_LABEL[mode];
+  const value = JSON.stringify({ at: new Date().toISOString(), pid: process.pid, provider });
   await prisma.setting.upsert({
     where: { key: HEARTBEAT_KEY },
     update: { value },

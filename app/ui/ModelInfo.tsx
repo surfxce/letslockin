@@ -107,14 +107,14 @@ export function ModelInfo({ info }: { info: ModelInfoData }) {
                     {info.lastRun.durationMs ? `, took ${took(info.lastRun.durationMs)}` : ""}
                     <div className="faint">{new Date(info.lastRun.finishedAt).toLocaleString()}</div>
                     {info.lastRun.fellBack && (
-                      <div className="model-info-fell">Claude Code failed, so the offline model did it: {info.lastRun.fellBack}</div>
+                      <div className="model-info-fell">The cloud AI failed, so the offline model did it: {info.lastRun.fellBack}</div>
                     )}
                   </dd>
                 </>
               )}
             </dl>
           )}
-          <p className="faint small">Choose the Claude model in Settings.</p>
+          <p className="faint small">Choose the AI and its model in Settings.</p>
         </div>
       )}
     </span>

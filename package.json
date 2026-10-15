@@ -24,6 +24,7 @@
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
     "@napi-rs/canvas": "^1.0.11",
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",

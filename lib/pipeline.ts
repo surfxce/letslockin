@@ -42,7 +42,8 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
     existingConcepts: existing.map(({ id, name, definition }) => ({ id, name, definition })),
     slides: decks.length
       ? {
-          decks: decks.map(({ file, name, first, pages, pdf }) => ({ file, name, first, pages, pdf })),
+          lectureId,
+          decks: decks.map(({ materialId, file, name, first, pages, pdf }) => ({ materialId, file, name, first, pages, pdf })),
           sharedWith,
         }
       : undefined,

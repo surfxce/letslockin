@@ -195,7 +195,7 @@ export async function startSort(input: {
 }): Promise<{ jobId: string } | { error: string }> {
   const { mode } = await getSettings();
   if (!usesAi(mode)) {
-    return { error: "Sorting with AI needs Claude Code or an offline model — you're in copy & paste mode (Settings)." };
+    return { error: "Sorting with AI needs a cloud AI or an offline model — you're in copy & paste mode (Settings)." };
   }
   if (mode === "local" && !(await activeLocalModel())) {
     return { error: "Download an offline model first, in Settings → Offline AI." };
