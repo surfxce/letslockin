@@ -124,15 +124,22 @@ export async function downloads(): Promise<DownloadState[]> {
   return jobs.map(toState).filter((d) => (seen.has(d.modelId) ? false : (seen.add(d.modelId), true)));
 }
 
-/** Queues a download. When it finishes, the worker links it: it becomes the model in use. */
-export async function requestDownload(modelId: string) {
+/**
+ * Queues a download. When it finishes, the worker links it: it becomes the model in
+ * use. `visionOnly` fetches just the part that lets a downloaded model see slides.
+ */
+export async function requestDownload(modelId: string, opts: { visionOnly?: boolean } = {}) {
   if (!findModel(modelId)) throw new Error(`unknown model ${modelId}`);
   const active = await prisma.job.findFirst({
     where: { kind: "DOWNLOAD", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: `"${modelId}"` } },
   });
   if (active) return active.id;
   const job = await prisma.job.create({
-    data: { kind: "DOWNLOAD", payload: JSON.stringify({ modelId, link: true }), priority: 0 },
+    data: {
+      kind: "DOWNLOAD",
+      payload: JSON.stringify(opts.visionOnly ? { modelId, visionOnly: true } : { modelId, link: true }),
+      priority: 0,
+    },
   });
   return job.id;
 }

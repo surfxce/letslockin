@@ -674,6 +674,17 @@ export async function downloadModel(modelId: string): Promise<Result> {
   return { ok: true, message: "Downloading." };
 }
 
+/** Downloads the part that lets an already downloaded model see the slides. */
+export async function downloadVision(modelId: string): Promise<Result> {
+  try {
+    await requestDownload(modelId, { visionOnly: true });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  refreshAll();
+  return { ok: true, message: "Downloading." };
+}
+
 export async function stopDownload(jobId: string) {
   await cancelDownload(jobId);
   refreshAll();

@@ -1,6 +1,7 @@
 import { findModel, LOCAL_MODELS, recommendModels, type LocalModel, type MachineSpecs, type ModelPicks } from "@/lib/llm/catalog";
 import { activity, type Activity } from "@/lib/jobs";
-import { downloads, installedModels, type DownloadState } from "@/lib/models";
+import { visionParts } from "@/lib/llm/vision";
+import { downloads, installedModels, modelsDir, type DownloadState } from "@/lib/models";
 import type { Mode } from "@/lib/modes";
 import { getSettings, readHeartbeat } from "@/lib/settings";
 import { machineSpecs } from "@/lib/specs";
@@ -62,7 +63,9 @@ export interface ModelsPayload {
   specs: MachineSpecs;
   picks: ModelPicks;
   catalog: readonly LocalModel[];
-  installed: Array<{ id: string; bytes: number }>;
+  /** vision: the model takes images and can see slides ("ready"), could once its vision
+   *  part is downloaded ("missing"), or never can (null). */
+  installed: Array<{ id: string; bytes: number; vision: "ready" | "missing" | null }>;
   /** The model local mode is linked to, when it is downloaded. */
   active: string | null;
   mode: Mode;
@@ -82,7 +85,13 @@ export async function modelsPayload(): Promise<ModelsPayload> {
     specs,
     picks: recommendModels(specs),
     catalog: LOCAL_MODELS,
-    installed: installed.map((m) => ({ id: m.id, bytes: m.bytes })),
+    installed: await Promise.all(
+      installed.map(async (m) => ({
+        id: m.id,
+        bytes: m.bytes,
+        vision: findModel(m.id)?.vision ? ((await visionParts(modelsDir(), m.id, m.path)) ? ("ready" as const) : ("missing" as const)) : null,
+      })),
+    ),
     active: installed.some((m) => m.id === settings.localModel) ? settings.localModel : null,
     mode: settings.mode,
     downloads: dls,

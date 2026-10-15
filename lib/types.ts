@@ -27,6 +27,7 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 /** The named steps inside a job, in the order they run. Shown to the user. */
 export const STAGES = {
   slides: "Reading slide pictures",
+  vision: "Looking at the slides",
   digest: "Reading & summarising",
   questions: "Writing LAQs",
   marking: "Marking",

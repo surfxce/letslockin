@@ -22,7 +22,11 @@ import { CloudError } from "@/lib/llm/base";
 import type { SortFile } from "@/lib/llm/provider";
 import { downloadModelFile, modelSource } from "@/lib/llm/download";
 import { activeLocalModel, fallbackLocalModel, modelsDir, registerModel } from "@/lib/models";
+import { LocalProvider, releaseLocalModel } from "@/lib/llm/local";
+import { installMmproj, installServer, lookAtSlides, visionParts } from "@/lib/llm/vision";
 import { readSlidePictures } from "@/lib/ocr";
+import { lectureDecks } from "@/lib/slides";
+import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, setSetting } from "@/lib/settings";
@@ -51,18 +55,23 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
 
     const result: Record<string, unknown> = {};
     if (redo || !lecture.summaryMd || lecture._count.concepts === 0) {
-      // A model that can't see images gets the words on picture-only slides read out
-      // first. Only pages never read before take any time.
+      let visionNotes: SlideNote[] | undefined;
       if (!provider.seesSlides) {
-        const read = await readSlidePictures(lectureId, {
-          onStart: () => enterStage(jobId, "slides"),
-          onProgress: (detail) => void setStageDetail(jobId, detail).catch(() => undefined),
-        });
-        if (read.pages) result.slidePictures = read;
+        // An offline model with its vision part is shown each slide first.
+        visionNotes = await lookLocally(lectureId, jobId, provider, result);
+        // Otherwise the words on picture-only slides are read out. Only pages never
+        // read before take any time.
+        if (!visionNotes?.length) {
+          const read = await readSlidePictures(lectureId, {
+            onStart: () => enterStage(jobId, "slides"),
+            onProgress: (detail) => void setStageDetail(jobId, detail).catch(() => undefined),
+          });
+          if (read.pages) result.slidePictures = read;
+        }
       }
       await enterStage(jobId, "digest");
       // A pasted summary is the student's; keep it unless they asked for a redo.
-      result.digest = await digestLecture(lectureId, { keepSummary: !redo }, provider);
+      result.digest = await digestLecture(lectureId, { keepSummary: !redo, visionNotes }, provider);
     }
     if (lecture._count.questions === 0) {
       await enterStage(jobId, "questions");
@@ -90,6 +99,39 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
 };
 
 /**
+ * Shows an offline model the lecture's slides, when it has its vision part. A failure
+ * is noted and preparing carries on without: text recognition reads the slides instead.
+ */
+async function lookLocally(
+  lectureId: string,
+  jobId: string,
+  provider: LlmProvider,
+  result: Record<string, unknown>,
+): Promise<SlideNote[] | undefined> {
+  if (!(provider instanceof LocalProvider)) return undefined;
+  const parts = await visionParts(modelsDir(), provider.modelId, provider.modelPath);
+  const decks = (await lectureDecks(lectureId)).filter((d) => d.pdf && d.pages > 0);
+  if (!parts || decks.length === 0) return undefined;
+  await enterStage(jobId, "vision");
+  try {
+    // llama.cpp's server loads the model itself; two copies may not fit in memory.
+    await releaseLocalModel();
+    const notes = await lookAtSlides(
+      parts,
+      { lectureId, decks: decks.map(({ materialId, file, name, first, pages, pdf }) => ({ materialId, file, name, first, pages, pdf })), sharedWith: [] },
+      (detail) => void setStageDetail(jobId, detail).catch(() => undefined),
+    );
+    result.slidesSeen = notes.length;
+    return notes;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`couldn't show the slides to the offline model (${message}); reading them as text instead`);
+    result.visionFailed = message;
+    return undefined;
+  }
+}
+
+/**
  * Which provider the next job runs on, from the settings as they are now. Null means
  * nothing can run: copy-and-paste mode, or local mode with no model downloaded yet.
  * Jobs then wait in the queue rather than failing.
@@ -99,7 +141,7 @@ async function currentProvider(): Promise<LlmProvider | null> {
   if (mode === "manual") return null;
   if (mode === "local") {
     const active = await activeLocalModel();
-    return active ? getLocalProvider(active.path, active.model.name) : null;
+    return active ? getLocalProvider(active.path, active.model.name, active.model.id) : null;
   }
   return cloudProvider();
 }
@@ -125,7 +167,7 @@ async function withFallback<T>(
     const model = await fallbackLocalModel();
     if (!model) throw err;
     const why = err instanceof Error ? err.message : String(err);
-    const local = getLocalProvider(model.path, model.model.name);
+    const local = getLocalProvider(model.path, model.model.name, model.model.id);
     console.warn(`${primary.lastModel} failed (${why}); doing it on ${model.model.name} instead`);
     onFallback?.(why, local);
     return { result: await work(local), used: local, fellBack: why };
@@ -223,7 +265,7 @@ async function downloadOne(): Promise<boolean> {
     where: { id: pending.id },
     data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: "download" },
   });
-  const { modelId, link } = JSON.parse(job.payload) as { modelId: string; link?: boolean };
+  const { modelId, link, visionOnly } = JSON.parse(job.payload) as { modelId: string; link?: boolean; visionOnly?: boolean };
   const model = findModel(modelId);
   const started = Date.now();
   const controller = new AbortController();
@@ -235,38 +277,53 @@ async function downloadOne(): Promise<boolean> {
   }, 2000);
 
   let lastWrite = 0;
+  const report = (downloaded: number, total: number, part?: string) => {
+    if (Date.now() - lastWrite < 1000) return;
+    lastWrite = Date.now();
+    void prisma.job
+      .updateMany({ where: { id: job.id, status: "RUNNING" }, data: { result: JSON.stringify({ downloaded, total, part }) } })
+      .catch(() => undefined);
+  };
   try {
     if (!model) throw new Error(`unknown model ${modelId}`);
-    console.log(`↓ ${model.name} from ${modelSource(model)}`);
-    const { path, bytes } = await downloadModelFile(
-      model,
-      modelsDir(),
-      (downloaded, total) => {
-        if (Date.now() - lastWrite < 1000) return;
-        lastWrite = Date.now();
-        void prisma.job
-          .updateMany({ where: { id: job.id, status: "RUNNING" }, data: { result: JSON.stringify({ downloaded, total }) } })
-          .catch(() => undefined);
-      },
-      controller.signal,
-    );
-    await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString() });
-    // Linking up: a finished download becomes the model local mode uses.
-    if (link) {
-      await setSetting("localModel", model.id);
-      await setSetting("mode", "local");
+    let bytes = 0;
+    let path = "";
+    if (!visionOnly) {
+      console.log(`↓ ${model.name} from ${modelSource(model)}`);
+      ({ path, bytes } = await downloadModelFile(model, modelsDir(), (d, t) => report(d, t), controller.signal));
+      await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString() });
+      // Linking up: a finished download becomes the model local mode uses.
+      if (link) {
+        await setSetting("localModel", model.id);
+        await setSetting("mode", "local");
+      }
+    }
+    // A model that takes images gets its vision part and llama.cpp's server, so it can
+    // be shown the slides. Without them it still works, reading slides as text.
+    let visionError: string | null = null;
+    if (model.vision) {
+      try {
+        console.log(`↓ vision part for ${model.name}`);
+        await installMmproj(modelsDir(), model, (d, t) => report(d, t, "vision"), controller.signal);
+        await installServer(modelsDir(), controller.signal);
+      } catch (err) {
+        if (controller.signal.aborted) throw err;
+        visionError = err instanceof Error ? err.message : String(err);
+        if (visionOnly) throw err;
+        console.warn(`✗ vision part for ${model.name}: ${visionError}`);
+      }
     }
     await prisma.job.update({
       where: { id: job.id },
       data: {
         status: "DONE",
         stage: null,
-        result: JSON.stringify({ downloaded: bytes, total: bytes }),
+        result: JSON.stringify({ downloaded: bytes, total: bytes, visionError }),
         durationMs: Date.now() - started,
         finishedAt: new Date(),
       },
     });
-    console.log(`✓ downloaded ${model.name} to ${path}`);
+    console.log(`✓ downloaded ${model.name}${visionOnly ? "'s vision part" : ` to ${path}`}`);
   } catch (err) {
     const cancelled = controller.signal.aborted;
     const message = cancelled ? "Cancelled" : err instanceof Error ? err.message : String(err);

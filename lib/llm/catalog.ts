@@ -22,6 +22,8 @@ export interface LocalModel {
   speed: number;
   uri: string;
   blurb: string;
+  /** Takes images, so it can be shown the slides (lib/llm/vision.ts). */
+  vision?: boolean;
 }
 
 export const LOCAL_MODELS: readonly LocalModel[] = [
@@ -45,6 +47,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 6,
     speed: 4,
     uri: "hf:giladgd/gemma-4-E2B-it-GGUF:Q4_K_M",
+    vision: true,
     blurb: "Google's smallest Gemma 4. Good summaries on modest laptops.",
   },
   {
@@ -56,6 +59,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 10,
     speed: 3,
     uri: "hf:giladgd/gemma-4-E4B-it-GGUF:Q4_K_M",
+    vision: true,
     blurb: "A solid all-rounder: clear summaries and fair exam questions.",
   },
   {
@@ -67,6 +71,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 16,
     speed: 2,
     uri: "hf:giladgd/gemma-4-12B-it-GGUF:Q4_K_M",
+    vision: true,
     blurb: "A real step up in detail, marking and question quality.",
   },
   {
@@ -78,6 +83,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 24,
     speed: 3,
     uri: "hf:giladgd/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
+    vision: true,
     blurb: "Near-flagship quality, and quick for its size — it only runs part of itself per word.",
   },
   {
@@ -89,6 +95,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 32,
     speed: 1,
     uri: "hf:giladgd/gemma-4-31B-it-GGUF:Q4_K_M",
+    vision: true,
     blurb: "The most capable Gemma 4. Slow, but the most careful marker.",
   },
 ];

@@ -107,6 +107,26 @@ export function readSlideNotes(json: string | null): SlideNote[] {
   }
 }
 
+/**
+ * Slide text with what a model saw on each slide written in under it, for an offline
+ * model that only reads: the words inside pictures and what each figure shows.
+ */
+export function withSlideNotes(slidesText: string | undefined, notes: SlideNote[]): string | undefined {
+  if (notes.length === 0) return slidesText;
+  if (!slidesText?.trim()) return slideNotesText(notes);
+  const bySlide = new Map(notes.map((n) => [n.slide, n.notes]));
+  const used = new Set<number>();
+  const text = slidesText.replace(/^--- Slide (\d+) ---\n([\s\S]*?)(?=\n--- Slide \d+ ---|$)/gm, (block, n: string) => {
+    const seen = bySlide.get(Number(n));
+    if (!seen) return block;
+    used.add(Number(n));
+    return `${block.trimEnd()}\n[On this slide: ${seen}]\n`;
+  });
+  // Slides with no text at all (pictures only) are not in the text yet.
+  const rest = notes.filter((n) => !used.has(n.slide));
+  return rest.length ? `${text.trimEnd()}\n\n${slideNotesText(rest)}` : text;
+}
+
 /** Slide notes as the text a prompt reads in place of the extracted slide text. */
 export function slideNotesText(notes: SlideNote[]): string {
   return notes.map((n) => `--- Slide ${n.slide} ---\n${n.notes}`).join("\n\n");

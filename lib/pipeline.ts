@@ -6,7 +6,7 @@ import type { LlmProvider } from "@/lib/llm/provider";
 import { mergeSkipped } from "@/lib/parse/aims";
 import { getSettings } from "@/lib/settings";
 import { lectureDecks, sharingTitles } from "@/lib/slides";
-import { lectureSources, readSlideNotes, slideNotesText } from "@/lib/sources";
+import { lectureSources, readSlideNotes, slideNotesText, withSlideNotes, type SlideNote } from "@/lib/sources";
 
 /**
  * The steps the worker runs. Each reads what it needs fresh from the database and
@@ -15,7 +15,15 @@ import { lectureSources, readSlideNotes, slideNotesText } from "@/lib/sources";
  */
 
 /** Title, set-aside sections, summary and concepts for one lecture, in one model call. */
-export async function digestLecture(lectureId: string, opts: { keepSummary: boolean }, provider: LlmProvider) {
+export async function digestLecture(
+  lectureId: string,
+  opts: {
+    keepSummary: boolean;
+    /** What an offline model saw on each slide, looked at just before (lib/llm/vision.ts). */
+    visionNotes?: SlideNote[];
+  },
+  provider: LlmProvider,
+) {
   // Decks first: it counts the pages of any deck imported before page counts were kept.
   const decks = await lectureDecks(lectureId);
   const lecture = await prisma.lecture.findUniqueOrThrow({
@@ -37,7 +45,7 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
     titleIsPlaceholder: lecture.autoTitle,
     durationHours: lecture.durationHours,
     transcript: sources.transcript,
-    slidesText: sources.slidesText,
+    slidesText: opts.visionNotes?.length ? withSlideNotes(sources.slidesText, opts.visionNotes) : sources.slidesText,
     alreadySkipped: sources.skipped,
     existingConcepts: existing.map(({ id, name, definition }) => ({ id, name, definition })),
     slides: decks.length
@@ -49,7 +57,10 @@ export async function digestLecture(lectureId: string, opts: { keepSummary: bool
       : undefined,
   });
   const lastSlide = decks.reduce((n, d) => n + d.pages, 0);
-  const slideNotes = digest.slideNotes.filter((s) => s.slide >= 1 && s.slide <= lastSlide);
+  // A model that saw the slides writes its own notes; an offline one had them written for it.
+  const slideNotes = (digest.slideNotes.length ? digest.slideNotes : (opts.visionNotes ?? [])).filter(
+    (s) => s.slide >= 1 && s.slide <= lastSlide,
+  );
 
   const knownIds = new Set(existing.map((c) => c.id));
   const ownIds = new Set(existing.filter((c) => c.lectureId === lectureId).map((c) => c.id));

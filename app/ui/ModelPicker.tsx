@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { deleteLocalModel, downloadModel, stopDownload, switchLocalModel } from "@/app/actions";
+import { deleteLocalModel, downloadModel, downloadVision, stopDownload, switchLocalModel } from "@/app/actions";
 import { Icon } from "@/app/ui/Icon";
 import type { LocalModel } from "@/lib/llm/catalog";
 import type { DownloadState } from "@/lib/models";
@@ -117,7 +117,22 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
                 <span style={{ flex: 1 }}>
                   <span className="fname">{model?.name ?? i.id}</span>{" "}
                   <span className="small muted">· {gb(i.bytes)} on disk</span>
+                  {i.vision === "ready" && (
+                    <span className="tag t-blue" style={{ marginLeft: 8 }} title="It is shown each slide before writing the summary">
+                      Sees slides
+                    </span>
+                  )}
                 </span>
+                {i.vision === "missing" && (
+                  <button
+                    className="btn sm"
+                    disabled={pending || data.downloads.some((d) => d.modelId === i.id && (d.status === "PENDING" || d.status === "RUNNING"))}
+                    title="Downloads its vision part (under 1 GB) and llama.cpp's server, so it can look at the slides"
+                    onClick={() => act(() => downloadVision(i.id))}
+                  >
+                    Let it see slides
+                  </button>
+                )}
                 {data.active === i.id ? (
                   <span className="tag t-green">In use</span>
                 ) : (

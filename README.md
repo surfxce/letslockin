@@ -23,18 +23,26 @@ is due again.
    belong to rather than making a second copy of it. Or add one lecture by dropping in files
    or pasting the transcript.
 2. **Summary and LAQs**, one lecture at a time, in one of three modes (Settings):
-   - **Claude Code** — the worker runs Claude Code on this computer. A lecture is read once
-     to write its title, summary and concepts, then its LAQs are written; the next lecture
-     starts only when that one is done. The top bar always says what it is on and for how
-     long, and each lecture page shows its stages with start times.
+   - **Automatic** — the worker runs a cloud AI, chosen in Settings → Cloud AI:
+     **Claude Code** (Sonnet by default; Opus or Haiku), **ChatGPT Codex** (the `codex` CLI,
+     with a ChatGPT plan), **Google Antigravity** (the `agy` CLI, or the Gemini CLI it
+     replaced), or **an API key** — Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, or any
+     service that speaks OpenAI's chat format, such as Ollama. *Test it* sends one tiny
+     question to check it is set up. A lecture is read once to write its title, summary and
+     concepts, then its LAQs are written; the next lecture starts only when that one is done.
+     The top bar always says what it is on and for how long, each lecture page shows its
+     stages with start times, and the ⓘ by its number says which model wrote what. If the
+     cloud AI fails (signed out, over a limit, offline) and an offline model is downloaded,
+     that model does the job instead.
    - **On this computer** — the same, on an open model downloaded to this computer, so it
      works with no internet and no account. Slower; see [Offline AI](#offline-ai).
    - **Copy & paste** — no AI runs locally. Each lecture has *Copy prompt* buttons for any AI
      chat (the prompt carries the transcript) and boxes that turn the pasted reply into a
      formatted summary, LAQ cards, or coloured scores, with a live preview before saving.
 
-   **Slides are read as pictures, and shown in summaries.** In Claude Code mode, Claude opens
-   the PDF decks itself and sees each page, so text inside images, diagrams, graphs and
+   **Slides are read as pictures, and shown in summaries.** Every cloud AI sees the slides —
+   Claude and Gemini open the PDF decks, Codex and image-capable API models are shown each
+   page as a picture — so text inside images, diagrams, graphs and
    photos is read, not lost. Where a slide's figure helps, the summary shows it — the model
    writes `![what it shows](slide:12)` and Lockin puts the slide's picture there, drawn from
    the PDF the first time it is viewed. As it reads, Claude writes a note on each slide; the
@@ -45,13 +53,25 @@ is due again.
    their text but not pictures — export them as PDF for that.
 3. **Module aims are left out.** Slides that are a module's aims or learning objectives are
    dropped before any model sees them, and the prompts tell the model to ignore aims read
-   aloud, housekeeping and acknowledgements. Each lecture page lists what was left out.
-4. **Practise closed book.** *Start LAQs* asks two questions per lecture hour, weakest
-   concepts first. Answers are marked against the guide frozen when the question was written.
-   A sitting's score is the geometric mean of its marks, so one weak answer drags it down.
+   aloud, housekeeping and acknowledgements. Each lecture page lists what was left out, folded
+   to one line: hover a part to see what it said, click it to put it back in the summary.
+4. **Practise closed book.** *Start LAQs* asks two questions per lecture hour (Settings → LAQs
+   changes how many are written and asked, and their style: mixed, a short scenario, or
+   straight to the point), weakest concepts first. Answers save as you type, and a sitting
+   left unsubmitted is picked up again. They are marked against the guide frozen when the
+   question was written. A sitting's score is the geometric mean of its marks, so one weak
+   answer drags it down — and the result comes with a sheet of notes to copy down: what was
+   wrong (✗), partly right (~) and missed (+).
 5. **Come back when due.** Score 7+ and the gap grows (1 → 3 → 7 → 14 → 30 days); 5–7 holds;
    under 5 it is back tomorrow; everything lands before the exam date. Due lectures show at
    the top of the home page and as a badge, and as notifications if they are turned on.
+
+**Reading a summary.** The round **?** in the corner asks a question answered from the
+summary, and adds the answer under a heading of your choice. Select any text to have it
+**broken down**, then *Add to glossary*: the words are underlined wherever they appear and
+show the explanation on hover. **Edit** switches the summary to an editor — formatted, or as
+Markdown — with headings and dot points at three levels (Tab and Shift+Tab move a point).
+Lockin remembers how far down each summary you had read.
 
 The home page is a database of every lecture: sort by date, weakest first or due soonest,
 group by module (with each module's average) or status, and search.
@@ -84,9 +104,11 @@ npm run dev          # http://localhost:3000
 npm run worker       # the AI queue and model downloads — not needed in copy & paste mode
 ```
 
-Claude Code mode needs the Claude Code CLI: `npm i -g @anthropic-ai/claude-code`, then run
-`claude` once to sign in. `LOCKIN_MODEL` picks the model for summaries, LAQs and marking;
-`LOCKIN_SORT_MODEL` (default `haiku`) the one that sorts folders. Claude is given one tool,
+Claude Code needs its CLI: `npm i -g @anthropic-ai/claude-code`, then run `claude` once to
+sign in; Codex needs `npm i -g @openai/codex` and `codex login`; Antigravity needs its CLI
+from antigravity.google/cli and one run of `agy`. Settings picks the model; `LOCKIN_SORT_MODEL`
+(default `haiku`) is the one that sorts folders, and `LOCKIN_EFFORT` (default `medium`) how
+hard Claude Code thinks when preparing and marking. Claude is given one tool,
 reading files, and only in the folder of the lecture's slides. To try the app without model
 calls, run the worker with `LOCKIN_PROVIDER=fake`.
 
@@ -117,13 +139,18 @@ JSON, out-of-range marks or concept ids that do not exist. A transcript too long
 model's context is read in parts and condensed first; the lecture page says which part it
 is on.
 
-These models read text only — node-llama-cpp has no image input yet, though Gemma 4 itself
-can see. So before an offline model summarises a lecture, slides that are pictures (scans,
-slides exported as images) have their words read by text recognition on this computer
-(tesseract.js, with its English data bundled), and the result is kept in the deck's text,
-where Details & files shows it for correcting. The words on a graph or diagram are read;
-what it shows is not — that needs a model that can see, i.e. Claude Code. Slide pictures
-still appear in offline summaries, placed from the slides' text.
+**Gemma 4 sees the slides.** Gemma 4 takes images, but node-llama-cpp, which runs it, has
+no way to pass one in. So downloading a Gemma model also fetches its vision part (the
+"mmproj" file, from Hugging Face) and llama.cpp's own server (from its GitHub releases, or
+the `llama-server` already on PATH, e.g. `brew install llama.cpp`). Before the summary is
+written, that server is shown each slide and writes down every word on it and what each
+figure shows; those notes go into the text the summary is written from, and are kept for
+writing and marking LAQs. A model downloaded before this has a *Let it see slides* button in
+Settings.
+
+If that isn't there or fails, slides that are pictures have their words read by text
+recognition instead (tesseract.js, with its English data bundled), kept in the deck's text
+where Details & files shows it for correcting.
 
 - Models are saved in `models/` beside the source, or in the desktop app's data folder
   (`~/Library/Application Support/Lockin/models` on a Mac). Settings lists them, with

@@ -55,6 +55,21 @@ interface Runtime {
 let runtime: Runtime | null = null;
 /** A load in progress. Sorting runs beside preparing, and two lanes must not load twice. */
 let loading: Promise<Runtime> | null = null;
+/** Calls running on the loaded model, which must not be pulled from under them. */
+let inUse = 0;
+
+/**
+ * Frees the loaded model's memory — for llama.cpp's own server to load it with its
+ * vision part (lib/llm/vision.ts). The next call loads it again. Left loaded while
+ * anything is using it.
+ */
+export async function releaseLocalModel() {
+  if (loading) await loading.catch(() => undefined);
+  if (!runtime || inUse > 0) return;
+  const { model } = runtime;
+  runtime = null;
+  await model.dispose();
+}
 
 function load(modelPath: string): Promise<Runtime> {
   if (runtime?.modelPath === modelPath) return Promise.resolve(runtime);
@@ -240,6 +255,17 @@ const PAPER_SCHEMA: GbnfJsonSchema = {
   },
 };
 
+interface RunOpts<T> {
+  prompt: PromptName;
+  vars: (transcript: string) => Record<string, string>;
+  transcript?: string;
+  schema: GbnfJsonSchema;
+  zod: ZodType<T>;
+  maxTokens: number;
+  temperature: number;
+  quiet?: boolean;
+}
+
 export class LocalProvider implements LlmProvider {
   readonly name: string;
   readonly lastModel: string;
@@ -249,8 +275,10 @@ export class LocalProvider implements LlmProvider {
   private notes = new Map<string, string>();
 
   constructor(
-    private readonly modelPath: string,
+    readonly modelPath: string,
     private readonly modelName: string,
+    /** Its catalog id, for finding its vision part. */
+    readonly modelId: string,
   ) {
     this.name = `local:${modelName}`;
     this.lastModel = `Offline · ${modelName}`;
@@ -339,16 +367,16 @@ export class LocalProvider implements LlmProvider {
     this.onProgress?.(detail);
   }
 
-  private async run<T>(opts: {
-    prompt: PromptName;
-    vars: (transcript: string) => Record<string, string>;
-    transcript?: string;
-    schema: GbnfJsonSchema;
-    zod: ZodType<T>;
-    maxTokens: number;
-    temperature: number;
-    quiet?: boolean;
-  }): Promise<T> {
+  private async run<T>(opts: RunOpts<T>): Promise<T> {
+    inUse++;
+    try {
+      return await this.runLoaded(opts);
+    } finally {
+      inUse--;
+    }
+  }
+
+  private async runLoaded<T>(opts: RunOpts<T>): Promise<T> {
     const progress = (detail: string | null) => (opts.quiet ? undefined : this.progress(detail));
     if (!runtime || runtime.modelPath !== this.modelPath) progress(`loading ${this.modelName} into memory`);
     const { llama, model } = await load(this.modelPath);
