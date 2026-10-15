@@ -133,7 +133,11 @@ export default async function Home({
           <CourseMenu courses={courses.map((c) => ({ id: c.id, code: c.code, title: c.title }))} />
         )}
         {rows.some((r) => r.hasSummary) && (
-          <Link href={exportHref({ courseId: active?.id ?? null })} className="btn" title="Save summaries as a PDF">
+          <Link
+            href={exportHref({ courseId: active?.id ?? rows.find((r) => r.hasSummary)?.courseId ?? null })}
+            className="btn"
+            title="Save summaries as a PDF"
+          >
             <Icon name="download" /> Export PDF
           </Link>
         )}

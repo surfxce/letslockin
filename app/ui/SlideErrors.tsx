@@ -14,22 +14,25 @@ export function SlideErrors({ watch }: { watch: string }) {
       const figure = img.closest("figure");
       if (!figure || img.dataset.failed) return;
       img.dataset.failed = "1";
+      const src = img.src;
+      // Swap the picture for a note at once — a PDF being printed right now must not
+      // show a broken image — then add the server's reason when it comes.
+      (img.closest(".slide-shot") ?? img.closest("a") ?? img).remove();
+      if (!figure.querySelector("img")) figure.classList.add("missing");
+      const caption = figure.querySelector("figcaption");
+      if (!caption || caption.querySelector(".slide-error")) return;
+      const note = document.createElement("span");
+      note.className = "slide-error";
+      note.textContent = " — couldn't show this slide";
+      caption.append(note);
       let why = "";
       try {
-        const res = await fetch(img.src, { cache: "no-store" });
+        const res = await fetch(src, { cache: "no-store" });
         if (!res.ok) why = (await res.text()).trim();
       } catch {
         why = "Lockin's server didn't answer.";
       }
-      (img.closest(".slide-shot") ?? img.closest("a") ?? img).remove();
-      const caption = figure.querySelector("figcaption");
-      if (caption && !caption.querySelector(".slide-error")) {
-        const note = document.createElement("span");
-        note.className = "slide-error";
-        note.textContent = ` — couldn't show this slide${why ? `: ${why}` : ""}`;
-        caption.append(note);
-      }
-      if (!figure.querySelector("img")) figure.classList.add("missing");
+      if (why) note.textContent = ` — couldn't show this slide: ${why}`;
     };
     const imgs = [...document.querySelectorAll<HTMLImageElement>(".slide-fig img")];
     const listeners = imgs.map((img) => {

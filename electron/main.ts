@@ -248,17 +248,32 @@ async function savePdf(owner: BrowserWindow | null, pathname: unknown, title: un
     show: false,
     width: 1000,
     height: 1300,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      // The same bridge as the main window, so the page knows it is the desktop app and
+      // leaves reminders to this process rather than raising its own.
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
+  // It prints the export page and nothing else: no popups, links or redirects.
   printer.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  printer.webContents.on("will-navigate", (event) => event.preventDefault());
+  printer.webContents.on("will-redirect", (event) => event.preventDefault());
+  let timer: NodeJS.Timeout | undefined;
   try {
-    await printer.loadURL(`http://localhost:${PORT}${pathname}`);
-    // A course's worth of slides can take a while to draw the first time; past three
-    // minutes, print what there is rather than never finish.
-    await Promise.race([
-      printer.webContents.executeJavaScript(PICTURES_READY, true),
-      new Promise((done) => setTimeout(done, 180_000)),
-    ]);
+    // Loading waits for every picture, and a course's worth of slides can take a while
+    // to draw the first time; past three minutes, print what there is.
+    const loaded = (async () => {
+      await printer.loadURL(`http://localhost:${PORT}${pathname}`);
+      await printer.webContents.executeJavaScript(PICTURES_READY, true);
+    })();
+    loaded.catch(() => undefined);
+    await Promise.race([loaded, new Promise((done) => (timer = setTimeout(done, 180_000)))]);
+    if (new URL(printer.webContents.getURL()).pathname !== "/export") {
+      return { ok: false, message: "the export page didn't load" };
+    }
     const pdf = await printer.webContents.printToPDF({
       printBackground: true,
       // The page sets the paper size and margins the user chose.
@@ -276,6 +291,7 @@ async function savePdf(owner: BrowserWindow | null, pathname: unknown, title: un
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   } finally {
+    clearTimeout(timer);
     printer.destroy();
   }
 }
@@ -393,17 +409,20 @@ app.whenReady().then(async () => {
   ipcMain.handle("lockin:savePdf", (event, pathname: unknown, title: unknown) =>
     savePdf(BrowserWindow.fromWebContents(event.sender), pathname, title),
   );
+  // Each answers with what went wrong, or null.
   ipcMain.handle("lockin:openFile", async (_event, file: unknown) => {
-    if (typeof file !== "string" || !savedPdfs.has(file)) return;
-    const problem = await shell.openPath(file);
-    if (problem) throw new Error(problem);
+    if (typeof file !== "string" || !savedPdfs.has(file)) return "that isn't a PDF Lockin saved";
+    return (await shell.openPath(file)) || null;
   });
   ipcMain.handle("lockin:showFile", (_event, file: unknown) => {
-    if (typeof file === "string" && savedPdfs.has(file)) shell.showItemInFolder(file);
+    if (typeof file !== "string" || !savedPdfs.has(file)) return "that isn't a PDF Lockin saved";
+    shell.showItemInFolder(file);
+    return null;
   });
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    // Not "no windows at all": a PDF being printed has a hidden one.
+    if (!window) createWindow();
   });
 });
 

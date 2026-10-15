@@ -46,6 +46,15 @@ describe("renderMarkdown", () => {
     const html = renderMarkdown('<img src="x" onerror="alert(1)"><script>alert(2)</script>[a](javascript:alert(3))');
     expect(html).not.toMatch(/onerror|<script|javascript:/);
   });
+
+  it("strips tags that could send the page elsewhere", () => {
+    const html = renderMarkdown(
+      'Fine.\n\n<meta http-equiv="refresh" content="0;url=https://example.com/"><base href="https://example.com/">' +
+        '<link rel="stylesheet" href="https://example.com/x.css"><form action="https://example.com/">Hi</form>',
+    );
+    expect(html).not.toMatch(/<meta|<base|<link|<form|<\/form/i);
+    expect(html).toContain("Fine.");
+  });
 });
 
 describe("crops", () => {

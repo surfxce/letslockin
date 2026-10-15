@@ -570,7 +570,7 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 /* ----- Export: summaries as a PDF ----- */
 .export-panel, .export-doc { max-width: 210mm; margin-left: auto; margin-right: auto; }
 .export-options { display: grid; gap: 12px; margin: 18px 0 16px; }
-.export-options[aria-busy="true"] + .export-save .btn.primary { opacity: 0.6; }
+.export-fieldset { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .export-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
 .export-row .lab { width: 62px; font-size: 13px; color: var(--text-soft); }
 .export-picks { margin-left: 76px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 8px; max-height: 300px; overflow: auto; }
@@ -606,8 +606,13 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .export-glossary dl > div { display: grid; grid-template-columns: minmax(110px, 28%) minmax(0, 1fr); gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--rule); break-inside: avoid; font-size: 14px; }
 .export-glossary dt { font-weight: 600; }
 .export-glossary dd { margin: 0; }
+.export-glossary .export-gl-text { font-size: 14px; line-height: 1.55; }
+.export-glossary .export-gl-text :is(p, ul, ol) { margin: 0 0 4px; }
+.export-glossary .export-gl-text > :last-child { margin-bottom: 0; }
 /* Nothing scrolls on paper: tables and code wrap instead. */
 .export-doc .prose table { display: table; }
+/* FitToPage marks a table too wide for the page: its words wrap anywhere instead. */
+.export-doc .prose table.wide :is(th, td) { overflow-wrap: anywhere; font-size: 12.5px; }
 .export-doc .prose pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .export-doc .prose :is(h1, h2, h3, h4) { break-after: avoid; }
 .export-doc :is(.slide-fig, .prose tr, .prose pre, .prose blockquote) { break-inside: avoid; }
@@ -620,6 +625,6 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
   .export-panel { display: none; }
   .export-doc { max-width: none; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
   .export-doc .export-lecture + .export-lecture, .export-doc .export-cover + .export-lecture { margin-top: 0; padding-top: 0; border-top: 0; }
-  /* A tall crop still fits on its page. */
-  .export-doc .slide-fig img { max-height: 125mm; object-fit: contain; }
+  /* FitToPage narrows a tall picture to fit its page; this is the fallback without it. */
+  .export-doc .slide-fig img { max-height: 140mm; object-fit: contain; }
 }

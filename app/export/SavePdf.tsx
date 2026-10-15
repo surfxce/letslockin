@@ -40,31 +40,42 @@ export function SavePdf({
   title,
   count,
   leftOut,
+  href,
   scope,
+  pending,
 }: {
   title: string;
   count: number;
   leftOut: number;
+  /** The export page's address for what the document below shows. */
+  href: string;
   scope: ExportScope;
+  /** A changed option is still on its way to the preview: saving now would save the old one. */
+  pending: boolean;
 }) {
   const [state, setState] = useState<State>({ kind: "idle" });
   const [desktop, setDesktop] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- window only exists after mount
   useEffect(() => setDesktop(!!window.lockin?.savePdf), []);
-  // A different export starts afresh.
-  const [stateFor, setStateFor] = useState(title);
-  if (stateFor !== title) {
-    setStateFor(title);
+
+  const busy = state.kind === "loading" || state.kind === "saving";
+  // A different export starts afresh — once a save under way has finished.
+  const [stateFor, setStateFor] = useState(href);
+  if (stateFor !== href && !busy) {
+    setStateFor(href);
     setState({ kind: "idle" });
   }
 
-  const busy = state.kind === "loading" || state.kind === "saving";
+  const open = async (file: string, how: "open" | "show") => {
+    const problem = await (how === "open" ? window.lockin?.openFile?.(file) : window.lockin?.showFile?.(file));
+    if (problem) setState({ kind: "error", message: problem });
+  };
 
   const save = async () => {
     if (window.lockin?.savePdf) {
       setState({ kind: "saving" });
       const result = await window.lockin
-        .savePdf(location.pathname + location.search, title)
+        .savePdf(href, title)
         .catch((err: unknown) => ({ ok: false as const, message: err instanceof Error ? err.message : String(err) }));
       if (!result) setState({ kind: "idle" });
       else if (result.ok) setState({ kind: "saved", path: result.path, name: result.name });
@@ -82,8 +93,13 @@ export function SavePdf({
   return (
     <div className="export-save">
       <div className="row" style={{ gap: 10 }}>
-        <button type="button" className="btn primary lg" disabled={count === 0 || busy} onClick={() => void save()}>
-          <Icon name="download" /> {state.kind === "saving" ? "Making the PDF…" : "Save as PDF"}
+        <button
+          type="button"
+          className="btn primary lg"
+          disabled={count === 0 || busy || pending}
+          onClick={() => void save()}
+        >
+          <Icon name="download" /> {state.kind === "saving" ? "Making the PDF…" : pending ? "Updating…" : "Save as PDF"}
         </button>
         <span className="small muted">
           {count === 0 ? nothing : `${count === 1 ? "1 lecture" : `${count} lectures`}`}
@@ -104,10 +120,10 @@ export function SavePdf({
       {state.kind === "saved" && (
         <p className="small" role="status">
           <span className="result ok">Saved {state.name}.</span>{" "}
-          <button type="button" className="btn sm" onClick={() => void window.lockin?.openFile?.(state.path)}>
+          <button type="button" className="btn sm" onClick={() => void open(state.path, "open")}>
             Open it
           </button>{" "}
-          <button type="button" className="btn sm quiet" onClick={() => void window.lockin?.showFile?.(state.path)}>
+          <button type="button" className="btn sm quiet" onClick={() => void open(state.path, "show")}>
             Show in folder
           </button>
         </p>

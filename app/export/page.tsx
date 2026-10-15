@@ -3,12 +3,14 @@ import Link from "next/link";
 import { cache } from "react";
 
 import { ExportOptions } from "@/app/export/ExportOptions";
-import { SavePdf } from "@/app/export/SavePdf";
+import { FitToPage } from "@/app/export/FitToPage";
 import { Tag } from "@/app/ui/bits";
 import { Markdown } from "@/app/ui/render";
+import { SlideErrors } from "@/app/ui/SlideErrors";
 import { loadExport, type ExportData } from "@/lib/export-data";
 import { exportHref, PAPER, parseExportParams, type ExportRequest } from "@/lib/export";
 import { longDate, plural, tagTone } from "@/lib/format";
+import { renderMarkdown, type SlideImages } from "@/lib/markdown";
 
 export const dynamic = "force-dynamic";
 
@@ -82,8 +84,8 @@ export default async function ExportPage({ searchParams }: { searchParams: Searc
               choices={data.choices}
               scope={data.scope}
               moduleId={data.module?.id ?? null}
+              save={{ title: data.title, count: lectures.length, leftOut: data.leftOut, href: exportHref(request) }}
             />
-            <SavePdf title={data.title} count={lectures.length} leftOut={data.leftOut} scope={data.scope} />
           </>
         )}
       </div>
@@ -91,6 +93,15 @@ export default async function ExportPage({ searchParams }: { searchParams: Searc
       {course && lectures.length > 0 && <ExportDocument data={data} request={request} />}
     </main>
   );
+}
+
+/**
+ * A summary under its lecture's title. Its own top-level headings step down a level,
+ * so the PDF's bookmarks keep one top-level entry per lecture.
+ */
+function Summary({ md, slides }: { md: string; slides?: SlideImages }) {
+  const html = renderMarkdown(md, slides).replace(/<(\/?)h1(?=[\s>])/g, "<$1h2");
+  return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function ExportDocument({ data, request }: { data: ExportData; request: ExportRequest }) {
@@ -139,7 +150,7 @@ function ExportDocument({ data, request }: { data: ExportData; request: ExportRe
             {l.moduleTitle ? ` · ${l.moduleTitle}` : ""} · {longDate(l.deliveredOn)}
           </p>
           <h1 className="export-title">{l.title}</h1>
-          <Markdown md={l.summaryMd} slides={l.slides} />
+          <Summary md={l.summaryMd} slides={l.slides} />
           {request.glossary && l.glossary.length > 0 && (
             <section className="export-glossary">
               <h2>Glossary</h2>
@@ -147,7 +158,9 @@ function ExportDocument({ data, request }: { data: ExportData; request: ExportRe
                 {l.glossary.map((t, i) => (
                   <div key={`${i}:${t.term}`}>
                     <dt>{t.term}</dt>
-                    <dd>{t.explanation}</dd>
+                    <dd>
+                      <Markdown md={t.explanation} className="prose export-gl-text" />
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -155,6 +168,8 @@ function ExportDocument({ data, request }: { data: ExportData; request: ExportRe
           )}
         </section>
       ))}
+      <FitToPage watch={exportHref(request)} />
+      {request.pictures && <SlideErrors watch={exportHref(request)} />}
     </article>
   );
 }

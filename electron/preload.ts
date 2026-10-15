@@ -11,6 +11,6 @@ contextBridge.exposeInMainWorld("lockin", {
   desktop: true,
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke("lockin:pickFolder"),
   savePdf: (pathname: string, title: string) => ipcRenderer.invoke("lockin:savePdf", pathname, title),
-  openFile: (file: string): Promise<void> => ipcRenderer.invoke("lockin:openFile", file),
-  showFile: (file: string): Promise<void> => ipcRenderer.invoke("lockin:showFile", file),
+  openFile: (file: string): Promise<string | null> => ipcRenderer.invoke("lockin:openFile", file),
+  showFile: (file: string): Promise<string | null> => ipcRenderer.invoke("lockin:showFile", file),
 });

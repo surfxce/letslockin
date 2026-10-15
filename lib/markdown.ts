@@ -119,6 +119,8 @@ export function renderMarkdown(md: string, slides?: SlideImages): string {
   let figure = -1;
   return html
     .replace(/<\s*(script|iframe|object|embed|style)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    // Tags that could send the page elsewhere or pull in more: a <meta> refresh, a <base>…
+    .replace(/<\s*\/?\s*(meta|base|link|form)\b[^>]*>/gi, "")
     .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "")
     .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"')
     .replace(/<img src="([^"]*)" alt="([^"]*)"(?: title="[^"]*")?\s*\/?>/g, (tag, src: string, alt: string) => {

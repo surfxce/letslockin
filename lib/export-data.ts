@@ -116,7 +116,8 @@ export async function loadExport(request: ExportRequest): Promise<ExportData> {
     const picked = new Set(request.lectureIds);
     scope = "lectures";
     inScope = choices.filter((c) => picked.has(c.id));
-  } else if (request.moduleId === NO_MODULE) {
+  } else if (request.moduleId === NO_MODULE && modules.length > 0) {
+    // Only when the course has modules: without any, "no module" is the whole course.
     scope = "module";
     chosen = { id: NO_MODULE, title: OTHER_LECTURES };
     inScope = choices.filter((c) => !c.moduleId);

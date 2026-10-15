@@ -12,9 +12,9 @@ declare global {
         pathname: string,
         title: string,
       ): Promise<{ ok: true; path: string; name: string } | { ok: false; message: string } | null>;
-      /** Only files savePdf saved this session. */
-      openFile?(path: string): Promise<void>;
-      showFile?(path: string): Promise<void>;
+      /** Only files savePdf saved this session; resolves to what went wrong, if anything. */
+      openFile?(path: string): Promise<string | null>;
+      showFile?(path: string): Promise<string | null>;
     };
     /** Set while answering closed-book, so a background refresh never disturbs typing. */
     __lockinHoldRefresh?: boolean;
