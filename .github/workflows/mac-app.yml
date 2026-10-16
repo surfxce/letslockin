@@ -28,7 +28,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build Lockin.dmg
-        run: npm run dmg
+        run: npm run dmg -- --publish never
         env:
           DATABASE_URL: file:./prisma/build.db
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
