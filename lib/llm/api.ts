@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import Anthropic from "@anthropic-ai/sdk";
 
+import { jobSignal, timeoutOrCancel } from "@/lib/llm/cancel";
 import {
   CloudError,
   decksNote,
@@ -68,13 +69,16 @@ export class AnthropicApiProvider extends PromptProvider {
     const fallback = this.model !== API_CLAUDE_MODELS.haiku;
     try {
       const message = await this.client.beta.messages
-        .stream({
-          model: this.model,
-          max_tokens: isQuick(opts.task) ? 8000 : 64000,
-          output_config: { effort: isQuick(opts.task) ? "low" : "medium" },
-          messages: [{ role: "user", content }],
-          ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-        })
+        .stream(
+          {
+            model: this.model,
+            max_tokens: isQuick(opts.task) ? 8000 : 64000,
+            output_config: { effort: isQuick(opts.task) ? "low" : "medium" },
+            messages: [{ role: "user", content }],
+            ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+          },
+          { signal: jobSignal() },
+        )
         .finalMessage();
       if (message.stop_reason === "refusal") {
         throw new CloudError(`Claude declined this: ${message.stop_details?.explanation ?? "no reason given"}`);
@@ -144,7 +148,7 @@ export class OpenAiCompatibleProvider extends PromptProvider {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}) },
         body: JSON.stringify({ model: this.model, messages: [{ role: "user", content }] }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: timeoutOrCancel(TIMEOUT_MS),
       });
     } catch (err) {
       throw new CloudError(`Couldn't reach ${this.service}: ${err instanceof Error ? err.message : err}`);

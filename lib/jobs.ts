@@ -69,6 +69,18 @@ export async function clearQueue(lectureId?: string) {
   return count;
 }
 
+/**
+ * Stops a lecture's job. One still waiting leaves the queue; the one running is stopped
+ * by the worker within a couple of seconds, wherever it is — so a lecture going slowly
+ * on the offline model can be cancelled and prepared again on the cloud.
+ */
+export async function cancelJob(jobId: string) {
+  await prisma.job.updateMany({
+    where: { id: jobId, status: { in: ["PENDING", "RUNNING"] }, kind: { in: ["PREPARE", "GENERATE", "MARK"] } },
+    data: { status: "FAILED", error: "Cancelled", finishedAt: new Date() },
+  });
+}
+
 export async function retryJob(jobId: string) {
   await prisma.job.update({
     where: { id: jobId },

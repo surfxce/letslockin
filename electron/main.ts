@@ -25,6 +25,12 @@ const DEV = process.env.LOCKIN_DEV === "1";
 const PORT = Number(process.env.LOCKIN_PORT ?? 3579);
 
 const PACKAGED = app.isPackaged;
+
+// Run from the repo, the app is Electron's own binary and would call itself "Electron"
+// in menus, notifications and dialogs. Its browser storage (reading places, table
+// views) stays where it has always been, under Electron's name.
+if (!PACKAGED) app.setPath("userData", app.getPath("userData"));
+app.setName("Lockin");
 const ROOT = PACKAGED ? app.getAppPath() : path.resolve(__dirname, "..", "..");
 /** Read-only things that ship with the app: prompt files and migration SQL. */
 const RESOURCES = PACKAGED ? process.resourcesPath : ROOT;
@@ -354,6 +360,8 @@ const script = (packagedPath: string, devScript: string, devArgs: string[] = [])
     : { file: devScript, args: devArgs };
 
 app.whenReady().then(async () => {
+  // The packaged app has its icon in its bundle; from the repo, show it in the dock.
+  if (!PACKAGED && process.platform === "darwin") app.dock?.setIcon(path.join(ROOT, "build", "icon.png"));
   buildMenu();
   // Windows only shows notifications for an app with a registered id.
   if (process.platform === "win32") app.setAppUserModelId("app.lockin");

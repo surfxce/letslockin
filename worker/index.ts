@@ -24,6 +24,7 @@ import { downloadModelFile, modelSource } from "@/lib/llm/download";
 import { activeLocalModel, fallbackLocalModel, modelsDir, registerModel } from "@/lib/models";
 import { LocalProvider, releaseLocalModel } from "@/lib/llm/local";
 import { installMmproj, installServer, lookAtSlides, visionParts } from "@/lib/llm/vision";
+import { JobCancelled, jobSignal, runCancellable } from "@/lib/llm/cancel";
 import { readSlidePictures } from "@/lib/ocr";
 import { lectureDecks } from "@/lib/slides";
 import type { SlideNote } from "@/lib/sources";
@@ -124,6 +125,7 @@ async function lookLocally(
     result.slidesSeen = notes.length;
     return notes;
   } catch (err) {
+    if (jobSignal()?.aborted) throw new JobCancelled();
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`couldn't show the slides to the offline model (${message}); reading them as text instead`);
     result.visionFailed = message;
@@ -160,6 +162,8 @@ async function withFallback<T>(
   try {
     return { result: await work(primary), used: primary, fellBack: null };
   } catch (err) {
+    // Cancelled on purpose: nothing to fall back from.
+    if (jobSignal()?.aborted) throw err;
     const cloudFailed =
       err instanceof CloudError || (err instanceof Error && (err.name === "ZodError" || err instanceof SyntaxError));
     const { mode, fallbackLocal } = await getSettings();
@@ -199,18 +203,27 @@ async function runOne(): Promise<boolean> {
   const progress = (detail: string | null) => void setStageDetail(job.id, detail).catch(() => undefined);
   provider.onProgress = progress;
   let fallback: LlmProvider | null = null;
+  // Cancelling is a status change made by the server (the × in the AI panel); watch for it.
+  const controller = new AbortController();
+  const watch = setInterval(async () => {
+    const now = await prisma.job.findUnique({ where: { id: job.id }, select: { status: true } }).catch(() => null);
+    if (!now || now.status !== "RUNNING") controller.abort();
+  }, 1500);
   try {
     if (!handler) throw new Error(`no handler for job kind "${job.kind}"`);
     const payload = JSON.parse(job.payload);
-    const { result, used, fellBack } = await withFallback(
-      provider,
-      (p) => handler(payload, job.id, p),
-      (_why, local) => {
-        fallback = local;
-        local.onProgress = progress;
-        progress("The cloud AI failed — the offline model is doing it instead");
-      },
+    const { result, used, fellBack } = await runCancellable(controller.signal, () =>
+      withFallback(
+        provider,
+        (p) => handler(payload, job.id, p),
+        (_why, local) => {
+          fallback = local;
+          local.onProgress = progress;
+          progress("The cloud AI failed — the offline model is doing it instead");
+        },
+      ),
     );
+    if (controller.signal.aborted) throw new JobCancelled();
     const current = await prisma.job.findUnique({ where: { id: job.id }, select: { steps: true } });
     await prisma.job.update({
       where: { id: job.id },
@@ -228,6 +241,14 @@ async function runOne(): Promise<boolean> {
     });
     console.log(`✓ ${job.kind} ${job.id} on ${used.name} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
   } catch (err) {
+    if (controller.signal.aborted) {
+      // The server already marked it cancelled.
+      await prisma.job
+        .updateMany({ where: { id: job.id }, data: { stage: null, durationMs: Date.now() - started } })
+        .catch(() => undefined);
+      console.log(`■ ${job.kind} ${job.id} cancelled`);
+      return true;
+    }
     const message = err instanceof Error ? err.message : String(err);
     const giveUp = job.attempts >= MAX_ATTEMPTS;
     // The lecture may have been deleted mid-run, which deletes this job with it.
@@ -246,6 +267,7 @@ async function runOne(): Promise<boolean> {
       .catch(() => undefined);
     console.error(`✗ ${job.kind} ${job.id} attempt ${job.attempts}: ${message}`);
   } finally {
+    clearInterval(watch);
     provider.onProgress = undefined;
     if (fallback) (fallback as LlmProvider).onProgress = undefined;
   }
@@ -305,6 +327,8 @@ async function downloadOne(): Promise<boolean> {
       try {
         console.log(`↓ vision part for ${model.name}`);
         await installMmproj(modelsDir(), model, (d, t) => report(d, t, "vision"), controller.signal);
+        lastWrite = 0;
+        report(0, 0, "server");
         await installServer(modelsDir(), controller.signal);
       } catch (err) {
         if (controller.signal.aborted) throw err;

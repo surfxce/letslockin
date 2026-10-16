@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { clearQueueAction, retryJobAction } from "@/app/actions";
+import { cancelJobAction, clearQueueAction, retryJobAction } from "@/app/actions";
 import type { StatusPayload } from "@/lib/payloads";
 import { Icon } from "@/app/ui/Icon";
 import { Menu } from "@/app/ui/Menu";
@@ -127,11 +127,21 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
   return (
     <>
       {dl && (
-        <Link href="/settings#local" className="activity busy" title="Downloading an offline model">
+        <Link
+          href="/settings#local"
+          className="activity busy"
+          title={
+            dl.part
+              ? `${dl.name} is downloaded; now the part that lets it see slides`
+              : "Downloading an offline model"
+          }
+        >
           <Icon name="download" size={13} />
           <span className="label">
             {dl.name}
-            {dl.total > 0 ? ` · ${Math.floor((dl.downloaded / dl.total) * 100)}%` : " · starting"}
+            {dl.part === "server"
+              ? " · vision · setting up"
+              : `${dl.part === "vision" ? " · vision" : ""}${dl.total > 0 ? ` · ${Math.floor((dl.downloaded / dl.total) * 100)}%` : " · starting"}`}
           </span>
         </Link>
       )}
@@ -251,6 +261,14 @@ function JobLine({ job, now, detailed }: { job: ActivityJob; now: number; detail
             {job.courseCode ? ` · ${job.courseCode}` : ""}
           </div>
         </Link>
+        {job.status === "RUNNING" && (
+          <form action={cancelJobAction} className="job-cancel">
+            <input type="hidden" name="jobId" value={job.id} />
+            <button type="submit" className="icon-btn" title="Cancel — stop working on this lecture" aria-label="Cancel this job">
+              <Icon name="x" size={14} />
+            </button>
+          </form>
+        )}
         <span className="when">
           {job.status === "RUNNING" && job.startedAt
             ? `started ${clockTime(job.startedAt)}`

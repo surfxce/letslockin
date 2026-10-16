@@ -1,3 +1,4 @@
+import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
   AskInput,
@@ -22,8 +23,16 @@ export class FakeProvider implements LlmProvider {
 
   constructor(private readonly delayMs = Number(process.env.LOCKIN_FAKE_DELAY_MS ?? 1500)) {}
 
+  /** Stands in for a model call, so it stops on cancel the way a real one does. */
   private wait() {
-    return new Promise((r) => setTimeout(r, this.delayMs));
+    return new Promise<void>((resolve, reject) => {
+      const signal = jobSignal();
+      const timer = setTimeout(resolve, this.delayMs);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new JobCancelled());
+      }, { once: true });
+    });
   }
 
   async digest(input: DigestInput): Promise<Digest> {

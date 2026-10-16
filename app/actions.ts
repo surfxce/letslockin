@@ -11,7 +11,7 @@ import { pickQuestions } from "@/lib/engines/attempt";
 import { geometricMean } from "@/lib/engines/geomean";
 import { fromDateInput } from "@/lib/format";
 import { groupFiles, titleFromFilename, type ProposedLecture } from "@/lib/group";
-import { clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jobs";
+import { cancelJob, clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jobs";
 import { ingestFile } from "@/lib/materials";
 import { checksum } from "@/lib/parse";
 import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
@@ -441,6 +441,11 @@ export async function writeMoreLaqs(fd: FormData) {
 
 export async function clearQueueAction(fd: FormData) {
   await clearQueue(str(fd, "lectureId") || undefined);
+  refreshAll();
+}
+
+export async function cancelJobAction(fd: FormData) {
+  await cancelJob(str(fd, "jobId"));
   refreshAll();
 }
 

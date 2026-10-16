@@ -1,0 +1,49 @@
+# Builds Lockin.dmg on a Mac (a .dmg can only be made on macOS) and publishes it as the
+# "Lockin for Mac" release, so the latest build is always one download away:
+# https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg
+name: Mac app
+
+on:
+  push:
+    branches: [main, claude/blissful-carson-5hdqo3]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build Lockin.dmg
+        run: npm run dmg
+        env:
+          DATABASE_URL: file:./prisma/build.db
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lockin-mac
+          path: release/Lockin.dmg
+          if-no-files-found: error
+      - name: Publish as the latest Mac build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete mac-latest --yes --cleanup-tag || true
+          gh release create mac-latest release/Lockin.dmg \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Lockin for Mac (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so the first time, right-click Lockin in Applications and choose Open."

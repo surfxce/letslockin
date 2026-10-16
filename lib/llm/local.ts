@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
+import { jobSignal } from "@/lib/llm/cancel";
 import {
   askVars,
   digestVars,
@@ -411,6 +412,7 @@ export class LocalProvider implements LlmProvider {
         maxTokens: Math.max(256, Math.min(opts.maxTokens, context.contextSize - count(rendered.text) - OVERHEAD_TOKENS)),
         temperature: opts.temperature,
         budgets: { thoughtTokens: 0 },
+        signal: jobSignal(),
         onTextChunk: (chunk) => {
           words += chunk.split(/\s+/).filter(Boolean).length;
           if (Date.now() - last > 2000) {
@@ -468,7 +470,7 @@ export class LocalProvider implements LlmProvider {
               `lecturer's exact terms, and mark anything the lecturer calls examinable. Keep the timestamp at the ` +
               `start of each point. Leave out filler, repetition, module aims and housekeeping. Use at most about ` +
               `${Math.round(perChunk * 0.7)} words.\n\n${chunk}`,
-            { maxTokens: perChunk, temperature: 0.2, budgets: { thoughtTokens: 0 } },
+            { maxTokens: perChunk, temperature: 0.2, budgets: { thoughtTokens: 0 }, signal: jobSignal() },
           ),
         );
       } finally {

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import { CloudError } from "@/lib/llm/base";
+import { JobCancelled, killOnCancel } from "@/lib/llm/cancel";
 
 export interface ProcessResult {
   stdout: string;
@@ -28,14 +29,17 @@ export function runTool(
       child.kill("SIGKILL");
       reject(new CloudError(`${opts.what} gave no answer after ${Math.round(opts.timeoutMs / 1000)}s`));
     }, opts.timeoutMs);
+    const unhook = killOnCancel(child, () => reject(new JobCancelled()));
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));
     child.on("error", (err) => {
       clearTimeout(timer);
+      unhook();
       reject(new CloudError(`could not run "${binary}" (${err.message}). ${opts.install}`));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      unhook();
       resolve({ stdout, stderr, code });
     });
     child.stdin.on("error", () => undefined); // a tool that exits early closes stdin; its exit code says why

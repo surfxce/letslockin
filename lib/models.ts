@@ -87,12 +87,14 @@ export interface DownloadState {
   status: string;
   downloaded: number;
   total: number;
+  /** What is downloading after the model itself: its vision part, then llama.cpp's server. */
+  part: "vision" | "server" | null;
   error: string | null;
 }
 
 function toState(job: { id: string; payload: string; status: string; result: string | null; error: string | null }): DownloadState {
-  const payload = JSON.parse(job.payload) as { modelId: string };
-  let progress = { downloaded: 0, total: 0 };
+  const payload = JSON.parse(job.payload) as { modelId: string; visionOnly?: boolean };
+  let progress: { downloaded: number; total: number; part?: string } = { downloaded: 0, total: 0 };
   try {
     if (job.result) progress = { ...progress, ...JSON.parse(job.result) };
   } catch {
@@ -105,6 +107,7 @@ function toState(job: { id: string; payload: string; status: string; result: str
     status: job.status,
     downloaded: progress.downloaded,
     total: progress.total,
+    part: progress.part === "server" ? "server" : progress.part === "vision" || payload.visionOnly ? "vision" : null,
     error: job.error,
   };
 }

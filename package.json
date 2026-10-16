@@ -69,7 +69,8 @@
     "productName": "Lockin",
     "asar": false,
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "**/*",
@@ -105,7 +106,13 @@
         "dmg"
       ],
       "category": "public.app-category.education",
-      "identity": null
+      "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "artifactName": "Lockin.dmg",
+      "title": "Lockin"
     },
     "npmRebuild": false
   },

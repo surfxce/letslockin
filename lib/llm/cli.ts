@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ZodType } from "zod";
 
 import { CloudError } from "@/lib/llm/base";
+import { JobCancelled, killOnCancel } from "@/lib/llm/cancel";
 import {
   askVars,
   digestVars,
@@ -123,6 +124,8 @@ function runClaude(
       child.kill("SIGKILL");
       reject(new ClaudeCliError(`claude timed out after ${cfg.timeoutMs}ms`));
     }, cfg.timeoutMs);
+    const unhook = killOnCancel(child, () => reject(new JobCancelled()));
+    child.on("close", unhook);
 
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));

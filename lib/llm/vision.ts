@@ -6,6 +6,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+import { throwIfCancelled, timeoutOrCancel } from "@/lib/llm/cancel";
 import type { LocalModel } from "@/lib/llm/catalog";
 import type { SlidesInfo } from "@/lib/llm/provider";
 import type { SlideNote } from "@/lib/sources";
@@ -273,6 +274,7 @@ export async function lookAtSlides(
     await waitUntilUp(base, child, 5 * 60_000);
     const notes: SlideNote[] = [];
     for (const [i, p] of pictures.entries()) {
+      throwIfCancelled();
       onProgress?.(`looking at slide ${i + 1} of ${pictures.length}`);
       const png = (await readFile(p.file)).toString("base64");
       const res = await fetch(`${base}/v1/chat/completions`, {
@@ -291,7 +293,7 @@ export async function lookAtSlides(
           max_tokens: 350,
           temperature: 0.1,
         }),
-        signal: AbortSignal.timeout(5 * 60_000),
+        signal: timeoutOrCancel(5 * 60_000),
       });
       if (!res.ok) throw new Error(`llama-server answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
       const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
