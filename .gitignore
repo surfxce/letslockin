@@ -58,3 +58,6 @@ materials/
 
 # packaged output
 /release/
+
+# written by scripts/build-info.mjs for each build
+/build-info.json

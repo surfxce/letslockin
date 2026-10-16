@@ -15,11 +15,11 @@
     "db:studio": "prisma studio",
     "worker": "tsx worker/index.ts",
     "ingest": "tsx scripts/ingest.ts",
-    "electron:build": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist/electron --out-extension:.js=.cjs",
+    "electron:build": "esbuild electron/boot.ts electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist/electron --out-extension:.js=.cjs",
     "desktop": "prisma generate && npm run electron:build && next build && LOCKIN_PORT=3579 electron .",
     "desktop:dev": "prisma generate && npm run electron:build && LOCKIN_DEV=1 LOCKIN_PORT=3579 electron .",
     "dist:bundle": "esbuild worker/index.ts scripts/migrate.ts --bundle --platform=node --format=cjs --target=node22 --outdir=dist --out-extension:.js=.cjs --external:better-sqlite3 --external:@prisma/adapter-better-sqlite3 --external:@napi-rs/canvas --external:tesseract.js --external:@tesseract.js-data/eng --external:unpdf --tsconfig=tsconfig.json",
-    "dmg": "prisma generate && npm run electron:build && npm run dist:bundle && next build --webpack && npm run rebuild:electron && electron-builder --mac dmg",
+    "dmg": "node scripts/build-info.mjs && prisma generate && npm run electron:build && npm run dist:bundle && next build --webpack && npm run rebuild:electron && electron-builder --mac dmg",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
@@ -63,7 +63,7 @@
     "typescript": "^5",
     "vitest": "^4.1.11"
   },
-  "main": "dist/electron/main.cjs",
+  "main": "dist/electron/boot.cjs",
   "build": {
     "appId": "app.lockin",
     "productName": "Lockin",

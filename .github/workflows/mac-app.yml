@@ -1,5 +1,6 @@
 # Builds Lockin.dmg on a Mac (a .dmg can only be made on macOS) and publishes it as the
-# "Lockin for Mac" release, so the latest build is always one download away:
+# "Lockin for Mac" release, so the latest build is always one download away — and, with
+# lockin-update.tar.gz and update.json beside it, one click away in Settings → Updates:
 # https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg
 name: Mac app
 
@@ -32,17 +33,22 @@ jobs:
         env:
           DATABASE_URL: file:./prisma/build.db
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Pack the in-app update
+        run: node scripts/pack-update.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: Lockin-mac
-          path: release/Lockin.dmg
+          path: |
+            release/Lockin.dmg
+            release/lockin-update.tar.gz
+            release/update.json
           if-no-files-found: error
       - name: Publish as the latest Mac build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete mac-latest --yes --cleanup-tag || true
-          gh release create mac-latest release/Lockin.dmg \
+          gh release create mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Lockin for Mac (latest build)" \

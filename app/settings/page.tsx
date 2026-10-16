@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AppUpdate } from "@/app/settings/AppUpdate";
 import { CloudSettings } from "@/app/settings/CloudSettings";
 import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
@@ -109,6 +110,8 @@ export default async function SettingsPage() {
         any of them switches Lockin to it when it finishes.
       </p>
       <ModelPicker initial={models} showInstalled />
+
+      <AppUpdate />
 
       <h2>Getting started</h2>
       <div className="setting">

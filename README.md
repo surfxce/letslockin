@@ -90,7 +90,11 @@ group by module (with each module's average) or status, and search.
 **Download it for Mac:** [Lockin.dmg](https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg)
 (Apple Silicon), built by GitHub from the latest code. Open it, drag Lockin into
 Applications, and the first time right-click it there and choose *Open* — it isn't signed
-by Apple. To rebuild it from a terminal on a Mac, run `npm run dmg`.
+by Apple. After that, **Settings → Updates** keeps it current: each build also publishes
+a few-MB update of Lockin's own code, which installs with one click and a restart (kept in
+the app's data folder; the app bundle itself is never changed). Only a build that needs a
+newer Electron or new libraries asks for the full .dmg again. To rebuild it from a
+terminal on a Mac, run `npm run dmg`.
 
 **Desktop app from this folder** (starts the server, the worker and migrations for you;
 reminders arrive even with the window closed, and the dock shows how many lectures are due):

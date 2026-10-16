@@ -20,6 +20,7 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from "electron";
 
 import { isExportPath, safeFileName } from "../lib/export";
+import { checkForUpdate, installUpdate, type Manifest } from "./updates";
 
 const DEV = process.env.LOCKIN_DEV === "1";
 const PORT = Number(process.env.LOCKIN_PORT ?? 3579);
@@ -31,9 +32,12 @@ const PACKAGED = app.isPackaged;
 // views) stays where it has always been, under Electron's name.
 if (!PACKAGED) app.setPath("userData", app.getPath("userData"));
 app.setName("Lockin");
-const ROOT = PACKAGED ? app.getAppPath() : path.resolve(__dirname, "..", "..");
-/** Read-only things that ship with the app: prompt files and migration SQL. */
-const RESOURCES = PACKAGED ? process.resourcesPath : ROOT;
+/** The bundle's own code — Electron and the libraries, which updates never replace. */
+const BUNDLE = PACKAGED ? app.getAppPath() : path.resolve(__dirname, "..", "..");
+/** Lockin's code: the bundle's, or an update downloaded from Settings (electron/boot.ts). */
+const ROOT = process.env.LOCKIN_APP_ROOT ?? BUNDLE;
+/** Read-only things that ship with the app: prompt files and migration SQL. An update carries its own. */
+const RESOURCES = process.env.LOCKIN_APP_ROOT ?? (PACKAGED ? process.resourcesPath : ROOT);
 /** Everything writable. Inside a packaged .app the bundle itself is read-only. */
 const DATA = PACKAGED ? app.getPath("userData") : ROOT;
 
@@ -422,6 +426,26 @@ app.whenReady().then(async () => {
     if (typeof file !== "string" || !savedPdfs.has(file)) return "that isn't a PDF Lockin saved";
     return (await shell.openPath(file)) || null;
   });
+  // Updates from Settings: check, then download and restart into the new version.
+  let latest: Manifest | null = null;
+  ipcMain.handle("lockin:checkUpdate", async () => {
+    const check = await checkForUpdate({ packaged: PACKAGED, root: ROOT, bundle: BUNDLE });
+    latest = check.state === "available" ? check.latest : null;
+    return check;
+  });
+  ipcMain.handle("lockin:installUpdate", async () => {
+    if (!latest) return "check for updates first";
+    try {
+      await installUpdate(latest, { userData: app.getPath("userData"), bundle: BUNDLE });
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+    app.relaunch();
+    shutdown();
+    app.exit(0);
+    return null;
+  });
+
   ipcMain.handle("lockin:showFile", (_event, file: unknown) => {
     if (typeof file !== "string" || !savedPdfs.has(file)) return "that isn't a PDF Lockin saved";
     shell.showItemInFolder(file);

@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld("lockin", {
   savePdf: (pathname: string, title: string) => ipcRenderer.invoke("lockin:savePdf", pathname, title),
   openFile: (file: string): Promise<string | null> => ipcRenderer.invoke("lockin:openFile", file),
   showFile: (file: string): Promise<string | null> => ipcRenderer.invoke("lockin:showFile", file),
+  checkUpdate: () => ipcRenderer.invoke("lockin:checkUpdate"),
+  installUpdate: (): Promise<string | null> => ipcRenderer.invoke("lockin:installUpdate"),
 });
