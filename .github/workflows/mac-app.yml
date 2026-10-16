@@ -39,13 +39,15 @@ jobs:
         continue-on-error: true
         working-directory: swift/LockinEngine
         run: |
-          xcodebuild -list
-          xcodebuild build -scheme lockin-engine -destination 'platform=macOS,arch=arm64' \
+          xcodebuild build -scheme LockinEngine -destination 'platform=macOS,arch=arm64' \
             -configuration Release -derivedDataPath .build-xcode \
             -skipMacroValidation -skipPackagePluginValidation
+          out=.build-xcode/Build/Products/Release
+          ls -la "$out"
           mkdir -p ../../engine
-          cp -R .build-xcode/Build/Products/Release/lockin-engine ../../engine/
-          cp -R .build-xcode/Build/Products/Release/*.bundle ../../engine/ 2>/dev/null || true
+          bin=$(ls "$out"/lockin-engine "$out"/LockinEngine 2>/dev/null | head -1)
+          cp "$bin" ../../engine/lockin-engine
+          cp -R "$out"/*.bundle ../../engine/ 2>/dev/null || true
           ls -la ../../engine
       - name: Build Lockin.dmg
         run: npm run dmg -- --publish never
