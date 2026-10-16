@@ -47,6 +47,8 @@ export interface GenerateQuestionsInput {
   lectureTitle: string;
   transcript: string;
   slidesText?: string;
+  /** The lecture's summary: what an offline model writes LAQs from, in place of the transcript. */
+  summary?: string | null;
   concepts: ConceptRef[];
   /** How many questions each concept should get, from the allocation engine. */
   allocation: Array<{ conceptId: string; count: number }>;

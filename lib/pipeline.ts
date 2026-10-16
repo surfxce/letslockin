@@ -142,6 +142,7 @@ export async function writeQuestions(lectureId: string, provider: LlmProvider) {
     lectureTitle: lecture.title,
     transcript: sources.transcript,
     slidesText: notes.length ? slideNotesText(notes) : sources.slidesText,
+    summary: lecture.summaryMd,
     concepts: lecture.concepts.map((c) => ({ id: c.id, name: c.name, definition: c.definition })),
     allocation,
     type: "LAQ",

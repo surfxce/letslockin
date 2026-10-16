@@ -300,10 +300,22 @@ export class LocalProvider implements LlmProvider {
 
   async generateQuestions(input: GenerateQuestionsInput) {
     const total = input.allocation.reduce((n, a) => n + a.count, 0);
+    // A fresh start from the summary alone: the summary step already read the transcript
+    // and slides, and reading them all again is what ran laptops out of memory here.
+    const fromSummary = input.summary?.trim()
+      ? {
+          transcript:
+            "(This is the lecture's revision summary, written from its transcript and slides. " +
+            "Write the questions and marking guides from it.)\n\n" +
+            input.summary.trim(),
+          slidesText: "(already covered in the summary above)",
+        }
+      : null;
+    const source = fromSummary ?? { transcript: input.transcript, slidesText: input.slidesText };
     return this.run({
       prompt: "generate-questions",
-      vars: (transcript) => generateVars({ ...input, transcript }),
-      transcript: input.transcript,
+      vars: (transcript) => generateVars({ ...input, ...source, transcript }),
+      transcript: source.transcript,
       schema: questionsSchema(input.concepts.map((c) => c.id), input.type, total),
       zod: QuestionSetSchema,
       maxTokens: 900 * Math.max(1, total) + 300,
