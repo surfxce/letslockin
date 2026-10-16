@@ -390,6 +390,8 @@ export class LocalProvider implements LlmProvider {
 
     const context = await model.createContext({
       contextSize: { min: Math.min(4096, needed), max: Math.min(needed, model.trainContextSize) },
+      // A lecture's transcript is a long context; this keeps its memory down.
+      flashAttention: true,
     });
     try {
       // Too long for the memory this computer has: read the lecture in parts first.

@@ -305,7 +305,15 @@ export async function lookAtSlides(
     const tail = log.trim().split("\n").at(-1);
     throw new Error(`${err instanceof Error ? err.message : err}${tail ? ` (${tail})` : ""}`);
   } finally {
-    child.kill();
+    // Wait for it to be gone: the summary loads the same model next, and two copies at
+    // once is enough to push a laptop into swap.
+    if (child.exitCode === null) {
+      const gone = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+      child.kill();
+      const forced = setTimeout(() => child.kill("SIGKILL"), 10_000);
+      await gone;
+      clearTimeout(forced);
+    }
   }
 }
 
