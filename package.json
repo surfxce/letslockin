@@ -99,6 +99,10 @@
       {
         "from": "prisma/migrations",
         "to": "migrations"
+      },
+      {
+        "from": "engine",
+        "to": "engine"
       }
     ],
     "mac": {

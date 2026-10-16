@@ -24,19 +24,17 @@ Decisions:
 
 ## Chunks — one session each, roughly
 
-### 1. `lockin-engine`: MLX and Apple Intelligence, used by today's app
-A Swift command-line server in `swift/LockinEngine`, OpenAI-style HTTP on localhost —
-the same shape as llama-server, so the Electron app talks to it with the code it has.
-- MLXLLM / MLXVLM (mlx-swift-examples): Gemma 4 text and vision, models from
-  mlx-community on Hugging Face, downloads that resume.
-- Structured output: no grammar in MLX, so JSON is validated against the request's
-  schema and repaired, as for cloud models.
-- Foundation Models (Apple Intelligence) behind the same server, with
-  `DynamicGenerationSchema` for guaranteed JSON — for the short jobs: break down,
-  glossary, sorting files, titles, quick asks.
-- Electron: a third offline engine in Settings ("MLX — faster on this Mac"), the
-  engine binary shipped inside the .dmg, llama.cpp kept as the fallback.
-- Done when: a lecture prepares on MLX on your Mac, and its time is compared with llama.cpp's.
+### 1. `lockin-engine`: MLX, used by today's app — built
+`swift/LockinEngine`: a Swift program holding one model, answering the worker a line of
+JSON at a time over stdin/stdout (`lib/llm/mlx.ts`).
+- mlx-swift-lm's MLXVLM / MLXLLM: Gemma 4 text and vision from one loaded copy.
+- MLXGuidedGeneration holds replies to the same JSON schemas as llama.cpp's grammar.
+- MLX copies from mlx-community download as folders that resume (`downloadMlxModel`);
+  on Apple Silicon with the engine, new downloads are MLX, and Settings offers
+  "Switch to MLX" for llama.cpp copies.
+- Built by xcodebuild in CI and shipped in the .dmg's Resources/engine.
+- Still to do: time a lecture on MLX against llama.cpp on a real Mac.
+- Apple Intelligence (Foundation Models) for the short jobs: later, on request.
 
 ### 2. The app's skeleton and data
 Xcode project via SwiftPM, app target `Lockin`. GRDB models for Course, Module,

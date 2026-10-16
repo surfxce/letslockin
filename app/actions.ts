@@ -690,6 +690,17 @@ export async function downloadVision(modelId: string): Promise<Result> {
   return { ok: true, message: "Downloading." };
 }
 
+/** Downloads a model's MLX copy, which replaces its llama.cpp one when it is done. */
+export async function switchToMlx(modelId: string): Promise<Result> {
+  try {
+    await requestDownload(modelId, { mlx: true });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  refreshAll();
+  return { ok: true, message: "Downloading the MLX version." };
+}
+
 export async function stopDownload(jobId: string) {
   await cancelDownload(jobId);
   refreshAll();

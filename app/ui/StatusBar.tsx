@@ -131,7 +131,9 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
           href="/settings#local"
           className="activity busy"
           title={
-            dl.part
+            dl.part === "mlx"
+              ? `Downloading ${dl.name}'s MLX version, which runs faster on this Mac`
+              : dl.part
               ? `${dl.name} is downloaded; now the part that lets it see slides`
               : "Downloading an offline model"
           }
@@ -141,7 +143,7 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
             {dl.name}
             {dl.part === "server"
               ? " · vision · setting up"
-              : `${dl.part === "vision" ? " · vision" : ""}${dl.total > 0 ? ` · ${Math.floor((dl.downloaded / dl.total) * 100)}%` : " · starting"}`}
+              : `${dl.part === "vision" ? " · vision" : dl.part === "mlx" ? " · MLX" : ""}${dl.total > 0 ? ` · ${Math.floor((dl.downloaded / dl.total) * 100)}%` : " · starting"}`}
           </span>
         </Link>
       )}

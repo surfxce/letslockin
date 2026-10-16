@@ -98,7 +98,7 @@ function hostOf(url: string): string {
 /** A provider for a downloaded model. Kept while the same model stays selected, so it loads once. */
 export function getLocalProvider(modelPath: string, modelName: string, modelId: string): LlmProvider {
   if (isFake()) return getProvider();
-  if (!local || local.name !== `local:${modelName}`) local = new LocalProvider(modelPath, modelName, modelId);
+  if (!local || local.modelPath !== modelPath) local = new LocalProvider(modelPath, modelName, modelId);
   return local;
 }
 

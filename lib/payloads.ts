@@ -1,3 +1,4 @@
+import { mlxAvailable } from "@/lib/llm/mlx";
 import { findModel, LOCAL_MODELS, recommendModels, type LocalModel, type MachineSpecs, type ModelPicks } from "@/lib/llm/catalog";
 import { activity, type Activity } from "@/lib/jobs";
 import { visionParts } from "@/lib/llm/vision";
@@ -65,7 +66,15 @@ export interface ModelsPayload {
   catalog: readonly LocalModel[];
   /** vision: the model takes images and can see slides ("ready"), could once its vision
    *  part is downloaded ("missing"), or never can (null). */
-  installed: Array<{ id: string; bytes: number; vision: "ready" | "missing" | null }>;
+  installed: Array<{
+    id: string;
+    bytes: number;
+    vision: "ready" | "missing" | null;
+    /** Runs on MLX (the Swift engine) rather than llama.cpp. */
+    mlx: boolean;
+    /** An MLX copy exists and this Mac can run it, but this install is llama.cpp's. */
+    canSwitchToMlx: boolean;
+  }>;
   /** The model local mode is linked to, when it is downloaded. */
   active: string | null;
   mode: Mode;
@@ -86,11 +95,22 @@ export async function modelsPayload(): Promise<ModelsPayload> {
     picks: recommendModels(specs),
     catalog: LOCAL_MODELS,
     installed: await Promise.all(
-      installed.map(async (m) => ({
-        id: m.id,
-        bytes: m.bytes,
-        vision: findModel(m.id)?.vision ? ((await visionParts(modelsDir(), m.id, m.path)) ? ("ready" as const) : ("missing" as const)) : null,
-      })),
+      installed.map(async (m) => {
+        const model = findModel(m.id);
+        const mlx = m.format === "mlx";
+        return {
+          id: m.id,
+          bytes: m.bytes,
+          // An MLX copy sees slides with the model itself.
+          vision: model?.vision
+            ? mlx || (await visionParts(modelsDir(), m.id, m.path))
+              ? ("ready" as const)
+              : ("missing" as const)
+            : null,
+          mlx,
+          canSwitchToMlx: !mlx && !!model?.mlx && mlxAvailable(),
+        };
+      }),
     ),
     active: installed.some((m) => m.id === settings.localModel) ? settings.localModel : null,
     mode: settings.mode,

@@ -11,6 +11,7 @@
  * Run with `npm run worker` (the desktop app starts it for you).
  */
 import "dotenv/config";
+import { rm } from "node:fs/promises";
 
 import { runAsk, type AskPayload } from "@/lib/ask";
 import { findModel } from "@/lib/llm/catalog";
@@ -20,10 +21,10 @@ import { closeSteps, enterStage, setStageDetail, SIDE_LANES } from "@/lib/jobs";
 import { cloudProvider, getLocalProvider, isFake, type LlmProvider } from "@/lib/llm";
 import { CloudError } from "@/lib/llm/base";
 import type { SortFile } from "@/lib/llm/provider";
-import { downloadModelFile, modelSource } from "@/lib/llm/download";
-import { activeLocalModel, fallbackLocalModel, modelsDir, registerModel } from "@/lib/models";
+import { downloadMlxModel, downloadModelFile, modelSource } from "@/lib/llm/download";
+import { activeLocalModel, fallbackLocalModel, installedModels, modelsDir, registerModel } from "@/lib/models";
 import { LocalProvider, releaseLocalModel } from "@/lib/llm/local";
-import { installMmproj, installServer, lookAtSlides, visionParts } from "@/lib/llm/vision";
+import { installMmproj, installServer, lookAtSlides, lookAtSlidesMlx, visionParts } from "@/lib/llm/vision";
 import { JobCancelled, jobSignal, runCancellable } from "@/lib/llm/cancel";
 import { readSlidePictures } from "@/lib/ocr";
 import { lectureDecks } from "@/lib/slides";
@@ -110,16 +111,31 @@ async function lookLocally(
   result: Record<string, unknown>,
 ): Promise<SlideNote[] | undefined> {
   if (!(provider instanceof LocalProvider)) return undefined;
-  const parts = await visionParts(modelsDir(), provider.modelId, provider.modelPath);
+  const mlx = provider.format === "mlx" && !!findModel(provider.modelId)?.vision;
+  const parts = mlx ? null : await visionParts(modelsDir(), provider.modelId, provider.modelPath);
   const decks = (await lectureDecks(lectureId)).filter((d) => d.pdf && d.pages > 0);
-  if (!parts || decks.length === 0) return undefined;
+  if ((!mlx && !parts) || decks.length === 0) return undefined;
   await enterStage(jobId, "vision");
+  const slides = { lectureId, decks: decks.map(({ materialId, file, name, first, pages, pdf }) => ({ materialId, file, name, first, pages, pdf })), sharedWith: [] };
+  if (mlx) {
+    try {
+      const notes = await lookAtSlidesMlx(provider.modelPath, slides, (detail) => void setStageDetail(jobId, detail).catch(() => undefined));
+      result.slidesSeen = notes.length;
+      return notes;
+    } catch (err) {
+      if (jobSignal()?.aborted) throw new JobCancelled();
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`couldn't show the slides to the offline model on MLX (${message}); reading them as text instead`);
+      result.visionFailed = message;
+      return undefined;
+    }
+  }
   try {
     // llama.cpp's server loads the model itself; two copies may not fit in memory.
     await releaseLocalModel();
     const notes = await lookAtSlides(
-      parts,
-      { lectureId, decks: decks.map(({ materialId, file, name, first, pages, pdf }) => ({ materialId, file, name, first, pages, pdf })), sharedWith: [] },
+      parts!,
+      slides,
       (detail) => void setStageDetail(jobId, detail).catch(() => undefined),
     );
     result.slidesSeen = notes.length;
@@ -287,7 +303,12 @@ async function downloadOne(): Promise<boolean> {
     where: { id: pending.id },
     data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: "download" },
   });
-  const { modelId, link, visionOnly } = JSON.parse(job.payload) as { modelId: string; link?: boolean; visionOnly?: boolean };
+  const { modelId, link, visionOnly, mlx } = JSON.parse(job.payload) as {
+    modelId: string;
+    link?: boolean;
+    visionOnly?: boolean;
+    mlx?: boolean;
+  };
   const model = findModel(modelId);
   const started = Date.now();
   const controller = new AbortController();
@@ -310,7 +331,19 @@ async function downloadOne(): Promise<boolean> {
     if (!model) throw new Error(`unknown model ${modelId}`);
     let bytes = 0;
     let path = "";
-    if (!visionOnly) {
+    if (mlx) {
+      // The MLX copy takes images itself: no separate vision part or server to fetch.
+      console.log(`↓ ${model.name} (MLX) from ${model.mlx}`);
+      const previous = (await installedModels()).find((m) => m.id === model.id);
+      ({ path, bytes } = await downloadMlxModel(model, modelsDir(), (d, t) => report(d, t, "mlx"), controller.signal));
+      await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString(), format: "mlx" });
+      // It replaces the llama.cpp copy, which would only take up space.
+      if (previous && previous.path !== path) await rm(previous.path, { force: true, recursive: true });
+      if (link) {
+        await setSetting("localModel", model.id);
+        await setSetting("mode", "local");
+      }
+    } else if (!visionOnly) {
       console.log(`↓ ${model.name} from ${modelSource(model)}`);
       ({ path, bytes } = await downloadModelFile(model, modelsDir(), (d, t) => report(d, t), controller.signal));
       await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString() });
@@ -323,7 +356,7 @@ async function downloadOne(): Promise<boolean> {
     // A model that takes images gets its vision part and llama.cpp's server, so it can
     // be shown the slides. Without them it still works, reading slides as text.
     let visionError: string | null = null;
-    if (model.vision) {
+    if (model.vision && !mlx) {
       try {
         console.log(`↓ vision part for ${model.name}`);
         await installMmproj(modelsDir(), model, (d, t) => report(d, t, "vision"), controller.signal);

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 
+import { mlxAvailable } from "@/lib/llm/mlx";
 import { prisma } from "@/lib/db";
 import { findModel, type LocalModel } from "@/lib/llm/catalog";
 import { dataDir } from "@/lib/paths";
@@ -20,6 +21,8 @@ export interface InstalledModel {
   path: string;
   bytes: number;
   downloadedAt: string;
+  /** "mlx": a folder for the Swift engine on Apple Silicon. Absent: a GGUF file for llama.cpp. */
+  format?: "mlx" | "gguf";
 }
 
 export function modelsDir(): string {
@@ -55,7 +58,7 @@ export async function registerModel(model: InstalledModel) {
 export async function removeModel(id: string) {
   const list = await readRegistry();
   const entry = list.find((m) => m.id === id);
-  if (entry) await rm(entry.path, { force: true });
+  if (entry) await rm(entry.path, { force: true, recursive: true });
   await writeRegistry(list.filter((m) => m.id !== id));
   if ((await getSettings()).localModel === id) await setSetting("localModel", null);
 }
@@ -87,13 +90,13 @@ export interface DownloadState {
   status: string;
   downloaded: number;
   total: number;
-  /** What is downloading after the model itself: its vision part, then llama.cpp's server. */
-  part: "vision" | "server" | null;
+  /** What is downloading: its MLX copy, or after the model itself, its vision part then llama.cpp's server. */
+  part: "mlx" | "vision" | "server" | null;
   error: string | null;
 }
 
 function toState(job: { id: string; payload: string; status: string; result: string | null; error: string | null }): DownloadState {
-  const payload = JSON.parse(job.payload) as { modelId: string; visionOnly?: boolean };
+  const payload = JSON.parse(job.payload) as { modelId: string; visionOnly?: boolean; mlx?: boolean };
   let progress: { downloaded: number; total: number; part?: string } = { downloaded: 0, total: 0 };
   try {
     if (job.result) progress = { ...progress, ...JSON.parse(job.result) };
@@ -107,7 +110,14 @@ function toState(job: { id: string; payload: string; status: string; result: str
     status: job.status,
     downloaded: progress.downloaded,
     total: progress.total,
-    part: progress.part === "server" ? "server" : progress.part === "vision" || payload.visionOnly ? "vision" : null,
+    part:
+      progress.part === "server"
+        ? "server"
+        : progress.part === "vision" || payload.visionOnly
+          ? "vision"
+          : payload.mlx
+            ? "mlx"
+            : null,
     error: job.error,
   };
 }
@@ -131,8 +141,11 @@ export async function downloads(): Promise<DownloadState[]> {
  * Queues a download. When it finishes, the worker links it: it becomes the model in
  * use. `visionOnly` fetches just the part that lets a downloaded model see slides.
  */
-export async function requestDownload(modelId: string, opts: { visionOnly?: boolean } = {}) {
-  if (!findModel(modelId)) throw new Error(`unknown model ${modelId}`);
+export async function requestDownload(modelId: string, opts: { visionOnly?: boolean; mlx?: boolean } = {}) {
+  const model = findModel(modelId);
+  if (!model) throw new Error(`unknown model ${modelId}`);
+  // On Apple Silicon with the engine, a model comes as its faster MLX copy.
+  const mlx = !opts.visionOnly && !!model.mlx && (opts.mlx ?? mlxAvailable());
   const active = await prisma.job.findFirst({
     where: { kind: "DOWNLOAD", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: `"${modelId}"` } },
   });
@@ -140,7 +153,9 @@ export async function requestDownload(modelId: string, opts: { visionOnly?: bool
   const job = await prisma.job.create({
     data: {
       kind: "DOWNLOAD",
-      payload: JSON.stringify(opts.visionOnly ? { modelId, visionOnly: true } : { modelId, link: true }),
+      payload: JSON.stringify(
+        opts.visionOnly ? { modelId, visionOnly: true } : mlx ? { modelId, link: true, mlx: true } : { modelId, link: true },
+      ),
       priority: 0,
     },
   });

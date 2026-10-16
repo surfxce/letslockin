@@ -150,7 +150,13 @@ partial file). When it finishes the model is linked: it becomes the one Lockin u
 mode switches to *On this computer* — nothing else to set. Lectures queued before then
 wait rather than fail.
 
-Models run through [node-llama-cpp](https://node-llama-cpp.withcat.ai), on the GPU where
+**On Apple Silicon, models run on MLX.** The desktop app ships a small Swift engine
+(`swift/LockinEngine`) that runs models with Apple's MLX — faster there than llama.cpp,
+and one loaded copy both looks at the slides and writes the summary. Downloads on such a
+Mac are the models' MLX versions (from mlx-community); a model downloaded earlier has
+*Switch to MLX* in Settings. Replies are held to the same JSON schemas either way.
+
+Elsewhere, models run through [node-llama-cpp](https://node-llama-cpp.withcat.ai), on the GPU where
 there is one (Metal on Apple Silicon, CUDA or Vulkan on a PC) and the processor otherwise.
 Output is constrained by a JSON-schema grammar, so a small model cannot return malformed
 JSON, out-of-range marks or concept ids that do not exist. A transcript too long for the

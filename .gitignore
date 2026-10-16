@@ -61,3 +61,8 @@ materials/
 
 # written by scripts/build-info.mjs for each build
 /build-info.json
+
+# the MLX engine: built by xcodebuild, copied into the app
+/engine
+/swift/LockinEngine/.build*
+/swift/LockinEngine/.swiftpm

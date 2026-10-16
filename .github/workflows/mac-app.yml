@@ -28,6 +28,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # MLX needs a current Xcode, and xcodebuild (not plain SwiftPM) to compile its
+      # Metal shaders. If the engine fails to build, the app still ships without it and
+      # runs offline models on llama.cpp.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build the MLX engine
+        id: engine
+        continue-on-error: true
+        working-directory: swift/LockinEngine
+        run: |
+          xcodebuild build -scheme lockin-engine -destination 'platform=macOS,arch=arm64' \
+            -configuration Release -derivedDataPath .build-xcode \
+            -skipMacroValidation -skipPackagePluginValidation
+          mkdir -p ../../engine
+          cp -R .build-xcode/Build/Products/Release/lockin-engine ../../engine/
+          cp -R .build-xcode/Build/Products/Release/*.bundle ../../engine/ 2>/dev/null || true
+          ls -la ../../engine
       - name: Build Lockin.dmg
         run: npm run dmg -- --publish never
         env:

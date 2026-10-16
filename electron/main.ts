@@ -70,6 +70,8 @@ function childEnv(): NodeJS.ProcessEnv {
     ...(PACKAGED ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
     LOCKIN_DATA_DIR: DATA,
     LOCKIN_PROMPTS_DIR: path.join(RESOURCES, "prompts"),
+    // The MLX engine ships inside the bundle (never in an update): see lib/llm/mlx.ts.
+    ...(PACKAGED ? { LOCKIN_ENGINE: path.join(process.resourcesPath, "engine", "lockin-engine") } : {}),
     LOCKIN_MIGRATIONS_DIR: PACKAGED
       ? path.join(RESOURCES, "migrations")
       : path.join(ROOT, "prisma", "migrations"),

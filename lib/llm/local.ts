@@ -1,8 +1,10 @@
+import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
+import { engineGenerate } from "@/lib/llm/mlx";
 import { jobSignal } from "@/lib/llm/cancel";
 import {
   askVars,
@@ -270,6 +272,8 @@ interface RunOpts<T> {
 export class LocalProvider implements LlmProvider {
   readonly name: string;
   readonly lastModel: string;
+  /** An MLX copy is a folder and runs on the Swift engine (lib/llm/mlx.ts); a GGUF file runs on llama.cpp. */
+  readonly format: "mlx" | "gguf";
   lastPromptVersion = "";
   onProgress?: (detail: string | null) => void;
   /** Condensed notes per transcript, so a lecture's digest and its LAQs condense once. */
@@ -281,8 +285,9 @@ export class LocalProvider implements LlmProvider {
     /** Its catalog id, for finding its vision part. */
     readonly modelId: string,
   ) {
+    this.format = isDirectory(modelPath) ? "mlx" : "gguf";
     this.name = `local:${modelName}`;
-    this.lastModel = `Offline · ${modelName}`;
+    this.lastModel = `Offline · ${modelName}${this.format === "mlx" ? " (MLX)" : ""}`;
   }
 
   async digest(input: DigestInput) {
@@ -391,6 +396,7 @@ export class LocalProvider implements LlmProvider {
 
   private async runLoaded<T>(opts: RunOpts<T>): Promise<T> {
     const progress = (detail: string | null) => (opts.quiet ? undefined : this.progress(detail));
+    if (this.format === "mlx") return this.runOnMlx(opts, progress);
     if (!runtime || runtime.modelPath !== this.modelPath) progress(`loading ${this.modelName} into memory`);
     const { llama, model } = await load(this.modelPath);
     const { LlamaChatSession } = await importLlamaCpp();
@@ -448,6 +454,33 @@ export class LocalProvider implements LlmProvider {
     } finally {
       await context.dispose();
     }
+  }
+
+  /**
+   * The same request on the MLX engine. Its models take a whole lecture at once (no
+   * condensing), and its reply is held to the same schema as llama.cpp's grammar.
+   */
+  private async runOnMlx<T>(opts: RunOpts<T>, progress: (detail: string | null) => void): Promise<T> {
+    const rendered = await renderPrompt(opts.prompt, opts.vars(opts.transcript ?? ""));
+    this.lastPromptVersion = rendered.version;
+    progress(`loading ${this.modelName} on MLX`);
+    const text = await engineGenerate({
+      model: this.modelPath,
+      prompt: rendered.text,
+      schema: opts.schema,
+      maxTokens: opts.maxTokens,
+      temperature: opts.temperature,
+      // Roughly three words for every four tokens.
+      onTokens: (tokens) => progress(`writing — about ${Math.round(tokens * 0.75).toLocaleString("en")} words so far`),
+    });
+    progress(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error("the offline model stopped before finishing its answer — try a smaller model, or close other apps to free memory");
+    }
+    return opts.zod.parse(parsed);
   }
 
   /**
@@ -530,4 +563,12 @@ export function splitByTokens(text: string, limit: number, count: (t: string) =>
   }
   if (current.length) out.push(current.join("\n\n"));
   return out;
+}
+
+function isDirectory(file: string): boolean {
+  try {
+    return statSync(file).isDirectory();
+  } catch {
+    return false;
+  }
 }

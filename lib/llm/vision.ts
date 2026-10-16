@@ -219,7 +219,7 @@ async function unzip(file: string, dir: string) {
 // ---------------------------------------------------------------------------
 // Looking at the slides
 
-const PROMPT =
+export const PROMPT =
   "This is one slide from a university lecture. For a student's revision notes, write every word on it — " +
   "including words inside pictures, diagrams and tables — and then what each figure, diagram, graph, table or " +
   "photo shows: labels, arrows, axes and trends. Be factual and brief: one to four sentences. If the slide is " +
@@ -320,4 +320,28 @@ export async function lookAtSlides(
 /** Size on disk, for Settings. */
 export async function bytesOf(file: string): Promise<number> {
   return (await stat(file).catch(() => null))?.size ?? 0;
+}
+
+/**
+ * The same look at each slide, on the MLX engine: the model it already has loaded takes
+ * images itself, so there is no second server and no second copy of the model.
+ */
+export async function lookAtSlidesMlx(
+  modelDir: string,
+  slides: SlidesInfo,
+  onProgress?: (detail: string) => void,
+): Promise<SlideNote[]> {
+  const { slidePictures } = await import("@/lib/llm/base");
+  const { engineGenerate } = await import("@/lib/llm/mlx");
+  const pictures = await slidePictures(slides);
+  const notes: SlideNote[] = [];
+  for (const [i, p] of pictures.entries()) {
+    throwIfCancelled();
+    onProgress?.(`looking at slide ${i + 1} of ${pictures.length}`);
+    const text = (
+      await engineGenerate({ model: modelDir, prompt: PROMPT, images: [p.file], maxTokens: 350, temperature: 0.1 })
+    ).trim();
+    if (text) notes.push({ slide: p.slide, notes: text });
+  }
+  return notes;
 }

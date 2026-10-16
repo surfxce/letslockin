@@ -21,6 +21,8 @@ export interface LocalModel {
   /** Relative speed on the same machine, 1 (slowest) to 5 (fastest). */
   speed: number;
   uri: string;
+  /** Its MLX copy on Hugging Face, for the Swift engine on Apple Silicon (lib/llm/mlx.ts). */
+  mlx?: string;
   blurb: string;
   /** Takes images, so it can be shown the slides (lib/llm/vision.ts). */
   vision?: boolean;
@@ -36,6 +38,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 4,
     speed: 5,
     uri: "hf:unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M",
+    mlx: "mlx-community/Qwen3.5-0.8B-4bit",
     blurb: "Tiny and quick. Fine for summaries; its questions are simpler.",
   },
   {
@@ -47,6 +50,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 6,
     speed: 4,
     uri: "hf:giladgd/gemma-4-E2B-it-GGUF:Q4_K_M",
+    mlx: "mlx-community/gemma-4-e2b-it-4bit",
     vision: true,
     blurb: "Google's smallest Gemma 4. Good summaries on modest laptops.",
   },
@@ -59,6 +63,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 10,
     speed: 3,
     uri: "hf:giladgd/gemma-4-E4B-it-GGUF:Q4_K_M",
+    mlx: "mlx-community/gemma-4-e4b-it-4bit",
     vision: true,
     blurb: "A solid all-rounder: clear summaries and fair exam questions.",
   },
@@ -71,6 +76,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 16,
     speed: 2,
     uri: "hf:giladgd/gemma-4-12B-it-GGUF:Q4_K_M",
+    mlx: "mlx-community/gemma-4-12b-it-4bit",
     vision: true,
     blurb: "A real step up in detail, marking and question quality.",
   },
@@ -83,6 +89,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 24,
     speed: 3,
     uri: "hf:giladgd/gemma-4-26B-A4B-it-GGUF:Q4_K_M",
+    mlx: "mlx-community/gemma-4-26b-a4b-it-4bit",
     vision: true,
     blurb: "Near-flagship quality, and quick for its size — it only runs part of itself per word.",
   },
@@ -95,6 +102,7 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
     needsRamGb: 32,
     speed: 1,
     uri: "hf:giladgd/gemma-4-31B-it-GGUF:Q4_K_M",
+    mlx: "mlx-community/gemma-4-31b-it-4bit",
     vision: true,
     blurb: "The most capable Gemma 4. Slow, but the most careful marker.",
   },
