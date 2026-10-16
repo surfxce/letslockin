@@ -39,6 +39,7 @@ jobs:
         continue-on-error: true
         working-directory: swift/LockinEngine
         run: |
+          xcodebuild -list
           xcodebuild build -scheme lockin-engine -destination 'platform=macOS,arch=arm64' \
             -configuration Release -derivedDataPath .build-xcode \
             -skipMacroValidation -skipPackagePluginValidation

@@ -7,6 +7,9 @@ import PackageDescription
 let package = Package(
     name: "LockinEngine",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "lockin-engine", targets: ["LockinEngine"])
+    ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift-lm", .upToNextMinor(from: "3.32.3")),
         .package(url: "https://github.com/huggingface/swift-huggingface", from: "0.9.0"),
@@ -14,7 +17,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "lockin-engine",
+            name: "LockinEngine",
             dependencies: [
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXVLM", package: "mlx-swift-lm"),
