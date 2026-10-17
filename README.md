@@ -89,8 +89,9 @@ group by module (with each module's average) or status, and search.
 
 **Download it for Mac:** [Lockin.dmg](https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg)
 (Apple Silicon), built by GitHub from the latest code. Open it, drag Lockin into
-Applications, and the first time right-click it there and choose *Open* — it isn't signed
-by Apple. After that, **Settings → Updates** keeps it current: each build also publishes
+Applications. It isn't signed by Apple, so the first time macOS says it can't verify it:
+choose System Settings → Privacy & Security → *Open Anyway*, or run once in Terminal
+`xattr -dr com.apple.quarantine /Applications/Lockin.app`. After that, **Settings → Updates** keeps it current: each build also publishes
 a few-MB update of Lockin's own code, which installs with one click and a restart (kept in
 the app's data folder; the app bundle itself is never changed). Only a build that needs a
 newer Electron or new libraries asks for the full .dmg again. To rebuild it from a
