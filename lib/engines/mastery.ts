@@ -40,7 +40,8 @@ export async function conceptMastery(conceptIds: string[]): Promise<ConceptMaste
   });
 }
 
-/** Two questions per lecture hour — the rule the whole system is sized around. */
-export function questionBudget(durationHours: number): number {
-  return Math.max(1, Math.round(durationHours * 2));
+/** Questions per lecture hour — two unless Settings says otherwise — is the rule the
+ *  whole system is sized around. */
+export function questionBudget(durationHours: number, perHour = 2): number {
+  return Math.max(1, Math.round(durationHours * perHour));
 }

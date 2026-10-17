@@ -20,21 +20,25 @@ async function main() {
 
   const provider = getProvider();
   console.log(`provider: ${provider.name}`);
-  console.log("summarising the fixture lecture…");
+  console.log("digesting the fixture lecture…");
 
   const started = Date.now();
-  const summary = await provider.summarise({
-    lectureTitle: "Gene regulation in prokaryotes: the lac operon",
+  const digest = await provider.digest({
+    currentTitle: "lecture-transcript",
+    titleIsPlaceholder: true,
     durationHours: 1,
     transcript,
+    alreadySkipped: [],
+    existingConcepts: [],
   });
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
 
-  console.log(`\n--- summary (${elapsed}s) ---\n`);
-  console.log(summary.summaryMd);
-  console.log(`\n--- figures flagged: ${summary.figures.length} ---`);
-  for (const f of summary.figures) console.log(`  [${f.sourceRef}] ${f.description}`);
-  console.log("\nschema-valid. phase 0 pipeline works.");
+  console.log(`\n--- ${digest.title} (${elapsed}s) ---\n`);
+  console.log(digest.summaryMd);
+  console.log(`\n--- ${digest.concepts.length} concepts, ${digest.skipped.length} sections set aside ---`);
+  for (const c of digest.concepts) console.log(`  ${c.name}: ${c.definition}`);
+  for (const s of digest.skipped) console.log(`  skipped ${s.what} (${s.where})`);
+  console.log("\nschema-valid. pipeline works.");
 }
 
 main()

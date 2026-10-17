@@ -42,22 +42,31 @@ export async function applyMigrations(): Promise<{ applied: string[]; alreadyCur
     .sort(); // timestamp-prefixed, so lexical order is chronological
 
   const applied: string[] = [];
-  for (const name of pending) {
-    const sql = readFileSync(path.join(dir, name, "migration.sql"), "utf8");
-    // One transaction per migration: a failure leaves the database on the last
-    // migration that fully succeeded rather than half-way through this one.
-    await prisma.$transaction([
-      ...statementsIn(sql).map((s) => prisma.$executeRawUnsafe(s)),
-      prisma.$executeRawUnsafe(
-        `INSERT INTO "_prisma_migrations"
-           (id, checksum, migration_name, started_at, finished_at, applied_steps_count)
-         VALUES (?, ?, ?, current_timestamp, current_timestamp, 1)`,
-        randomUUID(),
-        createHash("sha256").update(sql).digest("hex"),
-        name,
-      ),
-    ]);
-    applied.push(name);
+  // Prisma's SQLite migrations rebuild tables with DROP TABLE behind a
+  // PRAGMA foreign_keys=OFF, but that pragma is ignored inside a transaction — and
+  // with foreign keys on, dropping a parent table cascades into its children. Turn
+  // them off for the whole run, outside any transaction, so a rebuild never deletes data.
+  await prisma.$executeRawUnsafe(`PRAGMA foreign_keys=OFF`);
+  try {
+    for (const name of pending) {
+      const sql = readFileSync(path.join(dir, name, "migration.sql"), "utf8");
+      // One transaction per migration: a failure leaves the database on the last
+      // migration that fully succeeded rather than half-way through this one.
+      await prisma.$transaction([
+        ...statementsIn(sql).map((s) => prisma.$executeRawUnsafe(s)),
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "_prisma_migrations"
+             (id, checksum, migration_name, started_at, finished_at, applied_steps_count)
+           VALUES (?, ?, ?, current_timestamp, current_timestamp, 1)`,
+          randomUUID(),
+          createHash("sha256").update(sql).digest("hex"),
+          name,
+        ),
+      ]);
+      applied.push(name);
+    }
+  } finally {
+    await prisma.$executeRawUnsafe(`PRAGMA foreign_keys=ON`);
   }
 
   return { applied, alreadyCurrent: done.size };

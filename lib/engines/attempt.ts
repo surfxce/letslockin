@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { allocate } from "@/lib/engines/allocation";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
+import { getSettings } from "@/lib/settings";
 
 /**
  * Chooses what this sitting asks about. Concepts are ranked by how much attention
@@ -23,7 +24,7 @@ export async function pickQuestions(lectureId: string): Promise<string[]> {
   });
   if (questions.length === 0) return [];
 
-  const budget = questionBudget(lecture.durationHours);
+  const budget = questionBudget(lecture.durationHours, (await getSettings()).sittingPerHour);
   const mastery = await conceptMastery(lecture.concepts.map((c) => c.id));
   const ranked = allocate(mastery, budget);
 

@@ -10,27 +10,39 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "tsx scripts/smoke.ts",
-    "db:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma generate && prisma migrate dev",
     "db:studio": "prisma studio",
     "worker": "tsx worker/index.ts",
     "ingest": "tsx scripts/ingest.ts",
-    "electron:build": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist/electron --out-extension:.js=.cjs",
-    "desktop": "npm run electron:build && next build && LOCKIN_PORT=3579 electron .",
-    "desktop:dev": "npm run electron:build && LOCKIN_DEV=1 LOCKIN_PORT=3579 electron .",
-    "dist:bundle": "esbuild worker/index.ts scripts/migrate.ts --bundle --platform=node --format=cjs --target=node22 --outdir=dist --out-extension:.js=.cjs --external:better-sqlite3 --external:@prisma/adapter-better-sqlite3 --tsconfig=tsconfig.json",
-    "dmg": "npm run electron:build && npm run dist:bundle && next build --webpack && npm run rebuild:electron && electron-builder --mac dmg",
+    "electron:build": "esbuild electron/boot.ts electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist/electron --out-extension:.js=.cjs",
+    "desktop": "prisma generate && npm run electron:build && next build && LOCKIN_PORT=3579 electron .",
+    "desktop:dev": "prisma generate && npm run electron:build && LOCKIN_DEV=1 LOCKIN_PORT=3579 electron .",
+    "dist:bundle": "esbuild worker/index.ts scripts/migrate.ts --bundle --platform=node --format=cjs --target=node22 --outdir=dist --out-extension:.js=.cjs --external:better-sqlite3 --external:@prisma/adapter-better-sqlite3 --external:@napi-rs/canvas --external:tesseract.js --external:@tesseract.js-data/eng --external:unpdf --tsconfig=tsconfig.json",
+    "dmg": "node scripts/build-info.mjs && prisma generate && npm run electron:build && npm run dist:bundle && next build --webpack && npm run rebuild:electron && electron-builder --mac dmg",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
+    "@napi-rs/canvas": "^1.0.11",
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tiptap/core": "^3.31.4",
+    "@tiptap/extension-table": "^3.31.4",
+    "@tiptap/markdown": "^3.31.4",
+    "@tiptap/pm": "^3.31.4",
+    "@tiptap/react": "^3.31.4",
+    "@tiptap/starter-kit": "^3.31.4",
     "better-sqlite3": "^12.11.1",
     "jszip": "^3.10.1",
     "marked": "^18.0.11",
     "next": "16.3.4",
+    "node-llama-cpp": "^3.22.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tesseract.js": "^7.0.0",
     "unpdf": "^1.8.1",
     "zod": "^4.5.4"
   },
@@ -51,13 +63,14 @@
     "typescript": "^5",
     "vitest": "^4.1.11"
   },
-  "main": "dist/electron/main.cjs",
+  "main": "dist/electron/boot.cjs",
   "build": {
     "appId": "app.lockin",
     "productName": "Lockin",
     "asar": false,
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "**/*",
@@ -72,6 +85,9 @@
       "!**/*.test.ts",
       "!scripts/fixtures/**",
       "!.claude/**",
+      "!swift/**",
+      "!engine/**",
+      "!docs/**",
       "!node_modules/@next/swc-linux-*/**",
       "!node_modules/@next/swc-win32-*/**",
       "!node_modules/@img/sharp-linux*/**",
@@ -86,6 +102,10 @@
       {
         "from": "prisma/migrations",
         "to": "migrations"
+      },
+      {
+        "from": "engine",
+        "to": "engine"
       }
     ],
     "mac": {
@@ -93,7 +113,20 @@
         "dmg"
       ],
       "category": "public.app-category.education",
-      "identity": null
+      "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "artifactName": "Lockin.dmg",
+      "title": "Lockin",
+      "background": "build/background.png",
+      "iconSize": 112,
+      "window": { "width": 660, "height": 400 },
+      "contents": [
+        { "x": 180, "y": 205, "type": "file" },
+        { "x": 480, "y": 205, "type": "link", "path": "/Applications" }
+      ]
     },
     "npmRebuild": false
   },

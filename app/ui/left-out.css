@@ -1,0 +1,154 @@
+/* The "Left out" row on a lecture page: folded to a count, opened to chips, and the
+   card each chip shows with what that part said. */
+
+.lo {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+/* Opened over several lines, the chips need a little air above and below. */
+.lo[data-open] { padding: 5px 0; }
+
+.lo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  /* The chevron hangs left so the count lines up with the other values. */
+  margin-left: -3px;
+  padding: 0 7px 0 3px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lo-toggle:hover { background: var(--hover); color: var(--text); }
+.lo-toggle svg { flex: none; color: var(--text-faint); }
+.lo-toggle:hover svg { color: var(--text-soft); }
+
+.lo-list {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-list[hidden] { display: none; }
+.lo-item { display: flex; min-width: 0; max-width: 100%; }
+
+/* A chip is a .tag that is also a button. */
+.lo-chip {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.12s;
+}
+.lo-chip:hover,
+.lo-chip[data-shown] { box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.lo-chip:focus-visible { outline-offset: 2px; }
+.lo-chip .lo-check { flex: none; width: 12px; height: 12px; }
+.lo-chip .dot { width: 6px; height: 6px; }
+.lo-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lo-where { opacity: 0.7; }
+
+/* The card: what the part said, and what a click does. */
+.lo-card {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100vh - 16px));
+  max-height: min(360px, calc(100dvh - 16px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow-pop);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+  cursor: auto;
+  animation: lo-in 0.12s ease-out;
+}
+.lo-card[data-side="above"] { animation-name: lo-in-above; }
+
+.prose.lo-about { font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.prose.lo-about h1, .prose.lo-about h2, .prose.lo-about h3, .prose.lo-about h4 { font-size: 14px; margin: 10px 0 3px; }
+.prose.lo-about p, .prose.lo-about ul, .prose.lo-about ol { margin-bottom: 6px; }
+.prose.lo-about ul, .prose.lo-about ol { padding-left: 18px; }
+.prose.lo-about li { margin: 1px 0; }
+.prose.lo-about > :last-child { margin-bottom: 0; }
+
+.lo-unread { margin: 0; color: var(--text-soft); }
+.lo-note {
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.lo-note + .lo-note, .lo-wait + .lo-note { margin-top: 6px; }
+.lo-warn { background: var(--t-yellow-bg); color: var(--t-yellow); white-space: normal; }
+
+.lo-wait {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.lo-spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  border-right-color: transparent;
+  animation: lo-spin 0.9s linear infinite;
+}
+
+.lo-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+.lo-foot.result.ok { font-size: 12.5px; }
+.lo-foot svg { flex: none; }
+.lo-hint { color: var(--text-faint); }
+.lo-msg { margin: 0; flex-basis: 100%; }
+
+@keyframes lo-spin { to { transform: rotate(360deg); } }
+@keyframes lo-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@keyframes lo-in-above { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lo-card { animation: none; }
+  .lo-spin { animation-duration: 2.4s; }
+  .lo-chip { transition: none; }
+}
+
+@media print {
+  .lo-card { display: none; }
+}
