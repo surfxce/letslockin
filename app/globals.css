@@ -645,3 +645,12 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .alt-row:first-child { border-top: 0; }
 .alt-row .spacer { flex: 1; }
 @media (max-width: 720px) { .alt-columns { grid-template-columns: 1fr; } }
+
+.alt-head { font-size: 14px; margin: 22px 0 4px; }
+.alt-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.alt-pairs .alt-model { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 14px; }
+.alt-own { border-top: 1px solid var(--rule); margin-top: 22px; }
+.alt-own-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 10px; }
+.alt-own-row label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.alt-own-row select { width: 100%; }
+@media (max-width: 640px) { .alt-pairs { grid-template-columns: 1fr; } }

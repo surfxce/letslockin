@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { deleteLocalModel, downloadModel, downloadVision, stopDownload, switchLocalModel, switchToMlx } from "@/app/actions";
+import { deleteLocalModel, downloadModel, downloadVision, stopDownload, switchLocalModel, switchToMlx, choosePair } from "@/app/actions";
 import { Icon } from "@/app/ui/Icon";
 import { parameterCount, type LocalModel } from "@/lib/llm/catalog";
 import type { DownloadState } from "@/lib/models";
@@ -110,6 +110,7 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
           disabled={pending}
           onDownload={(id) => act(() => downloadModel(id))}
           onUse={(id) => act(() => switchLocalModel(id))}
+          onPair={(eye, writer) => act(() => choosePair(eye, writer))}
           onClose={() => setAlternatives(false)}
         />
       )}
@@ -141,6 +142,11 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
                   {i.vision === "ready" && (
                     <span className="tag t-blue" style={{ marginLeft: 8 }} title="It is shown each slide before writing the summary">
                       Sees slides
+                    </span>
+                  )}
+                  {data.active === i.id && data.slideReader && data.slideReader !== i.id && (
+                    <span className="small muted" style={{ marginLeft: 8 }}>
+                      · slides read by {[...data.catalog, ...data.more].find((m) => m.id === data.slideReader)?.name ?? data.slideReader}
                     </span>
                   )}
                 </span>
@@ -293,6 +299,7 @@ function Alternatives({
   disabled,
   onDownload,
   onUse,
+  onPair,
   onClose,
 }: {
   data: ModelsPayload;
@@ -300,9 +307,15 @@ function Alternatives({
   disabled: boolean;
   onDownload: (id: string) => void;
   onUse: (id: string) => void;
+  onPair: (eye: string, writer: string) => void;
   onClose: () => void;
 }) {
   const [all, setAll] = useState(false);
+  const models = [...data.catalog, ...data.more];
+  const byId = (id: string) => models.find((m) => m.id === id)!;
+  const eyes = models.filter((m) => m.vision && m.mlx).sort((a, b) => parameterCount(a) - parameterCount(b));
+  const [eye, setEye] = useState(data.slideReader ?? (data.active && byId(data.active)?.vision ? data.active : eyes[0].id));
+  const [writer, setWriter] = useState(data.active ?? data.picks.recommended.id);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -339,7 +352,49 @@ function Alternatives({
     );
   };
 
-  const everything = [...data.catalog, ...data.more].sort((a, b) => parameterCount(a) - parameterCount(b));
+  const label = (m: LocalModel) => (m.name.includes(m.params) ? m.name : `${m.name} · ${m.params}`);
+  const everything = [...models].sort((a, b) => parameterCount(a) - parameterCount(b));
+
+  /** For an eye and a writer: in use, downloading, ready to use, or what downloading the missing ones costs. */
+  const pairAction = (eyeId: string, writerId: string) => {
+    const e = byId(eyeId);
+    const w = byId(writerId);
+    const same = eyeId === writerId;
+    const looking = data.slideReader ?? data.active;
+    if (data.active === writerId && looking === eyeId) return <span className="tag t-green">In use</span>;
+    const running = data.downloads.filter(
+      (d) => (d.modelId === eyeId || d.modelId === writerId) && (d.status === "RUNNING" || d.status === "PENDING"),
+    );
+    if (running.length) {
+      const d = running.find((x) => x.status === "RUNNING") ?? running[0];
+      const pct = d.total > 0 ? Math.floor((d.downloaded / d.total) * 100) : 0;
+      return <span className="small muted">Downloading {d.name} {pct}%</span>;
+    }
+    const haveEye = same || data.installed.some((i) => i.id === eyeId && i.mlx);
+    const haveWriter = data.installed.some((i) => i.id === writerId);
+    const gbToGet = (haveEye ? 0 : e.downloadGb) + (haveWriter ? 0 : w.downloadGb);
+    const need = Math.max(e.needsRamGb, w.needsRamGb);
+    const why = !same && !data.mlx ? "The eye runs on MLX, on an Apple Silicon Mac" : need > data.specs.ramGb * 1.25 ? `Needs ~${need} GB of memory` : null;
+    return (
+      <button
+        type="button"
+        className="btn sm"
+        disabled={disabled || (gbToGet > 0 && busy) || !!why}
+        title={why ?? (gbToGet > 0 ? `Download ~${Math.round(gbToGet * 10) / 10} GB` : undefined)}
+        onClick={() => onPair(eyeId, writerId)}
+      >
+        {why ? (
+          need > data.specs.ramGb * 1.25 ? "Too big" : "MLX only"
+        ) : gbToGet > 0 ? (
+          <>
+            <Icon name="download" size={13} /> Download ~{Math.round(gbToGet * 10) / 10} GB
+          </>
+        ) : (
+          "Use"
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -375,6 +430,29 @@ function Alternatives({
                   );
                 })}
               </div>
+              <h3 className="alt-head">Eye + writer</h3>
+              <p className="small muted">
+                A small model looks at each slide and notes what&apos;s on it; a bigger one writes the summary and LAQs from
+                those notes. They take turns, so the memory needed is the larger of the two.
+              </p>
+              <div className="alt-pairs">
+                {data.pairs.map((p) => {
+                  const e = byId(p.eye);
+                  const w = byId(p.writer);
+                  return (
+                    <div key={`${p.eye}+${p.writer}`} className="alt-model">
+                      <div className="model-name" style={{ fontSize: 15 }}>
+                        {e.name} + {w.name}
+                      </div>
+                      <div className="small muted">
+                        eye {e.params} · writer {w.params} · needs ~{Math.max(e.needsRamGb, w.needsRamGb)} GB
+                      </div>
+                      <p className="small" style={{ margin: "4px 0 6px" }}>{p.blurb}</p>
+                      {pairAction(p.eye, p.writer)}
+                    </div>
+                  );
+                })}
+              </div>
             </>
           ) : (
             <div className="alt-all">
@@ -389,6 +467,34 @@ function Alternatives({
               ))}
             </div>
           )}
+          <div className="alt-own">
+            <h3 className="alt-head">Separate eye and writer</h3>
+            <p className="small muted">Pick your own: any model that sees slides as the eye, any model as the writer.</p>
+            <div className="alt-own-row">
+              <label>
+                <span className="small faint">Eye</span>
+                <select value={eye} onChange={(e) => setEye(e.target.value)}>
+                  {eyes.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {label(m)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="small faint">Writer</span>
+                <select value={writer} onChange={(e) => setWriter(e.target.value)}>
+                  {everything.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {label(m)}
+                      {m.vision ? "" : " · text only"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {pairAction(eye, writer)}
+            </div>
+          </div>
         </div>
         <div className="modal-foot">
           <button type="button" className="btn quiet" onClick={() => setAll(!all)}>

@@ -1,5 +1,5 @@
 import { mlxAvailable } from "@/lib/llm/mlx";
-import { LOCAL_MODELS, type LocalModel, MORE_MODELS, type MachineSpecs, type ModelPicks, findModel, recommendModels } from "@/lib/llm/catalog";
+import { LOCAL_MODELS, type LocalModel, MORE_MODELS, PAIRS, type ModelPair, type MachineSpecs, type ModelPicks, findModel, recommendModels } from "@/lib/llm/catalog";
 import { activity, type Activity } from "@/lib/jobs";
 import { visionParts } from "@/lib/llm/vision";
 import { downloads, installedModels, modelsDir, type DownloadState } from "@/lib/models";
@@ -81,6 +81,10 @@ export interface ModelsPayload {
   }>;
   /** The model local mode is linked to, when it is downloaded. */
   active: string | null;
+  /** Eye + writer pairs to offer. */
+  pairs: readonly ModelPair[];
+  /** The separate model chosen to look at the slides for `active`; null when it looks itself. */
+  slideReader: string | null;
   mode: Mode;
   downloads: DownloadState[];
   workerAlive: boolean;
@@ -119,6 +123,8 @@ export async function modelsPayload(): Promise<ModelsPayload> {
       }),
     ),
     active: installed.some((m) => m.id === settings.localModel) ? settings.localModel : null,
+    pairs: PAIRS,
+    slideReader: settings.slideReader,
     mode: settings.mode,
     downloads: dls,
     workerAlive: !!beat?.alive,

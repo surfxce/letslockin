@@ -75,7 +75,9 @@ export async function removeModel(id: string) {
   const entry = list.find((m) => m.id === id);
   if (entry) await rm(entry.path, { force: true, recursive: true });
   await writeRegistry(list.filter((m) => m.id !== id));
-  if ((await getSettings()).localModel === id) await setSetting("localModel", null);
+  const settings = await getSettings();
+  if (settings.localModel === id) await setSetting("localModel", null);
+  if (settings.slideReader === id) await setSetting("slideReader", null);
 }
 
 /** The model "local" mode uses, if it is downloaded. */
@@ -84,6 +86,27 @@ export async function activeLocalModel(): Promise<{ model: LocalModel; path: str
   const model = findModel(localModel);
   const installed = (await installedModels()).find((m) => m.id === localModel);
   return model && installed ? { model, path: installed.path } : null;
+}
+
+/**
+ * Makes a model the one local mode uses, with the model that looks at its slides: a
+ * pair's eye when given, else none for a model that sees them itself — a text-only one
+ * keeps the eye it had.
+ */
+export async function linkModel(model: LocalModel, reader?: string | null) {
+  await setSetting("localModel", model.id);
+  await setSetting("mode", "local");
+  if (reader !== undefined) await setSetting("slideReader", reader === model.id ? null : reader);
+  else if (model.vision) await setSetting("slideReader", null);
+}
+
+/** The separate model that looks at the slides, when one is chosen, downloaded on MLX, and can run here. */
+export async function activeSlideReader(): Promise<{ model: LocalModel; path: string } | null> {
+  const { slideReader } = await getSettings();
+  const model = findModel(slideReader);
+  if (!model?.vision || !mlxAvailable()) return null;
+  const installed = (await installedModels()).find((m) => m.id === model.id && m.format === "mlx");
+  return installed ? { model, path: installed.path } : null;
 }
 
 /** The offline model to fall back on when Claude fails: the one chosen for local mode,
@@ -154,23 +177,29 @@ export async function downloads(): Promise<DownloadState[]> {
 
 /**
  * Queues a download. When it finishes, the worker links it: it becomes the model in
- * use. `visionOnly` fetches just the part that lets a downloaded model see slides.
+ * use, with `reader` as its eye if given. `link: false` only downloads it (a pair's
+ * eye). `visionOnly` fetches just the part that lets a downloaded model see slides.
  */
-export async function requestDownload(modelId: string, opts: { visionOnly?: boolean; mlx?: boolean } = {}) {
+export async function requestDownload(
+  modelId: string,
+  opts: { visionOnly?: boolean; mlx?: boolean; link?: boolean; reader?: string | null } = {},
+) {
   const model = findModel(modelId);
   if (!model) throw new Error(`unknown model ${modelId}`);
   // On Apple Silicon with the engine, a model comes as its faster MLX copy.
   const mlx = !opts.visionOnly && !!model.mlx && (opts.mlx ?? (mlxAvailable() || !model.uri));
   if (mlx && !mlxAvailable()) throw new Error(`${model.name} runs only on MLX, on an Apple Silicon Mac with the desktop app`);
   const active = await prisma.job.findFirst({
-    where: { kind: "DOWNLOAD", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: `"${modelId}"` } },
+    where: { kind: "DOWNLOAD", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: `"modelId":"${modelId}"` } },
   });
   if (active) return active.id;
   const job = await prisma.job.create({
     data: {
       kind: "DOWNLOAD",
       payload: JSON.stringify(
-        opts.visionOnly ? { modelId, visionOnly: true } : mlx ? { modelId, link: true, mlx: true } : { modelId, link: true },
+        opts.visionOnly
+          ? { modelId, visionOnly: true }
+          : { modelId, link: opts.link ?? true, ...(mlx && { mlx: true }), ...(opts.reader !== undefined && { reader: opts.reader }) },
       ),
       priority: 0,
     },

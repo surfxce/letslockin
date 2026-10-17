@@ -132,6 +132,25 @@ export const MORE_MODELS: readonly LocalModel[] = [
   alt({ id: "deepseek-r1", name: "DeepSeek R1", maker: "DeepSeek", params: "671B, 37B active", downloadGb: 380, needsRamGb: 420, speed: 1, mlx: "mlx-community/DeepSeek-R1-4bit" }),
 ];
 
+/**
+ * A small model that sees the slides paired with a larger one that writes: the eye is
+ * shown each slide and notes what is on it, then the writer writes the summary and
+ * LAQs from those notes, as it would from Claude's. They run one after the other, so
+ * the memory needed is the larger of the two. The eye runs on MLX.
+ */
+export interface ModelPair {
+  eye: string;
+  writer: string;
+  blurb: string;
+}
+
+export const PAIRS: readonly ModelPair[] = [
+  { eye: "fastvlm-0.5b", writer: "gemma-4-e4b", blurb: "Light: through the slides in no time, on a modest laptop." },
+  { eye: "fastvlm-0.5b", writer: "gpt-oss-20b", blurb: "Quickest through the slides, and gpt-oss writes fast for its size." },
+  { eye: "qwen3-vl-4b", writer: "gpt-oss-20b", blurb: "Reads labels, figures and tables well, and still writes quickly." },
+  { eye: "qwen3-vl-4b", writer: "qwen-3.6-27b", blurb: "The most careful pair: slower, with thorough summaries and marking." },
+];
+
 /** "35B, 3B active" → 35e9; "135M" → 135e6 — for listing models smallest first. */
 export function parameterCount(m: LocalModel): number {
   const match = m.params.match(/([\d.]+)\s*([BM])/i);

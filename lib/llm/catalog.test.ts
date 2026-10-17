@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LOCAL_MODELS, recommendModels, type MachineSpecs } from "./catalog";
+import { findModel, LOCAL_MODELS, MORE_MODELS, PAIRS, recommendModels, type MachineSpecs } from "./catalog";
 
 const mac = (ramGb: number, cores = 8): MachineSpecs => ({ ramGb, cores, appleSilicon: true, kind: "Mac" });
 const pc = (ramGb: number, cores: number): MachineSpecs => ({ ramGb, cores, appleSilicon: false, kind: "Windows PC" });
@@ -39,5 +39,23 @@ describe("recommendModels", () => {
     const sizes = LOCAL_MODELS.map((m) => m.downloadGb);
     expect([...sizes].sort((a, b) => a - b)).toEqual(sizes);
     for (const m of LOCAL_MODELS) expect(m.uri).toMatch(/^hf:[\w.-]+\/[\w.-]+:Q4_K_M$/);
+  });
+});
+
+describe("the other models", () => {
+  it("gives every alternative an MLX copy and a main model to sit beside", () => {
+    for (const m of MORE_MODELS) {
+      expect(m.mlx, m.id).toBeTruthy();
+      if (m.like) expect(LOCAL_MODELS.some((l) => l.id === m.like), m.id).toBe(true);
+    }
+  });
+
+  it("pairs an eye that sees slides on MLX with a writer that exists", () => {
+    for (const p of PAIRS) {
+      const eye = findModel(p.eye);
+      expect(eye?.vision && eye.mlx, p.eye).toBeTruthy();
+      expect(findModel(p.writer), p.writer).toBeDefined();
+      expect(p.eye).not.toBe(p.writer);
+    }
   });
 });

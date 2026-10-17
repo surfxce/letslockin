@@ -22,6 +22,8 @@ export interface Settings {
   onboarded: boolean;
   /** Catalog id of the downloaded model used in "local" mode. */
   localModel: string | null;
+  /** A separate model, on MLX, that looks at the slides for `localModel`; null when it looks itself. */
+  slideReader: string | null;
   /** LAQs written per hour of lecture, when it is prepared and on "Write new LAQs". */
   laqsPerHour: number;
   /** LAQs a sitting asks per hour of lecture. */
@@ -53,6 +55,7 @@ const DEFAULTS: Settings = {
   notify: false,
   onboarded: false,
   localModel: null,
+  slideReader: null,
   laqsPerHour: 2,
   sittingPerHour: 2,
   laqStyle: "mixed",
@@ -90,6 +93,7 @@ export async function getSettings(): Promise<Settings> {
     if (typeof out[k] !== "string") out[k] = "";
   }
   out.apiVision = out.apiVision !== false;
+  if (typeof out.slideReader !== "string") out.slideReader = null;
   return out;
 }
 

@@ -22,7 +22,7 @@ import { cloudProvider, getLocalProvider, isFake, type LlmProvider } from "@/lib
 import { CloudError } from "@/lib/llm/base";
 import type { SortFile } from "@/lib/llm/provider";
 import { downloadMlxModel, downloadModelFile, modelSource } from "@/lib/llm/download";
-import { activeLocalModel, fallbackLocalModel, installedModels, modelsDir, registerModel } from "@/lib/models";
+import { activeLocalModel, activeSlideReader, fallbackLocalModel, installedModels, linkModel, modelsDir, registerModel } from "@/lib/models";
 import { LocalProvider, releaseLocalModel } from "@/lib/llm/local";
 import { installMmproj, installServer, lookAtSlides, lookAtSlidesMlx, visionParts } from "@/lib/llm/vision";
 import { JobCancelled, jobSignal, runCancellable } from "@/lib/llm/cancel";
@@ -31,7 +31,7 @@ import { lectureDecks } from "@/lib/slides";
 import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
-import { getSettings, HEARTBEAT_KEY, setSetting } from "@/lib/settings";
+import { getSettings, HEARTBEAT_KEY } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
 
 const POLL_MS = Number(process.env.LOCKIN_WORKER_POLL_MS ?? 2000);
@@ -111,7 +111,9 @@ async function lookLocally(
   result: Record<string, unknown>,
 ): Promise<SlideNote[] | undefined> {
   if (!(provider instanceof LocalProvider)) return undefined;
-  const mlx = provider.format === "mlx" && !!findModel(provider.modelId)?.vision;
+  // A pair's eye looks at the slides for the writer; else the writer looks itself.
+  const reader = await activeSlideReader();
+  const mlx = !!reader || (provider.format === "mlx" && !!findModel(provider.modelId)?.vision);
   const parts = mlx ? null : await visionParts(modelsDir(), provider.modelId, provider.modelPath);
   const decks = (await lectureDecks(lectureId)).filter((d) => d.pdf && d.pages > 0);
   if ((!mlx && !parts) || decks.length === 0) return undefined;
@@ -119,8 +121,12 @@ async function lookLocally(
   const slides = { lectureId, decks: decks.map(({ materialId, file, name, first, pages, pdf }) => ({ materialId, file, name, first, pages, pdf })), sharedWith: [] };
   if (mlx) {
     try {
-      const notes = await lookAtSlidesMlx(provider.modelPath, slides, (detail) => void setStageDetail(jobId, detail).catch(() => undefined));
+      // The writer's llama.cpp copy needn't hold memory while the eye looks; on MLX the
+      // engine swaps one model for the other itself.
+      if (reader && provider.format === "gguf") await releaseLocalModel();
+      const notes = await lookAtSlidesMlx(reader?.path ?? provider.modelPath, slides, (detail) => void setStageDetail(jobId, detail).catch(() => undefined));
       result.slidesSeen = notes.length;
+      if (reader) result.slideReader = reader.model.name;
       return notes;
     } catch (err) {
       if (jobSignal()?.aborted) throw new JobCancelled();
@@ -303,11 +309,12 @@ async function downloadOne(): Promise<boolean> {
     where: { id: pending.id },
     data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: "download" },
   });
-  const { modelId, link, visionOnly, mlx } = JSON.parse(job.payload) as {
+  const { modelId, link, visionOnly, mlx, reader } = JSON.parse(job.payload) as {
     modelId: string;
     link?: boolean;
     visionOnly?: boolean;
     mlx?: boolean;
+    reader?: string | null;
   };
   const model = findModel(modelId);
   const started = Date.now();
@@ -339,19 +346,13 @@ async function downloadOne(): Promise<boolean> {
       await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString(), format: "mlx" });
       // It replaces the llama.cpp copy, which would only take up space.
       if (previous && previous.path !== path) await rm(previous.path, { force: true, recursive: true });
-      if (link) {
-        await setSetting("localModel", model.id);
-        await setSetting("mode", "local");
-      }
+      if (link) await linkModel(model, reader);
     } else if (!visionOnly) {
       console.log(`↓ ${model.name} from ${modelSource(model)}`);
       ({ path, bytes } = await downloadModelFile(model, modelsDir(), (d, t) => report(d, t), controller.signal));
       await registerModel({ id: model.id, path, bytes, downloadedAt: new Date().toISOString() });
       // Linking up: a finished download becomes the model local mode uses.
-      if (link) {
-        await setSetting("localModel", model.id);
-        await setSetting("mode", "local");
-      }
+      if (link) await linkModel(model, reader);
     }
     // A model that takes images gets its vision part and llama.cpp's server, so it can
     // be shown the slides. Without them it still works, reading slides as text.

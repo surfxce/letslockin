@@ -15,7 +15,9 @@ import { cancelJob, clearQueue, enqueue, queuePrepare, retryJob } from "@/lib/jo
 import { ingestFile } from "@/lib/materials";
 import { checksum } from "@/lib/parse";
 import { parseLaqs, parseScores, parseSummary } from "@/lib/paste";
-import { activeLocalModel, cancelDownload, removeModel, requestDownload } from "@/lib/models";
+import { findModel } from "@/lib/llm/catalog";
+import { mlxAvailable } from "@/lib/llm/mlx";
+import { activeLocalModel, cancelDownload, installedModels, linkModel, removeModel, requestDownload } from "@/lib/models";
 import { materialsDir } from "@/lib/paths";
 import { scoreAttemptIfMarked } from "@/lib/pipeline";
 import { scanFolder } from "@/lib/scan";
@@ -708,9 +710,34 @@ export async function stopDownload(jobId: string) {
 
 /** Switches to a model that is already downloaded. */
 export async function switchLocalModel(modelId: string) {
-  await setSetting("localModel", modelId);
-  await setSetting("mode", "local");
+  const model = findModel(modelId);
+  if (model) await linkModel(model);
   refreshAll();
+}
+
+/**
+ * One model looks at the slides, another writes: downloads whichever of the two isn't
+ * here yet, and links the writer with its eye — now if it is downloaded, else when it is.
+ * The same model twice is just that model.
+ */
+export async function choosePair(eyeId: string, writerId: string): Promise<Result> {
+  try {
+    const eye = findModel(eyeId);
+    const writer = findModel(writerId);
+    if (!eye?.vision || !eye.mlx || !writer) throw new Error("Pick a model that sees slides, and one that writes");
+    const reader = eyeId === writerId ? null : eyeId;
+    if (reader && !mlxAvailable()) throw new Error("A separate eye runs on MLX, on an Apple Silicon Mac with the desktop app");
+    const installed = await installedModels();
+    if (reader && !installed.some((m) => m.id === reader && m.format === "mlx")) {
+      await requestDownload(reader, { mlx: true, link: false });
+    }
+    if (installed.some((m) => m.id === writerId)) await linkModel(writer, reader);
+    else await requestDownload(writerId, { reader });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  refreshAll();
+  return { ok: true, message: "Done." };
 }
 
 export async function deleteLocalModel(modelId: string) {
