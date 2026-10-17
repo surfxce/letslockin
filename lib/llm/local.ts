@@ -5,6 +5,7 @@ import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
 import { engineGenerate } from "@/lib/llm/mlx";
+import { strictSchema } from "@/lib/llm/strict-schema";
 import { jobSignal } from "@/lib/llm/cancel";
 import {
   askVars,
@@ -135,6 +136,18 @@ function digestSchema(existingIds: string[]): GbnfJsonSchema {
       slideNotes: { type: "array", maxItems: 0 },
     },
   };
+}
+
+/** The reply, held to its shape — with what was wrong in words, not Zod's list of issues. */
+function checked<T>(zod: ZodType<T>, reply: unknown): T {
+  const result = zod.safeParse(reply);
+  if (result.success) return result.data;
+  const where = [...new Set(result.error.issues.map((i) => i.path.filter((p) => typeof p === "string").join(".")))]
+    .filter(Boolean)
+    .slice(0, 3);
+  throw new Error(
+    `the offline model's answer was missing parts${where.length ? ` (${where.join(", ")})` : ""} — try again, or use a larger model`,
+  );
 }
 
 function questionsSchema(conceptIds: string[], type: "LAQ" | "SAQ", total: number): GbnfJsonSchema {
@@ -450,7 +463,7 @@ export class LocalProvider implements LlmProvider {
           "the local model ran out of room before finishing its answer — try a smaller model, or close other apps to free memory",
         );
       }
-      return opts.zod.parse(parsed);
+      return checked(opts.zod, parsed);
     } finally {
       await context.dispose();
     }
@@ -467,7 +480,7 @@ export class LocalProvider implements LlmProvider {
     const text = await engineGenerate({
       model: this.modelPath,
       prompt: rendered.text,
-      schema: opts.schema,
+      schema: strictSchema(opts.schema),
       maxTokens: opts.maxTokens,
       temperature: opts.temperature,
       // Roughly three words for every four tokens.
@@ -480,7 +493,7 @@ export class LocalProvider implements LlmProvider {
     } catch {
       throw new Error("the offline model stopped before finishing its answer — try a smaller model, or close other apps to free memory");
     }
-    return opts.zod.parse(parsed);
+    return checked(opts.zod, parsed);
   }
 
   /**
