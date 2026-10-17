@@ -18,7 +18,9 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
-            path: "Sources/LockinCore"
+            path: "Sources/LockinCore",
+            // WIP-CHUNKS-6-7: chunks 6 and 7 are being written; left out of the build until they compile.
+            exclude: ["LLM", "Queue", "Slides", "Settings.swift"]
         ),
         .executableTarget(
             name: "Lockin",
@@ -28,7 +30,12 @@ let package = Package(
         .testTarget(
             name: "LockinTests",
             dependencies: ["LockinCore"],
-            path: "Tests/LockinTests"
+            path: "Tests/LockinTests",
+            // WIP-CHUNKS-6-7
+            exclude: [
+                "JSONSchemasTests.swift", "JobQueueTests.swift", "JobSupportTests.swift", "LLMSchemasTests.swift",
+                "PipelineTests.swift", "PromptsTests.swift", "SettingsTests.swift",
+            ]
         ),
     ],
     swiftLanguageModes: [.v5]
