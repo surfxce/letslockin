@@ -37,6 +37,15 @@ let idleTimer: NodeJS.Timeout | null = null;
 /** An idle engine still holds the model's memory; let it go after a while. */
 const IDLE_MS = 5 * 60_000;
 
+/** The guided generation library's errors arrive as "…GuidedGenerationError error 0." */
+function plainly(error: string): string {
+  if (/GuidedGenerationError error 0/.test(error)) {
+    return "the model ran out of room before finishing its answer — try again, or a larger model";
+  }
+  if (/GuidedGenerationError error 1/.test(error)) return "the model stopped before finishing its answer — try again";
+  return error;
+}
+
 function start() {
   const binary = enginePath();
   if (!binary) throw new Error("the MLX engine isn't installed");
@@ -61,7 +70,7 @@ function start() {
       if (message.progress) waiting.onTokens?.(message.progress.tokens ?? 0);
       else {
         pending.delete(message.id!);
-        if (message.error !== undefined) waiting.reject(new Error(`MLX: ${message.error}`));
+        if (message.error !== undefined) waiting.reject(new Error(`MLX: ${plainly(message.error)}`));
         else waiting.resolve(message.text ?? "");
       }
     }

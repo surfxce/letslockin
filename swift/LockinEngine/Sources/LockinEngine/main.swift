@@ -104,6 +104,12 @@ func generate(id: String, request: [String: Any]) async throws -> String {
                 jsonSchema: constrainedSchema,
                 fastForward: true,
                 hostTokenizer: context.tokenizer)
+            // As the library's own structured generation does: hold back long runs of
+            // blank space (a common way for a constrained model to stall), and as the
+            // budget runs out, steer it to close the JSON rather than stop half-way.
+            let closing = ClosingTokenBias.compute(tokenizer: context.tokenizer, eosTokenId: context.tokenizer.eosTokenId)
+            let whitespace = WhitespaceTokenBias.compute(tokenizer: context.tokenizer)
+            let structural = CompletionReserve.estimate(schemaJSON: constrainedSchema, tokenizer: context.tokenizer)
             var text = ""
             var tokens = 0
             _ = try GuidedGenerationLoop.run(
@@ -111,7 +117,12 @@ func generate(id: String, request: [String: Any]) async throws -> String {
                 context: context,
                 constraint: constraint,
                 maxTokens: maxTokens,
-                vocabSize: grammarTokenizer.vocabSize
+                vocabSize: grammarTokenizer.vocabSize,
+                completionReserve: Swift.max(structural * 3, maxTokens / 4),
+                hardReserve: structural * 8,
+                closingBias: closing,
+                whitespaceBias: whitespace.bias,
+                whitespaceTokenIDs: whitespace.tokenIDs
             ) { delta in
                 text += delta
                 tokens += 1
