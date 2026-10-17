@@ -36,15 +36,21 @@ JSON at a time over stdin/stdout (`lib/llm/mlx.ts`).
 - Still to do: time a lecture on MLX against llama.cpp on a real Mac.
 - Apple Intelligence (Foundation Models) for the short jobs: later, on request.
 
-### 2. The app's skeleton and data
-Xcode project via SwiftPM, app target `Lockin`. GRDB models for Course, Module,
-Lecture, Material, Concept, Question, Attempt, Response, Job, GlossaryTerm, Setting.
-Reads the Electron app's database. Window, sidebar, empty states.
+### 2. The app's skeleton and data — built
+`swift/Lockin`: SwiftPM package with app target `Lockin` and library target `LockinCore`.
+GRDB models for all Prisma tables (Course, Module, Lecture, Material, Concept, Question,
+QuestionConcept, Attempt, Response, Gap, Review, PastPaper, PaperItem, PaperItemConcept,
+Job, GlossaryTerm, Setting) with `PrismaDate` decoding for both Prisma ISO-8601 and SQLite
+timestamps. Opens the Electron app's `lockin.db` and applies `prisma/migrations/`. SwiftUI
+window, `NavigationSplitView` sidebar with live GRDB `ValueObservation`, course detail
+skeleton, and empty states.
 
-### 3. The engines, with their tests
-Port `lib/engines/` (geometric mean, mastery, allocation, review schedule),
-`lib/parse/aims.ts`, `lib/group.ts` (folder → lectures), `lib/paste.ts`, the
-markdown slide markers and crops. Port the vitest cases to XCTest first, then the code.
+### 3. The engines, with their tests — built
+Ported `lib/engines/` (geometric mean, mastery, allocation, question picker, review
+schedule), `lib/parse/aims.ts`, `lib/group.ts` (folder → lectures), `lib/paste.ts`, and
+`lib/markdown.ts` (slide markers, crops, and basic Markdown-to-HTML) into `LockinCore`.
+Ported all Vitest suites to XCTest (`swift test` runs 74 tests across 8 suites in CI via
+`.github/workflows/mac-app.yml`).
 
 ### 4. The lecture library
 The home database (sort, group by module with averages, search, due strip), the

@@ -67,3 +67,5 @@ materials/
 /engine
 /swift/LockinEngine/.build*
 /swift/LockinEngine/.swiftpm
+/swift/Lockin/.build*
+/swift/Lockin/.swiftpm
