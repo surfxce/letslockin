@@ -119,7 +119,14 @@
     },
     "dmg": {
       "artifactName": "Lockin.dmg",
-      "title": "Lockin"
+      "title": "Lockin",
+      "background": "build/background.png",
+      "iconSize": 112,
+      "window": { "width": 660, "height": 400 },
+      "contents": [
+        { "x": 180, "y": 205, "type": "file" },
+        { "x": 480, "y": 205, "type": "link", "path": "/Applications" }
+      ]
     },
     "npmRebuild": false
   },
