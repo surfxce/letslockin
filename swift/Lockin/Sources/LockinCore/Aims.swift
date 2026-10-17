@@ -14,6 +14,35 @@ public struct Skipped: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - UTF-16 & Calendar helpers matching JavaScript semantics
+
+extension Calendar {
+    public static let gregorian = Calendar(identifier: .gregorian)
+}
+
+extension String {
+    /// Length in UTF-16 code units, matching JavaScript's `String.prototype.length`.
+    var utf16Count: Int {
+        (self as NSString).length
+    }
+
+    /// Prefix of at most `maxUnits` UTF-16 code units, matching JavaScript's `str.slice(0, maxUnits)`.
+    func utf16Prefix(_ maxUnits: Int) -> String {
+        guard maxUnits > 0 else { return "" }
+        let ns = self as NSString
+        guard ns.length > maxUnits else { return self }
+        return ns.substring(to: maxUnits)
+    }
+
+    /// Drops the first `units` UTF-16 code units, matching JavaScript's `str.slice(units)`.
+    func utf16DropFirst(_ units: Int) -> String {
+        guard units > 0 else { return self }
+        let ns = self as NSString
+        guard units < ns.length else { return "" }
+        return ns.substring(from: units)
+    }
+}
+
 // MARK: - Internal regex helper
 
 enum Regex {
@@ -22,30 +51,39 @@ enum Regex {
     }
 
     static func test(_ re: NSRegularExpression, in text: String) -> Bool {
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let range = NSRange(location: 0, length: (text as NSString).length)
         return re.firstMatch(in: text, options: [], range: range) != nil
     }
 
     static func firstMatch(_ re: NSRegularExpression, in text: String) -> NSTextCheckingResult? {
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let range = NSRange(location: 0, length: (text as NSString).length)
         return re.firstMatch(in: text, options: [], range: range)
     }
 
     static func allMatches(_ re: NSRegularExpression, in text: String) -> [NSTextCheckingResult] {
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let range = NSRange(location: 0, length: (text as NSString).length)
         return re.matches(in: text, options: [], range: range)
     }
 
     static func group(_ match: NSTextCheckingResult, at index: Int, in text: String) -> String? {
         guard index < match.numberOfRanges else { return nil }
         let nsRange = match.range(at: index)
-        guard nsRange.location != NSNotFound, let range = Range(nsRange, in: text) else { return nil }
-        return String(text[range])
+        guard nsRange.location != NSNotFound else { return nil }
+        return (text as NSString).substring(with: nsRange)
     }
 
+    /// Replaces all matches (`String.prototype.replace(/.../g, ...)`).
     static func replace(_ re: NSRegularExpression, in text: String, with template: String) -> String {
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let range = NSRange(location: 0, length: (text as NSString).length)
         return re.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: template)
+    }
+
+    /// Replaces only the first match (`String.prototype.replace(/.../, ...)` without `/g`).
+    static func replaceFirst(_ re: NSRegularExpression, in text: String, with template: String) -> String {
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        guard let m = re.firstMatch(in: text, options: [], range: range) else { return text }
+        let replacement = re.replacementString(for: m, in: text, offset: 0, template: template)
+        return (text as NSString).replacingCharacters(in: m.range, with: replacement)
     }
 }
 
@@ -55,7 +93,7 @@ private func aboutOf(_ body: String) -> String {
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
         .joined(separator: "\n")
-    return String(joined.prefix(900)).trimmingCharacters(in: .whitespacesAndNewlines)
+    return joined.utf16Prefix(900).trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 private let strongLabelRe = Regex.compile(
@@ -103,21 +141,21 @@ private let mdHeadingLineRe = Regex.compile(#"^(#{1,6})\s+(.*)$"#)
 /// Whether one slide or section is module aims / learning objectives.
 public func isAimsSection(_ body: String) -> Bool {
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    let stripped = Regex.replace(leadingMarkupRe, in: trimmed, with: "")
-    let head = String(stripped.prefix(240))
+    let stripped = Regex.replaceFirst(leadingMarkupRe, in: trimmed, with: "")
+    let head = stripped.utf16Prefix(240)
     if Regex.test(byTheEndRe, in: head) { return true }
 
     if let strong = Regex.firstMatch(strongLabelRe, in: head),
        let matched = Regex.group(strong, at: 0, in: head) {
-        let rest = String(head.dropFirst(matched.count))
-        return Regex.test(headingEndRe, in: rest) || Regex.test(ableToRe, in: String(body.prefix(800)))
+        let rest = head.utf16DropFirst(matched.utf16Count)
+        return Regex.test(headingEndRe, in: rest) || Regex.test(ableToRe, in: body.utf16Prefix(800))
     }
 
     if let weak = Regex.firstMatch(weakLabelRe, in: head),
        let matched = Regex.group(weak, at: 0, in: head) {
-        let rest = String(head.dropFirst(matched.count))
+        let rest = head.utf16DropFirst(matched.utf16Count)
         if Regex.test(headingEndRe, in: rest) {
-            let sample = String(body.prefix(800))
+            let sample = body.utf16Prefix(800)
             return Regex.test(ableToRe, in: sample) || Regex.allMatches(learningVerbsRe, in: sample).count >= 2
         }
     }
@@ -126,7 +164,7 @@ public func isAimsSection(_ body: String) -> Bool {
 
 private func labelOf(_ body: String) -> String {
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    let head = Regex.replace(leadingMarkupRe, in: trimmed, with: "")
+    let head = Regex.replaceFirst(leadingMarkupRe, in: trimmed, with: "")
     let match = Regex.firstMatch(strongLabelRe, in: head)
         ?? Regex.firstMatch(weakLabelRe, in: head)
         ?? Regex.firstMatch(byTheEndRe, in: head)
@@ -164,7 +202,7 @@ private func stripMarkedSections(_ text: String) -> (text: String, skipped: [Ski
         let section = nsText.substring(with: NSRange(location: m.range.location, length: end - m.range.location))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let markerString = nsText.substring(with: m.range)
-        let body = String(section.dropFirst(markerString.count))
+        let body = section.utf16DropFirst(markerString.utf16Count)
         if isAimsSection(body) {
             let unit = (Regex.group(m, at: 1, in: text) ?? Regex.group(m, at: 3, in: text) ?? "slide").lowercased()
             let num = Regex.group(m, at: 2, in: text) ?? Regex.group(m, at: 4, in: text) ?? "1"
@@ -196,7 +234,7 @@ private func stripHeadingSections(_ text: String) -> (text: String, skipped: [Sk
         if let heading = Regex.firstMatch(mdHeadingLineRe, in: line),
            let hashes = Regex.group(heading, at: 1, in: line),
            let title = Regex.group(heading, at: 2, in: line) {
-            let level = hashes.count
+            let level = hashes.utf16Count
             if droppingBelow > 0 && level > droppingBelow {
                 dropped.append(line)
                 continue
@@ -248,11 +286,9 @@ public func mergeSkipped(_ items: [Skipped]) -> [Skipped] {
         }
 
         let whereStr = sameUnit
-            ? "\(unit)s \(unique.map { $0.components(separatedBy: " ").dropFirst().joined(separator: " ") }.joined(separator: ", "))"
+            ? "\(unit)s " + unique.map { String($0.dropFirst(unit.count + 1)) }.joined(separator: ", ")
             : unique.joined(separator: ", ")
-        let aboutStr = abouts.isEmpty ? nil : String(abouts.joined(separator: "\n\n").prefix(1500))
-        let added = group.contains { $0.added == true } ? true : nil
-
-        return Skipped(what: what, where: whereStr, about: aboutStr, added: added)
+        let aboutStr = abouts.isEmpty ? nil : abouts.joined(separator: "\n\n").utf16Prefix(900)
+        return Skipped(what: what, where: whereStr, about: aboutStr)
     }
 }

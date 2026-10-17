@@ -11,7 +11,7 @@ final class ScheduleTests: XCTestCase {
         comps.hour = h
         comps.minute = 0
         comps.second = 0
-        return Calendar.current.date(from: comps)!
+        return Calendar.gregorian.date(from: comps)!
     }
 
     private func midnight(_ d: Int) -> Date {

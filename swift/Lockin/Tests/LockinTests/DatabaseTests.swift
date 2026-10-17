@@ -206,10 +206,16 @@ final class DatabaseTests: XCTestCase {
             XCTAssertEqual(try PaperItemConcept.fetchCount(conn), 1)
             XCTAssertEqual(try Job.fetchCount(conn), 1)
             XCTAssertEqual(try Setting.fetchOne(conn, key: "mode")?.value, #""local""#)
+
+            let applied = try String.fetchAll(
+                conn,
+                sql: #"SELECT "migration_name" FROM "_prisma_migrations" ORDER BY "migration_name" ASC"#
+            )
+            XCTAssertEqual(applied, LockinDatabase.embeddedMigrations.map(\.name))
         }
     }
 
-    func testDecodesPrismaIsoDatesWithOffsetsAndSqliteTimestamps() throws {
+    func testDecodesOpenStringTypesAndPrismaDates() throws {
         let db = try LockinDatabase.inMemory()
         try db.writer.write { conn in
             try conn.execute(
@@ -218,6 +224,8 @@ final class DatabaseTests: XCTestCase {
                 VALUES ('c1', 'MEDI2001', 'Physiology', '2026-11-15T09:00:00.000+00:00', 0.5, '2026-10-12T05:44:02.278+00:00');
                 INSERT INTO "Setting" ("key", "value", "updatedAt")
                 VALUES ('notify', 'true', '2026-10-15 14:41:03');
+                INSERT INTO "Job" ("id", "kind", "payload", "status", "priority", "attempts", "createdAt")
+                VALUES ('j-legacy', 'PARSE_PAPER', '{}', 'CUSTOM_STATE', 0, 0, '2026-10-15T00:00:00.000Z');
                 """
             )
         }
@@ -227,19 +235,32 @@ final class DatabaseTests: XCTestCase {
             XCTAssertNotNil(course.examDate)
             let setting = try XCTUnwrap(Setting.fetchOne(conn, key: "notify"))
             XCTAssertEqual(setting.value, "true")
+            let legacyJob = try XCTUnwrap(Job.fetchOne(conn, key: "j-legacy"))
+            XCTAssertEqual(legacyJob.kind, JobKind(rawValue: "PARSE_PAPER"))
+            XCTAssertEqual(legacyJob.status, JobStatus(rawValue: "CUSTOM_STATE"))
         }
     }
 
-    func testReadsExistingElectronDatabaseWhenPresent() throws {
-        let repoDb = URL(fileURLWithPath: #filePath)
+    func testReadsExistingElectronDatabaseCopyWhenPresent() throws {
+        // #filePath is .../LetsLockIn/swift/Lockin/Tests/LockinTests/DatabaseTests.swift (5 levels deep)
+        let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("prisma/lockin.db")
+            .deletingLastPathComponent()
+        let repoDb = repoRoot.appendingPathComponent("prisma/lockin.db")
         guard FileManager.default.fileExists(atPath: repoDb.path) else { return }
 
-        let db = try LockinDatabase(path: repoDb.path, migrationsDir: nil)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lockin-db-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let tempDb = tempDir.appendingPathComponent("lockin.db")
+        try FileManager.default.copyItem(at: repoDb, to: tempDb)
+
+        let db = try LockinDatabase(path: tempDb.path, migrationsDir: nil)
         try db.reader.read { conn in
             _ = try Course.fetchAll(conn)
             _ = try Module.fetchAll(conn)

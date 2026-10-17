@@ -43,8 +43,12 @@ describe("renderMarkdown", () => {
   });
 
   it("still strips anything that could run", () => {
-    const html = renderMarkdown('<img src="x" onerror="alert(1)"><script>alert(2)</script>[a](javascript:alert(3))');
-    expect(html).not.toMatch(/onerror|<script|javascript:/);
+    const html = renderMarkdown(
+      '<img src="x" onerror="alert(1)"><script>alert(2)</script>' +
+        "[a](javascript:alert(3)) [b](javascript&#58;alert(4)) [c](&#x6a;avascript:alert(5)) " +
+        '[d](javascript%3Aalert(6)) <a href="java&#x09;script:alert(7)">e</a>',
+    );
+    expect(html).not.toMatch(/onerror|<script|javascript|alert\(/i);
   });
 
   it("strips tags that could send the page elsewhere", () => {

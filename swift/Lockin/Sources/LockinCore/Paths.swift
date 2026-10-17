@@ -2,14 +2,12 @@ import Foundation
 
 /// Where Lockin keeps its database, uploaded lecture files, prompts and migrations.
 ///
-/// Matches `lib/paths.ts` and `electron/main.ts`:
-/// - Packaged inside `.app`, writable state lives in `~/Library/Application Support/Lockin`.
-/// - Running from the repo, uses `LOCKIN_DATA_DIR`, `DATABASE_URL`, `<repo>/prisma/lockin.db`,
-///   or falls back to `~/Library/Application Support/Lockin`.
+/// Matches `lib/paths.ts` and `electron/main.ts`, keeping `databaseFile` and
+/// `materialsDirectory` rooted in the same data folder at all times.
 public enum LockinPaths {
     public static var repoRoot: URL? {
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        for _ in 0..<5 {
+        for _ in 0..<6 {
             let prisma = dir.appendingPathComponent("prisma/schema.prisma")
             if FileManager.default.fileExists(atPath: prisma.path) {
                 return dir
@@ -27,12 +25,32 @@ public enum LockinPaths {
         return base.appendingPathComponent("Lockin", isDirectory: true)
     }
 
+    /// Whether the current process should use the repository's data (`<repo>/prisma/lockin.db` + `<repo>/materials`)
+    /// rather than `~/Library/Application Support/Lockin`.
+    private static var usesRepoData: Bool {
+        if let env = ProcessInfo.processInfo.environment["LOCKIN_DATA_DIR"], !env.isEmpty {
+            return false
+        }
+        if Bundle.main.bundlePath.hasSuffix(".app") {
+            return false
+        }
+        guard let root = repoRoot else { return false }
+        let repoPrismaDb = root.appendingPathComponent("prisma/lockin.db")
+        if nonEmptyFile(at: repoPrismaDb) {
+            return true
+        }
+        let appSupportDb = appSupportDirectory.appendingPathComponent("lockin.db")
+        if nonEmptyFile(at: appSupportDb) {
+            return false
+        }
+        return true
+    }
+
     public static var dataDirectory: URL {
         if let env = ProcessInfo.processInfo.environment["LOCKIN_DATA_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env, isDirectory: true)
         }
-        let isBundledApp = Bundle.main.bundlePath.hasSuffix(".app")
-        if !isBundledApp, let root = repoRoot {
+        if usesRepoData, let root = repoRoot {
             return root
         }
         return appSupportDirectory
@@ -50,24 +68,18 @@ public enum LockinPaths {
         if let env = ProcessInfo.processInfo.environment["LOCKIN_DATA_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env, isDirectory: true).appendingPathComponent("lockin.db")
         }
-        // Running from the repo: check prisma/lockin.db first (where `.env` points),
-        // then ~/Library/Application Support/Lockin/lockin.db (where the installed app keeps it).
-        if !Bundle.main.bundlePath.hasSuffix(".app"), let root = repoRoot {
-            let repoPrismaDb = root.appendingPathComponent("prisma/lockin.db")
-            if nonEmptyFile(at: repoPrismaDb) {
-                return repoPrismaDb
-            }
-            let appSupportDb = appSupportDirectory.appendingPathComponent("lockin.db")
-            if nonEmptyFile(at: appSupportDb) {
-                return appSupportDb
-            }
-            return repoPrismaDb
+        if usesRepoData, let root = repoRoot {
+            return root.appendingPathComponent("prisma/lockin.db")
         }
         return appSupportDirectory.appendingPathComponent("lockin.db")
     }
 
     public static var materialsDirectory: URL {
         dataDirectory.appendingPathComponent("materials", isDirectory: true)
+    }
+
+    public static var modelsDirectory: URL {
+        dataDirectory.appendingPathComponent("models", isDirectory: true)
     }
 
     public static var promptsDirectory: URL {
@@ -96,6 +108,22 @@ public enum LockinPaths {
         if let root = repoRoot {
             let url = root.appendingPathComponent("prisma/migrations", isDirectory: true)
             if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    public static var engineBinary: URL? {
+        if let env = ProcessInfo.processInfo.environment["LOCKIN_ENGINE"], !env.isEmpty {
+            let url = URL(fileURLWithPath: env)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("engine/lockin-engine"),
+           FileManager.default.fileExists(atPath: bundled.path) {
+            return bundled
+        }
+        if let root = repoRoot {
+            let built = root.appendingPathComponent("swift/LockinEngine/.build-xcode/Build/Products/Release/lockin-engine")
+            if FileManager.default.fileExists(atPath: built.path) { return built }
         }
         return nil
     }

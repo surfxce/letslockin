@@ -10,7 +10,7 @@ let package = Package(
         .executable(name: "Lockin", targets: ["Lockin"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift", from: "6.29.3"),
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
     ],
     targets: [
         .target(

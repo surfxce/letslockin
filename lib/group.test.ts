@@ -124,10 +124,15 @@ describe("shared decks and lecture codes", () => {
   });
 
   it("keeps a range as its own lecture when none of its lectures is in the folder", () => {
-    const out = groupFiles([f("A4-A5_Appetite_slides.pdf", "SLIDES"), f("A1_Intro_transcript.txt")]);
+    const out = groupFiles([
+      f("A4-A5_Appetite_slides.pdf", "SLIDES"),
+      f("A4-A5_Appetite_transcript.txt"),
+      f("A1_Intro_transcript.txt"),
+    ]);
     expect(out).toHaveLength(2);
     expect(out[1].label).toBe("A4–A5");
     expect(out[1].title).toBe("Appetite");
+    expect(out[1].fileIndexes).toEqual([0, 1]);
   });
 
   it("does not take a date or a long span for a range", () => {

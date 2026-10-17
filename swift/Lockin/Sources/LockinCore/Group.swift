@@ -46,8 +46,8 @@ public struct ProposedLecture: Equatable, Sendable {
     }
 }
 
-public struct SortedFolder: Equatable, Sendable {
-    public struct LectureItem: Equatable, Sendable {
+public struct SortedFolder: Codable, Equatable, Sendable {
+    public struct LectureItem: Codable, Equatable, Sendable {
         public var title: String
         public var module: String?
         public var files: [String]
@@ -59,7 +59,7 @@ public struct SortedFolder: Equatable, Sendable {
         }
     }
 
-    public struct SetAsideItem: Equatable, Sendable {
+    public struct SetAsideItem: Codable, Equatable, Sendable {
         public var file: String
         public var reason: String
 
@@ -144,7 +144,7 @@ private let edgeDashesRe = Regex.compile(#"^[\s–-]+|[\s–-]+$"#)
 private let hasLetterRe = Regex.compile(#"[a-z]"#, options: [.caseInsensitive])
 
 private func plain(_ filename: String) -> String {
-    let noExt = Regex.replace(extRe, in: filename, with: "")
+    let noExt = Regex.replaceFirst(extRe, in: filename, with: "")
     return Regex.replace(underscoresRe, in: noExt, with: " ")
 }
 
@@ -163,12 +163,18 @@ private func named(_ filename: String) -> String {
 }
 
 public func titleFromFilename(_ filename: String) -> String {
-    let noExt = Regex.replace(extRe, in: filename, with: "")
+    let noExt = Regex.replaceFirst(extRe, in: filename, with: "")
     let kebab = !Regex.test(whitespaceRe, in: noExt)
     var cleaned = named(filename)
-    for re in [codeRangeRe, codeRe, lectureRangeRe, weekRangeRe, weekAndLectureRe, lectureRe, weekRe, moduleRe, noiseRe, isoDateRe, dmyDateRe, parenNumRe] {
-        cleaned = Regex.replace(re, in: cleaned, with: " ")
+    // In lib/group.ts, numbering/date regexes have no /g flag and only remove the first match,
+    // so "Week 3 lecture, revisiting week 1" keeps "week 1".
+    for re in [codeRangeRe, codeRe, lectureRangeRe, weekRangeRe, weekAndLectureRe, lectureRe, weekRe, moduleRe] {
+        cleaned = Regex.replaceFirst(re, in: cleaned, with: " ")
     }
+    cleaned = Regex.replace(noiseRe, in: cleaned, with: " ")
+    cleaned = Regex.replaceFirst(isoDateRe, in: cleaned, with: " ")
+    cleaned = Regex.replaceFirst(dmyDateRe, in: cleaned, with: " ")
+    cleaned = Regex.replace(parenNumRe, in: cleaned, with: " ")
     cleaned = Regex.replace(partNumberRe, in: cleaned, with: "Part $1")
     cleaned = Regex.replace(spacedDashOrColonRe, in: cleaned, with: " – ")
     if kebab {
@@ -194,15 +200,15 @@ public func dateFromName(_ name: String) -> String? {
        let d = Regex.group(dmy, at: 1, in: name),
        let m = Regex.group(dmy, at: 2, in: name),
        let y = Regex.group(dmy, at: 3, in: name) {
-        let year = y.count == 2 ? "20\(y)" : y
-        let month = m.count == 1 ? "0\(m)" : m
-        let day = d.count == 1 ? "0\(d)" : d
+        let year = y.utf16Count == 2 ? "20\(y)" : y
+        let month = m.utf16Count == 1 ? "0\(m)" : m
+        let day = d.utf16Count == 1 ? "0\(d)" : d
         return "\(year)-\(month)-\(day)"
     }
     return nil
 }
 
-private func localDay(_ d: Date, calendar: Calendar = .current) -> String {
+private func localDay(_ d: Date, calendar: Calendar = .gregorian) -> String {
     let comps = calendar.dateComponents([.year, .month, .day], from: d)
     return String(format: "%04d-%02d-%02d", comps.year ?? 2026, comps.month ?? 1, comps.day ?? 1)
 }
@@ -351,16 +357,11 @@ private func keyOf(_ k: Keyed) -> String {
 }
 
 public func groupFiles(_ files: [GroupInput]) -> [ProposedLecture] {
-    let described = files.enumerated().map { describeFile($1, index: $0) }
+    let described = files.enumerated().map { describeFile($0.element, index: $0.offset) }
     var groupOrder: [String] = []
     var groups: [String: [Keyed]] = [:]
     var aside: [Keyed] = []
     var ranged: [Keyed] = []
-
-    func appendToGroup(_ key: String, _ item: Keyed) {
-        if groups[key] == nil { groupOrder.append(key) }
-        groups[key, default: []].append(item)
-    }
 
     for k in described {
         if k.setAside != nil {
@@ -371,85 +372,91 @@ public func groupFiles(_ files: [GroupInput]) -> [ProposedLecture] {
             ranged.append(k)
             continue
         }
-        appendToGroup(keyOf(k), k)
+        let key = keyOf(k)
+        if groups[key] == nil { groupOrder.append(key) }
+        groups[key, default: []].append(k)
     }
 
     for k in ranged {
+        guard let range = k.range, !range.isEmpty else { continue }
         let scope = k.mod?.key ?? ""
-        let range = k.range!
         let ids = range.map(\.key)
         var homes = ids.map { "\(scope)|\($0)" }.filter { groups[$0] != nil }
         if homes.isEmpty {
             homes = groupOrder.filter { key in
-                guard let pipe = key.firstIndex(of: "|") else { return false }
-                let id = String(key[key.index(after: pipe)...])
-                return ids.contains(id)
+                if let bar = key.firstIndex(of: "|") {
+                    let suffix = String(key[key.index(after: bar)...])
+                    return ids.contains(suffix)
+                }
+                return false
             }
         }
         if homes.isEmpty {
-            let first = range.first!
-            let last = range.last!
-            let own = LectureId(key: "r\(ids.joined(separator: "+"))", n: first.n, label: "\(first.label)–\(last.label)")
+            let first = range[0]
+            let last = range[range.count - 1]
+            let own = LectureId(key: "r" + ids.joined(separator: "+"), n: first.n, label: "\(first.label)–\(last.label)")
+            let ownKey = "\(scope)|\(own.key)"
             var copy = k
             copy.lecture = own
-            appendToGroup("\(scope)|\(own.key)", copy)
+            if groups[ownKey] == nil { groupOrder.append(ownKey) }
+            groups[ownKey, default: []].append(copy)
             continue
         }
         for home in homes {
             var copy = k
             copy.shared = true
-            groups[home]!.append(copy)
+            groups[home, default: []].append(copy)
         }
     }
 
-    struct SortableLecture {
-        var lecture: ProposedLecture
-        var sort: (Int, Int)
-    }
-
-    var lectures: [SortableLecture] = groupOrder.compactMap { key in
+    var lectures: [(lecture: ProposedLecture, sort0: Int, sort1: Int)] = groupOrder.compactMap { key in
         guard let members = groups[key], !members.isEmpty else { return nil }
-        let own = members.contains(where: { !$0.shared }) ? members.filter { !$0.shared } : members
+        let nonShared = members.filter { !$0.shared }
+        let own = nonShared.isEmpty ? members : nonShared
         let lead = own.first(where: { $0.file.kind == "TRANSCRIPT" }) ?? own[0]
         let titles = own.map { titleFromFilename($0.filename) }.filter { !$0.isEmpty }
-        // Stable sort by descending length: first longest wins.
         var best = ""
-        for t in titles where t.count > best.count {
+        for t in titles where t.utf16Count > best.utf16Count {
             best = t
         }
+
         let number = (lead.lecture?.key.hasPrefix("l") == true) ? lead.lecture?.n : nil
         let label = lead.lecture?.label
-        let title = !best.isEmpty ? best : (number != nil ? "Lecture \(number!)" : (label ?? "Untitled lecture"))
+        let fallbackTitle: String
+        if let number {
+            fallbackTitle = "Lecture \(number)"
+        } else {
+            fallbackTitle = label ?? "Untitled lecture"
+        }
+        let title = best.isEmpty ? fallbackTitle : best
 
         let dated = own.compactMap(\.date).first
         let earliest = members.map(\.file.modifiedOn).min() ?? Date()
-        let hours = members.map { $0.file.measuredHours ?? 0 }.max() ?? 0
+        let hours = members.compactMap(\.file.measuredHours).max() ?? 0
 
-        return SortableLecture(
-            lecture: ProposedLecture(
-                title: title,
-                number: number,
-                label: label,
-                moduleTitle: lead.mod?.title,
-                deliveredOn: dated ?? localDay(earliest),
-                durationHours: hours > 0 ? hours : 1,
-                fileIndexes: members.map(\.index).sorted(),
-                setAside: nil
-            ),
-            sort: (lead.mod?.n ?? 0, lead.lecture?.n ?? Int.max)
+        let proposed = ProposedLecture(
+            title: title,
+            number: number,
+            label: label,
+            moduleTitle: lead.mod?.title,
+            deliveredOn: dated ?? localDay(earliest),
+            durationHours: hours > 0 ? hours : 1,
+            fileIndexes: members.map(\.index).sorted(),
+            setAside: nil
         )
+        return (proposed, lead.mod?.n ?? 0, lead.lecture?.n ?? Int.max)
     }
 
     lectures.sort { a, b in
-        if a.sort.0 != b.sort.0 { return a.sort.0 < b.sort.0 }
-        if a.sort.1 != b.sort.1 { return a.sort.1 < b.sort.1 }
+        if a.sort0 != b.sort0 { return a.sort0 < b.sort0 }
+        if a.sort1 != b.sort1 { return a.sort1 < b.sort1 }
         if a.lecture.deliveredOn != b.lecture.deliveredOn {
             return a.lecture.deliveredOn.localizedCompare(b.lecture.deliveredOn) == .orderedAscending
         }
         return a.lecture.title.localizedCompare(b.lecture.title) == .orderedAscending
     }
 
-    let setAsideLectures: [ProposedLecture] = aside.map { k in
+    let setAsideList: [ProposedLecture] = aside.map { k in
         let t = titleFromFilename(k.filename)
         return ProposedLecture(
             title: t.isEmpty ? k.filename : t,
@@ -463,45 +470,51 @@ public func groupFiles(_ files: [GroupInput]) -> [ProposedLecture] {
         )
     }
 
-    return lectures.map(\.lecture) + setAsideLectures
+    return lectures.map(\.lecture) + setAsideList
 }
 
 public func lecturesFromSort(_ files: [GroupInput], _ sorted: SortedFolder) -> [ProposedLecture] {
-    let described = files.enumerated().map { describeFile($1, index: $0) }
+    lecturesFromSort(files, sorted: sorted)
+}
+
+public func lecturesFromSort(_ files: [GroupInput], sorted: SortedFolder) -> [ProposedLecture] {
+    let described = files.enumerated().map { describeFile($0.element, index: $0.offset) }
     var indexOf: [String: Int] = [:]
     for (i, f) in files.enumerated() {
         indexOf[f.relativePath] = i
     }
-    var placed: Set<Int> = []
-
+    var placed = Set<Int>()
     var lectures: [ProposedLecture] = []
+
     for l in sorted.lectures {
-        var seen: Set<Int> = []
-        var members: [Keyed] = []
-        for path in l.files {
-            if let i = indexOf[path], !seen.contains(i) {
-                seen.insert(i)
-                members.append(described[i])
+        var uniqueIndices: [Int] = []
+        for p in l.files {
+            if let idx = indexOf[p], !uniqueIndices.contains(idx) {
+                uniqueIndices.append(idx)
             }
         }
+        let members = uniqueIndices.map { described[$0] }
         if members.isEmpty { continue }
         for m in members { placed.insert(m.index) }
+
         let lead = members.first(where: { $0.file.kind == "TRANSCRIPT" }) ?? members[0]
         let dated = lead.date ?? members.compactMap(\.date).first
         let earliest = members.map(\.file.modifiedOn).min() ?? Date()
-        let hours = members.map { $0.file.measuredHours ?? 0 }.max() ?? 0
+        let hours = members.compactMap(\.file.measuredHours).max() ?? 0
+
         let trimmedTitle = l.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackTitle = titleFromFilename(lead.filename)
-        let title = !trimmedTitle.isEmpty ? trimmedTitle : (!fallbackTitle.isEmpty ? fallbackTitle : "Untitled lecture")
+        let leadTitle = titleFromFilename(lead.filename)
+        let finalTitle = !trimmedTitle.isEmpty ? trimmedTitle : (!leadTitle.isEmpty ? leadTitle : "Untitled lecture")
+
         let trimmedMod = l.module?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let moduleTitle = (trimmedMod?.isEmpty == false) ? trimmedMod : lead.mod?.title
+        let finalMod = (trimmedMod?.isEmpty == false) ? trimmedMod : lead.mod?.title
 
         lectures.append(
             ProposedLecture(
-                title: title,
+                title: finalTitle,
                 number: (lead.lecture?.key.hasPrefix("l") == true) ? lead.lecture?.n : nil,
                 label: lead.lecture?.label,
-                moduleTitle: moduleTitle,
+                moduleTitle: finalMod,
                 deliveredOn: dated ?? localDay(earliest),
                 durationHours: hours > 0 ? hours : 1,
                 fileIndexes: members.map(\.index).sorted(),

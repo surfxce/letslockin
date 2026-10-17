@@ -8,15 +8,15 @@ the rest exists.
 
 Decisions:
 
-- **Apple Silicon, macOS 26+.** MLX and Apple Intelligence need it. The Electron app
+- **Apple Silicon, macOS 14+ (Sonoma).** MLX needs Apple Silicon. The Electron app
   stays for Windows (and Intel Macs) on llama.cpp, in maintenance mode.
 - **Same database.** The Swift app opens the existing `lockin.db` (GRDB over SQLite,
   the Prisma schema as is) and the same `materials/` folder, so nothing is migrated
   by hand and either app can be used during the move.
 - **Same prompts.** `prompts/*.md` stay the source; both apps read them.
 - **Built and tested on GitHub's Macs.** Development sessions run on Linux, so
-  `swift build` and `swift test` run in CI (`.github/workflows/mac-app.yml` grows a
-  Swift job); anything on screen is checked by hand on a real Mac.
+  `swift build` and `swift test` run in CI (`.github/workflows/swift.yml`);
+  anything on screen is checked by hand on a real Mac.
 - **The summary reader and editor stay web.** A `WKWebView` (the system's WebKit,
   no size cost) shows summaries and runs the editor, reusing the existing Markdown
   rendering, glossary underlines, crop button and TipTap editor. Rewriting a rich
@@ -34,37 +34,47 @@ JSON at a time over stdin/stdout (`lib/llm/mlx.ts`).
   "Switch to MLX" for llama.cpp copies.
 - Built by xcodebuild in CI and shipped in the .dmg's Resources/engine.
 - Still to do: time a lecture on MLX against llama.cpp on a real Mac.
-- Apple Intelligence (Foundation Models) for the short jobs: later, on request.
 
 ### 2. The app's skeleton and data — built
-`swift/Lockin`: SwiftPM package with app target `Lockin` and library target `LockinCore`.
-GRDB models for all Prisma tables (Course, Module, Lecture, Material, Concept, Question,
-QuestionConcept, Attempt, Response, Gap, Review, PastPaper, PaperItem, PaperItemConcept,
-Job, GlossaryTerm, Setting) with `PrismaDate` decoding for both Prisma ISO-8601 and SQLite
-timestamps. Opens the Electron app's `lockin.db` and applies `prisma/migrations/`. SwiftUI
-window, `NavigationSplitView` sidebar with live GRDB `ValueObservation`, course detail
-skeleton, and empty states.
+`swift/Lockin`: SwiftPM package with app target `Lockin` and library target `LockinCore`
+(plus `project.yml` XcodeGen spec for `Lockin.app`). GRDB 7 models for all Prisma tables
+(Course, Module, Lecture, Material, Concept, Question, QuestionConcept, Attempt, Response,
+Gap, Review, PastPaper, PaperItem, PaperItemConcept, Job, GlossaryTerm, Setting) with open
+string-backed kind/status structs and `PrismaDate` decoding for both Prisma ISO-8601 and
+SQLite timestamps. Opens the Electron app's `lockin.db` with a 5s busy timeout, applies and
+records `prisma/migrations/` in `_prisma_migrations`, and surfaces database errors with a
+Retry screen rather than silently opening an empty in-memory DB. SwiftUI `NavigationSplitView`
+sidebar with live GRDB `ValueObservation`.
 
 ### 3. The engines, with their tests — built
 Ported `lib/engines/` (geometric mean, mastery, allocation, question picker, review
 schedule), `lib/parse/aims.ts`, `lib/group.ts` (folder → lectures), `lib/paste.ts`, and
-`lib/markdown.ts` (slide markers, crops, and basic Markdown-to-HTML) into `LockinCore`.
-Ported all Vitest suites to XCTest (`swift test` runs 74 tests across 8 suites in CI via
-`.github/workflows/mac-app.yml`).
+`lib/markdown.ts` (slide markers and crops) into `LockinCore`. Ported the Vitest suites to
+XCTest (`swift test` runs in CI via `.github/workflows/swift.yml`).
 
-### 4. The lecture library
-The home database (sort, group by module with averages, search, due strip), the
-course filter, the lecture page header (properties, model ⓘ), tabs.
+### 4. The lecture library — built
+Ported `lib/format.ts`, `lib/status.ts`, `lib/views.ts` (`lectureRows`, `dueLectures`,
+`questionNumbers`), `LectureTable.tsx` sorting (nulls last) and grouping (by module, status,
+or course with module score averages), and `describeModels` into `LockinCore`. Built the
+SwiftUI `LectureLibraryView` (due strip, sort presets, module/status/course grouping, search,
+table columns) and `LectureDetailView` (breadcrumbs, `L<ordinal>` + `ModelInfoPopoverView` ⓘ,
+inline-editable properties grid, Summary / LAQs / Scores / Details tabs).
 
-### 5. Importing
-Folder picker, local grouping, the review list (untick, move files, retitle), AI
-sorting through the engine, adding to existing lectures.
+### 5. Importing — built
+Ported `lib/parse/index.ts` (`.vtt`/`.srt` captions with repeat deduplication and duration
+measurement, `.pdf` via PDFKit, `.pptx` via in-memory ZIP + `Compression` inflate, `.md`/`.txt`),
+`lib/scan.ts` (`scanFolder`), `lib/sortfiles.ts` (`excerptOf`, `describeForSort`,
+`formatSortFilesVar`, `resolveFolderSortResponse`, `enqueueSortJob`), `ImportFlow.tsx` review
+helpers (`existingFilesInCourse`, `homeLectureOf`, `buildImportReviewRows`,
+`moveFileInReviewRows`), and `lib/materials.ts` (`ingestFile`, `queuePrepare`,
+`importReviewedLectures`) into `LockinCore`. Built the SwiftUI `ImportFolderView` (folder
+picker, local vs AI sorting, review list with untick, retitle, move/drop/restore files, and
+adding files to existing lectures).
 
 ### 6. The job queue and the AI providers
 A queue actor in-process (no worker): stages and progress, cancel, the side lanes,
 cloud → offline fallback. Providers: Claude Code, Codex and Antigravity CLIs (Process),
-the API keys (URLSession; Anthropic over HTTP, OpenAI-compatible), MLX and Foundation
-Models from chunk 1.
+the API keys (URLSession; Anthropic over HTTP, OpenAI-compatible), and MLX from chunk 1.
 
 ### 7. Slides
 PDFKit draws pages and crops (replaces unpdf + canvas); the Vision framework reads

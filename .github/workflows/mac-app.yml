@@ -7,7 +7,7 @@ name: Mac app
 on:
   push:
     branches: [main, claude/blissful-carson-5hdqo3]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["**.md", "swift/Lockin/**"]
   workflow_dispatch:
 
 permissions:
@@ -18,20 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift:
-    runs-on: macos-latest # Apple Silicon
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: swift/Lockin
-    steps:
-      - uses: actions/checkout@v4
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-      - run: swift build
-      - run: swift test
-
   dmg:
     runs-on: macos-latest # Apple Silicon
     timeout-minutes: 45

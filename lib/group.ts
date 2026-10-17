@@ -285,7 +285,8 @@ export function groupFiles(files: GroupInput[]): ProposedLecture[] {
       const first = k.range![0];
       const last = k.range![k.range!.length - 1];
       const own: LectureId = { key: `r${ids.join("+")}`, n: first.n, label: `${first.label}–${last.label}` };
-      groups.set(`${scope}|${own.key}`, [{ ...k, lecture: own }]);
+      const ownKey = `${scope}|${own.key}`;
+      groups.set(ownKey, [...(groups.get(ownKey) ?? []), { ...k, lecture: own }]);
       continue;
     }
     for (const home of homes) groups.get(home)!.push({ ...k, shared: true });

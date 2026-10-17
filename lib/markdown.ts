@@ -108,6 +108,31 @@ export function slideNumbers(src: string): number[] | null {
  * anything else that is not a real address becomes its caption too: a summary never
  * shows a broken image.
  */
+function decodeAttrUrl(raw: string): string {
+  let s = raw;
+  for (let i = 0; i < 3; i++) {
+    const next = s
+      .replace(/&amp;/gi, "&")
+      .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16) || 0))
+      .replace(/&#0*(\d+);?/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10) || 0))
+      .replace(/&colon;/gi, ":")
+      .replace(/&tab;/gi, "\t")
+      .replace(/&newline;/gi, "\n");
+    if (next === s) break;
+    s = next;
+  }
+  for (let i = 0; i < 3 && s.includes("%"); i++) {
+    try {
+      const next = decodeURIComponent(s);
+      if (next === s) break;
+      s = next;
+    } catch {
+      break;
+    }
+  }
+  return s.replace(/[\u0000-\u0020]+/g, "").toLowerCase();
+}
+
 export function renderMarkdown(md: string, slides?: SlideImages): string {
   // "](slide 7)" with a space is not an image to a Markdown parser; angle brackets make it one.
   const prepared = md.replace(
@@ -122,7 +147,16 @@ export function renderMarkdown(md: string, slides?: SlideImages): string {
     // Tags that could send the page elsewhere or pull in more: a <meta> refresh, a <base>…
     .replace(/<\s*\/?\s*(meta|base|link|form)\b[^>]*>/gi, "")
     .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "")
-    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"')
+    .replace(
+      /(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/gi,
+      (whole, attr: string, dq?: string, sq?: string, uq?: string) => {
+        const clean = decodeAttrUrl(dq ?? sq ?? uq ?? "");
+        if (/^(?:javascript|vbscript):/.test(clean) || (clean.startsWith("data:") && !/^data:image\//.test(clean))) {
+          return `${attr}="#"`;
+        }
+        return whole;
+      },
+    )
     .replace(/<img src="([^"]*)" alt="([^"]*)"(?: title="[^"]*")?\s*\/?>/g, (tag, src: string, alt: string) => {
       if (/^(?:https?:|data:image\/|\/)/i.test(src)) return tag; // a real picture
       const numbers = slideNumbers(src);

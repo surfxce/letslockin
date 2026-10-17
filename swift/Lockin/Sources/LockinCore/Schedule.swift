@@ -52,11 +52,11 @@ public struct DueStatus: Equatable, Sendable {
     }
 }
 
-public func startOfDay(_ d: Date, calendar: Calendar = .current) -> Date {
+public func startOfDay(_ d: Date, calendar: Calendar = .gregorian) -> Date {
     calendar.startOfDay(for: d)
 }
 
-public func addDays(_ d: Date, _ days: Int, calendar: Calendar = .current) -> Date {
+public func addDays(_ d: Date, _ days: Int, calendar: Calendar = .gregorian) -> Date {
     calendar.date(byAdding: .day, value: days, to: d) ?? d.addingTimeInterval(Double(days) * 86_400)
 }
 
@@ -70,7 +70,7 @@ public func nextReview(
     sittings: [Sitting],
     readySince: Date?,
     examDate: Date? = nil,
-    calendar: Calendar = .current
+    calendar: Calendar = .gregorian
 ) -> ScheduledReview {
     let sorted = sittings.sorted { $0.at < $1.at }
 
@@ -104,7 +104,7 @@ public func nextReview(
 }
 
 /// For display: how a due date sits relative to today. "soon" is within three days.
-public func dueState(dueAt: Date?, now: Date = Date(), calendar: Calendar = .current) -> DueStatus {
+public func dueState(dueAt: Date?, now: Date = Date(), calendar: Calendar = .gregorian) -> DueStatus {
     guard let dueAt else { return DueStatus(state: .none, days: nil) }
     let dueStart = startOfDay(dueAt, calendar: calendar)
     let nowStart = startOfDay(now, calendar: calendar)

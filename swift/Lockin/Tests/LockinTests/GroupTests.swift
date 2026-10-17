@@ -9,7 +9,7 @@ final class GroupTests: XCTestCase {
         comps.month = 3
         comps.day = 10
         comps.hour = 12
-        return Calendar.current.date(from: comps)!
+        return Calendar.gregorian.date(from: comps)!
     }
 
     private func f(_ relativePath: String, _ kind: String = "TRANSCRIPT", _ measuredHours: Double? = nil) -> GroupInput {
@@ -127,10 +127,15 @@ final class GroupTests: XCTestCase {
     }
 
     func testKeepsRangeAsItsOwnLectureWhenNoneOfItsLecturesIsInFolder() {
-        let out = groupFiles([f("A4-A5_Appetite_slides.pdf", "SLIDES"), f("A1_Intro_transcript.txt")])
+        let out = groupFiles([
+            f("A4-A5_Appetite_slides.pdf", "SLIDES"),
+            f("A4-A5_Appetite_transcript.txt"),
+            f("A1_Intro_transcript.txt"),
+        ])
         XCTAssertEqual(out.count, 2)
         XCTAssertEqual(out[1].label, "A4–A5")
         XCTAssertEqual(out[1].title, "Appetite")
+        XCTAssertEqual(out[1].fileIndexes, [0, 1])
     }
 
     func testDoesNotTakeDateOrLongSpanForRange() {
@@ -189,6 +194,7 @@ final class GroupTests: XCTestCase {
         XCTAssertEqual(titleFromFilename("BIOL3010_Lecture_07_-_Lac_operon_slides.pdf"), "Lac operon")
         XCTAssertEqual(titleFromFilename("L1 transcript.vtt"), "")
         XCTAssertEqual(titleFromFilename("Week 3 - ECG fundamentals (1).pdf"), "ECG fundamentals")
+        XCTAssertEqual(titleFromFilename("Week 3 lecture, revisiting week 1.pdf"), "Lecture, revisiting week 1")
 
         XCTAssertEqual(titleFromFilename("A1_Endocrine-Control-of-Metabolism_slides.pdf"), "Endocrine Control of Metabolism")
         XCTAssertEqual(titleFromFilename("Lecture 3 - X-ray imaging.pdf"), "X-ray imaging")

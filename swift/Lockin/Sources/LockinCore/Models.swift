@@ -90,69 +90,128 @@ extension LockinRecord {
     }
 }
 
-// MARK: - String enums mirroring lib/types.ts
+// MARK: - Open string types mirroring lib/types.ts (tolerate unknown/future values)
 
-public enum MaterialKind: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case transcript = "TRANSCRIPT"
-    case slides = "SLIDES"
-    case figure = "FIGURE"
-    case pastPaper = "PAST_PAPER"
+public protocol LockinStringKind: RawRepresentable, Codable, DatabaseValueConvertible, Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible where RawValue == String {}
+
+extension LockinStringKind {
+    public init(stringLiteral value: String) {
+        self.init(rawValue: value)!
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self.init(rawValue: raw)!
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    public var databaseValue: DatabaseValue {
+        rawValue.databaseValue
+    }
+
+    public static func fromDatabaseValue(_ dbValue: DatabaseValue) -> Self? {
+        guard let raw = String.fromDatabaseValue(dbValue) else { return nil }
+        return Self(rawValue: raw)
+    }
+
+    public var description: String { rawValue }
 }
 
-public enum QuestionType: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case laq = "LAQ"
-    case saq = "SAQ"
+public struct MaterialKind: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let transcript = MaterialKind(rawValue: "TRANSCRIPT")!
+    public static let slides = MaterialKind(rawValue: "SLIDES")!
+    public static let figure = MaterialKind(rawValue: "FIGURE")!
+    public static let pastPaper = MaterialKind(rawValue: "PAST_PAPER")!
+    public static let allKnown: [MaterialKind] = [.transcript, .slides, .figure, .pastPaper]
 }
 
-public enum GapType: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case missed = "MISSED"
-    case wrong = "WRONG"
+public struct QuestionType: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let laq = QuestionType(rawValue: "LAQ")!
+    public static let saq = QuestionType(rawValue: "SAQ")!
+    public static let allKnown: [QuestionType] = [.laq, .saq]
 }
 
-public enum JobKind: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case prepare = "PREPARE"
-    case generate = "GENERATE"
-    case mark = "MARK"
-    case download = "DOWNLOAD"
-    case sort = "SORT"
-    case ask = "ASK"
+public struct GapType: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let missed = GapType(rawValue: "MISSED")!
+    public static let wrong = GapType(rawValue: "WRONG")!
+    public static let allKnown: [GapType] = [.missed, .wrong]
 }
 
-public enum JobStatus: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case pending = "PENDING"
-    case running = "RUNNING"
-    case done = "DONE"
-    case failed = "FAILED"
+public struct JobKind: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let prepare = JobKind(rawValue: "PREPARE")!
+    public static let generate = JobKind(rawValue: "GENERATE")!
+    public static let mark = JobKind(rawValue: "MARK")!
+    public static let download = JobKind(rawValue: "DOWNLOAD")!
+    public static let sort = JobKind(rawValue: "SORT")!
+    public static let ask = JobKind(rawValue: "ASK")!
+    public static let sideLanes: [JobKind] = [.download, .sort, .ask]
+    public static let allKnown: [JobKind] = [.prepare, .generate, .mark, .download, .sort, .ask]
 }
 
-public enum Stage: String, Codable, CaseIterable, Sendable {
-    case slides
-    case vision
-    case digest
-    case questions
-    case marking
-    case download
+public struct JobStatus: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let pending = JobStatus(rawValue: "PENDING")!
+    public static let running = JobStatus(rawValue: "RUNNING")!
+    public static let done = JobStatus(rawValue: "DONE")!
+    public static let failed = JobStatus(rawValue: "FAILED")!
+    public static let allKnown: [JobStatus] = [.pending, .running, .done, .failed]
+}
+
+public struct Stage: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let slides = Stage(rawValue: "slides")!
+    public static let vision = Stage(rawValue: "vision")!
+    public static let digest = Stage(rawValue: "digest")!
+    public static let questions = Stage(rawValue: "questions")!
+    public static let marking = Stage(rawValue: "marking")!
+    public static let download = Stage(rawValue: "download")!
 
     public var label: String {
-        switch self {
-        case .slides: return "Reading slide pictures"
-        case .vision: return "Looking at the slides"
-        case .digest: return "Reading & summarising"
-        case .questions: return "Writing LAQs"
-        case .marking: return "Marking"
-        case .download: return "Downloading model"
+        switch rawValue {
+        case "slides": return "Reading slide pictures"
+        case "vision": return "Looking at the slides"
+        case "digest": return "Reading & summarising"
+        case "questions": return "Writing LAQs"
+        case "marking": return "Marking"
+        case "download": return "Downloading model"
+        default: return rawValue
         }
     }
 }
 
-public enum AttemptSource: String, Codable, DatabaseValueConvertible, CaseIterable, Sendable {
-    case app = "APP"
-    case pasted = "PASTED"
+public struct AttemptSource: LockinStringKind, Hashable {
+    public var rawValue: String
+    public init?(rawValue: String) { self.rawValue = rawValue }
+
+    public static let app = AttemptSource(rawValue: "APP")!
+    public static let pasted = AttemptSource(rawValue: "PASTED")!
+    public static let allKnown: [AttemptSource] = [.app, .pasted]
 }
 
 // MARK: - Database Models (prisma/schema.prisma)
 
-public struct Course: LockinRecord, Identifiable {
+public struct Course: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Course"
 
     public var id: String
@@ -179,7 +238,7 @@ public struct Course: LockinRecord, Identifiable {
     }
 }
 
-public struct Module: LockinRecord, Identifiable {
+public struct Module: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Module"
 
     public var id: String
@@ -203,7 +262,7 @@ public struct Module: LockinRecord, Identifiable {
     }
 }
 
-public struct Lecture: LockinRecord, Identifiable {
+public struct Lecture: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Lecture"
 
     public var id: String
@@ -248,7 +307,7 @@ public struct Lecture: LockinRecord, Identifiable {
     }
 }
 
-public struct GlossaryTerm: LockinRecord, Identifiable {
+public struct GlossaryTerm: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "GlossaryTerm"
 
     public var id: String
@@ -272,7 +331,7 @@ public struct GlossaryTerm: LockinRecord, Identifiable {
     }
 }
 
-public struct Material: LockinRecord, Identifiable {
+public struct Material: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Material"
 
     public var id: String
@@ -311,7 +370,7 @@ public struct Material: LockinRecord, Identifiable {
     }
 }
 
-public struct Concept: LockinRecord, Identifiable {
+public struct Concept: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Concept"
 
     public var id: String
@@ -344,7 +403,7 @@ public struct Concept: LockinRecord, Identifiable {
     }
 }
 
-public struct Question: LockinRecord, Identifiable {
+public struct Question: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Question"
 
     public var id: String
@@ -377,7 +436,7 @@ public struct Question: LockinRecord, Identifiable {
     }
 }
 
-public struct QuestionConcept: LockinRecord {
+public struct QuestionConcept: LockinRecord, Equatable {
     public static let databaseTableName = "QuestionConcept"
 
     public var questionId: String
@@ -389,7 +448,7 @@ public struct QuestionConcept: LockinRecord {
     }
 }
 
-public struct Attempt: LockinRecord, Identifiable {
+public struct Attempt: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Attempt"
 
     public var id: String
@@ -419,7 +478,7 @@ public struct Attempt: LockinRecord, Identifiable {
     }
 }
 
-public struct Response: LockinRecord, Identifiable {
+public struct Response: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Response"
 
     public var id: String
@@ -455,7 +514,7 @@ public struct Response: LockinRecord, Identifiable {
     }
 }
 
-public struct Gap: LockinRecord, Identifiable {
+public struct Gap: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Gap"
 
     public var id: String
@@ -482,7 +541,7 @@ public struct Gap: LockinRecord, Identifiable {
     }
 }
 
-public struct Review: LockinRecord, Identifiable {
+public struct Review: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Review"
 
     public var id: String
@@ -509,7 +568,7 @@ public struct Review: LockinRecord, Identifiable {
     }
 }
 
-public struct PastPaper: LockinRecord, Identifiable {
+public struct PastPaper: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "PastPaper"
 
     public var id: String
@@ -536,7 +595,7 @@ public struct PastPaper: LockinRecord, Identifiable {
     }
 }
 
-public struct PaperItem: LockinRecord, Identifiable {
+public struct PaperItem: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "PaperItem"
 
     public var id: String
@@ -560,7 +619,7 @@ public struct PaperItem: LockinRecord, Identifiable {
     }
 }
 
-public struct PaperItemConcept: LockinRecord {
+public struct PaperItemConcept: LockinRecord, Equatable {
     public static let databaseTableName = "PaperItemConcept"
 
     public var paperItemId: String
@@ -572,7 +631,7 @@ public struct PaperItemConcept: LockinRecord {
     }
 }
 
-public struct Job: LockinRecord, Identifiable {
+public struct Job: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Job"
 
     public var id: String
@@ -632,7 +691,7 @@ public struct Job: LockinRecord, Identifiable {
     }
 }
 
-public struct Setting: LockinRecord, Identifiable {
+public struct Setting: LockinRecord, Equatable, Identifiable {
     public static let databaseTableName = "Setting"
 
     public var id: String { key }

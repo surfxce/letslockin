@@ -103,11 +103,11 @@ private func stripChat(_ text: String) -> String {
     }
     paragraphs.append(ns.substring(from: lastEnd))
 
-    if paragraphs.count > 1 && Regex.test(preambleRe, in: paragraphs[0]) && paragraphs[0].count < 240 {
+    if paragraphs.count > 1 && Regex.test(preambleRe, in: paragraphs[0]) && paragraphs[0].utf16Count < 240 {
         paragraphs.removeFirst()
     }
     while paragraphs.count > 1 {
-        let last = Regex.replace(leadingStarsOrUnderscoresRe, in: paragraphs[paragraphs.count - 1], with: "")
+        let last = Regex.replaceFirst(leadingStarsOrUnderscoresRe, in: paragraphs[paragraphs.count - 1], with: "")
         if Regex.test(signOffRe, in: last) {
             paragraphs.removeLast()
         } else {
@@ -115,7 +115,7 @@ private func stripChat(_ text: String) -> String {
         }
     }
     let joined = paragraphs.joined(separator: "\n\n")
-    return Regex.replace(trailingRuleRe, in: joined, with: "")
+    return Regex.replaceFirst(trailingRuleRe, in: joined, with: "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
@@ -134,11 +134,11 @@ public func parseSummary(_ raw: String) -> ParsedSummary {
        let group1 = Regex.group(first, at: 1, in: text),
        let fullMatch = Regex.group(first, at: 0, in: text) {
         var t = unbold(group1)
-        t = Regex.replace(summaryPrefixRe, in: t, with: "")
-        t = Regex.replace(lectureNumPrefixRe, in: t, with: "")
+        t = Regex.replaceFirst(summaryPrefixRe, in: t, with: "")
+        t = Regex.replaceFirst(lectureNumPrefixRe, in: t, with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         title = t.isEmpty ? nil : t
-        text = String(text.dropFirst(fullMatch.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        text = text.utf16DropFirst(fullMatch.utf16Count).trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return ParsedSummary(title: title, markdown: text)
 }
@@ -194,7 +194,7 @@ private func splitMarks(_ text: String) -> (text: String, marks: Double?) {
     if let prefix = Regex.firstMatch(marksPrefixRe, in: text),
        let full = Regex.group(prefix, at: 0, in: text),
        let mStr = Regex.group(prefix, at: 1, in: text) {
-        let rest = String(text.dropFirst(full.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let rest = text.utf16DropFirst(full.utf16Count).trimmingCharacters(in: .whitespacesAndNewlines)
         return (rest, Double(mStr))
     }
     return (text.trimmingCharacters(in: .whitespacesAndNewlines), nil)
@@ -269,7 +269,7 @@ public func parseLaqs(_ raw: String) -> [ParsedLaq] {
                 answer.append(line)
             case .criteria:
                 if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    let withoutBullet = Regex.replace(bulletRe, in: line, with: "")
+                    let withoutBullet = Regex.replaceFirst(bulletRe, in: line, with: "")
                     let point = splitMarks(unbold(withoutBullet))
                     if !point.text.isEmpty {
                         criteria.append(ParsedCriterion(point: point.text, marks: point.marks))
@@ -281,7 +281,7 @@ public func parseLaqs(_ raw: String) -> [ParsedLaq] {
         let cleanedStem = Regex.replace(standaloneRuleLineRe, in: stem.joined(separator: "\n"), with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let body = splitMarks(cleanedStem)
-        let isTopic = !head.text.isEmpty && !body.text.isEmpty && head.text.count < 100
+        let isTopic = !head.text.isEmpty && !body.text.isEmpty && head.text.utf16Count < 100
             && !head.text.hasSuffix("?") && !head.text.hasSuffix(".")
         let text: String
         if isTopic {
@@ -339,8 +339,8 @@ private func kindOf(_ text: String) -> (kind: FeedbackKind?, rest: String) {
     for (kind, re) in kindLabels {
         if let m = Regex.firstMatch(re, in: plain),
            let matched = Regex.group(m, at: 0, in: plain) {
-            let tail = String(plain.dropFirst(matched.count))
-            let rest = Regex.replace(labelSuffixSeparatorRe, in: tail, with: "")
+            let tail = plain.utf16DropFirst(matched.utf16Count)
+            let rest = Regex.replaceFirst(labelSuffixSeparatorRe, in: tail, with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return (kind, rest)
         }
@@ -357,7 +357,7 @@ public func parseScores(_ raw: String) -> [ParsedScore] {
 
     func setScore(number: Int, got: Double, of: Double, raw: String) -> Int? {
         guard of > 0 else { return nil }
-        let mark = max(0, min(10, ((got / of) * 10 * 100).rounded() / 100))
+        let mark = max(0, min(10, floor((got / of) * 10 * 100 + 0.5) / 100))
         out.append(ParsedScore(number: number, mark: mark, raw: raw, feedback: []))
         return out.count - 1
     }
@@ -405,9 +405,9 @@ public func parseScores(_ raw: String) -> [ParsedScore] {
         }
         guard let scoreIdx = currentScoreIndex else { continue }
 
-        let bare = Regex.replace(leadingHashesRe, in: line, with: "")
+        let bare = Regex.replaceFirst(leadingHashesRe, in: line, with: "")
         let isBullet = Regex.test(bulletRe, in: bare)
-        let withoutBullet = Regex.replace(bulletRe, in: bare, with: "")
+        let withoutBullet = Regex.replaceFirst(bulletRe, in: bare, with: "")
         let label = kindOf(withoutBullet)
         if !isBullet, let k = label.kind, label.rest.isEmpty {
             kind = k
