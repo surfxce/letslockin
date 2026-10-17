@@ -44,9 +44,24 @@ async function writeRegistry(list: InstalledModel[]) {
   await prisma.setting.upsert({ where: { key: REGISTRY_KEY }, update: { value }, create: { key: REGISTRY_KEY, value } });
 }
 
-/** Installed models whose files are still there — a deleted file is not installed. */
+/**
+ * Installed models whose files are still there — a deleted file is not installed. A model
+ * whose folder was moved (from running Lockin out of its code folder into the desktop
+ * app's data folder, say) is found again in this models folder and its path corrected.
+ */
 export async function installedModels(): Promise<InstalledModel[]> {
-  return (await readRegistry()).filter((m) => existsSync(m.path));
+  const list = await readRegistry();
+  let moved = false;
+  const found = list.map((m) => {
+    if (existsSync(m.path)) return m;
+    const here =
+      m.format === "mlx" ? path.join(modelsDir(), "mlx", m.id) : path.join(modelsDir(), path.basename(m.path));
+    if (!existsSync(here)) return m;
+    moved = true;
+    return { ...m, path: here };
+  });
+  if (moved) await writeRegistry(found);
+  return found.filter((m) => existsSync(m.path));
 }
 
 export async function registerModel(model: InstalledModel) {
