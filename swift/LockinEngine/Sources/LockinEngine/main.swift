@@ -67,6 +67,25 @@ actor Engine {
 
 let engine = Engine()
 
+/// Whether the model has got stuck: the end of what it has written is the same stretch
+/// over and over (at least four times, 400 characters in all), or a long run of blank
+/// space. The same check as lib/llm/looping.ts.
+func isLooping(_ text: String) -> Bool {
+    let tail = Array(text.utf16.suffix(1600))
+    let blank: Set<UInt16> = [32, 9, 10, 13]
+    if tail.count >= 200 && tail.suffix(200).allSatisfy({ blank.contains($0) }) { return true }
+    for period in 8...300 {
+        let repeats = Swift.max(4, (400 + period - 1) / period)
+        if period * repeats > tail.count { break }
+        let unit = tail[(tail.count - period)...]
+        if unit.allSatisfy({ blank.contains($0) }) { continue }
+        var k = 1
+        while k < repeats && tail[(tail.count - (k + 1) * period)..<(tail.count - k * period)].elementsEqual(unit) { k += 1 }
+        if k >= repeats { return true }
+    }
+    return false
+}
+
 func generate(id: String, request: [String: Any]) async throws -> String {
     guard let model = request["model"] as? String, let prompt = request["prompt"] as? String else {
         throw NSError(domain: "lockin-engine", code: 1, userInfo: [NSLocalizedDescriptionKey: "a request needs a model and a prompt"])
@@ -112,6 +131,8 @@ func generate(id: String, request: [String: Any]) async throws -> String {
             let structural = CompletionReserve.estimate(schemaJSON: constrainedSchema, tokenizer: context.tokenizer)
             var text = ""
             var tokens = 0
+            var checkedAt = 0
+            var looping = false
             _ = try GuidedGenerationLoop.run(
                 input: input,
                 context: context,
@@ -127,7 +148,19 @@ func generate(id: String, request: [String: Any]) async throws -> String {
                 text += delta
                 tokens += 1
                 report(tokens)
+                if text.utf16.count - checkedAt >= 64 {
+                    checkedAt = text.utf16.count
+                    if isLooping(text) {
+                        looping = true
+                        return false
+                    }
+                }
                 return true
+            }
+            if looping {
+                throw NSError(domain: "lockin-engine", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "the model started repeating itself — try again, or a larger model",
+                ])
             }
             return text
         }

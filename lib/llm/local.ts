@@ -5,6 +5,7 @@ import type { GbnfJsonSchema, Llama, LlamaModel } from "node-llama-cpp";
 import type { ZodType } from "zod";
 
 import { engineGenerate } from "@/lib/llm/mlx";
+import { isLooping, LOOPING_MESSAGE } from "@/lib/llm/looping";
 import { strictSchema } from "@/lib/llm/strict-schema";
 import { jobSignal } from "@/lib/llm/cancel";
 import {
@@ -336,7 +337,9 @@ export class LocalProvider implements LlmProvider {
       transcript: source.transcript,
       schema: questionsSchema(input.concepts.map((c) => c.id), input.type, total),
       zod: QuestionSetSchema,
-      maxTokens: 900 * Math.max(1, total) + 300,
+      // A ceiling, not a target: a full model answer and up to eight criteria each.
+      // A model that gets stuck is stopped sooner by isLooping.
+      maxTokens: 2000 * Math.max(1, total) + 300,
       temperature: 0.5,
     });
   }
@@ -440,20 +443,35 @@ export class LocalProvider implements LlmProvider {
       const session = new LlamaChatSession({ contextSequence: context.getSequence() });
       let words = 0;
       let last = 0;
-      const text = await session.prompt(rendered.text, {
-        grammar,
-        maxTokens: Math.max(256, Math.min(opts.maxTokens, context.contextSize - count(rendered.text) - OVERHEAD_TOKENS)),
-        temperature: opts.temperature,
-        budgets: { thoughtTokens: 0 },
-        signal: jobSignal(),
-        onTextChunk: (chunk) => {
-          words += chunk.split(/\s+/).filter(Boolean).length;
-          if (Date.now() - last > 2000) {
-            last = Date.now();
-            progress(`writing — ${words.toLocaleString("en")} words so far`);
-          }
-        },
-      });
+      // Stopped early when it starts repeating itself; the job's own cancel still applies.
+      let written = "";
+      let checkedAt = 0;
+      const looping = new AbortController();
+      const job = jobSignal();
+      const text = await session
+        .prompt(rendered.text, {
+          grammar,
+          maxTokens: Math.max(256, Math.min(opts.maxTokens, context.contextSize - count(rendered.text) - OVERHEAD_TOKENS)),
+          temperature: opts.temperature,
+          budgets: { thoughtTokens: 0 },
+          signal: job ? AbortSignal.any([job, looping.signal]) : looping.signal,
+          onTextChunk: (chunk) => {
+            written += chunk;
+            if (written.length - checkedAt >= 64) {
+              checkedAt = written.length;
+              if (isLooping(written)) looping.abort();
+            }
+            words += chunk.split(/\s+/).filter(Boolean).length;
+            if (Date.now() - last > 2000) {
+              last = Date.now();
+              progress(`writing — ${words.toLocaleString("en")} words so far`);
+            }
+          },
+        })
+        .catch((err: unknown) => {
+          if (looping.signal.aborted && !job?.aborted) throw new Error(LOOPING_MESSAGE);
+          throw err;
+        });
       progress(null);
       let parsed: unknown;
       try {
