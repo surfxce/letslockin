@@ -9,12 +9,20 @@ interface BuildInfo {
   notes?: string;
 }
 
+/** Newer changes still being built on GitHub: when the update should be ready. */
+interface Building {
+  version: string;
+  notes: string;
+  readyAt: string;
+}
+
 export type UpdateCheck =
   | { state: "unsupported"; current: BuildInfo | null }
-  | { state: "current"; current: BuildInfo }
+  | { state: "current"; current: BuildInfo; building?: Building }
   | {
       state: "available";
       current: BuildInfo;
+      building?: Building;
       latest: BuildInfo & { size: number; dmg: string };
       /** False when it needs new libraries or Electron: only the .dmg will do. */
       inPlace: boolean;

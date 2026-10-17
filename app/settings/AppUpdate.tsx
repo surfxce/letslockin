@@ -6,6 +6,11 @@ import type { UpdateCheck } from "@/app/ui/desktop";
 import { Icon } from "@/app/ui/Icon";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+/** "about 12 minutes" until the build should be done; "a minute or two" once it's due. */
+function minutesLeft(readyAt: string) {
+  const minutes = Math.round((Date.parse(readyAt) - Date.now()) / 60_000);
+  return minutes <= 1 ? "a minute or two" : `about ${minutes} minutes`;
+}
 const mb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024 / 1024))} MB`;
 
 /**
@@ -27,6 +32,17 @@ export function AppUpdate() {
   };
   // eslint-disable-next-line react-hooks/set-state-in-effect -- window only exists after mount
   useEffect(() => void run(), []);
+
+  // While newer changes are being built, look again each minute: the update appears
+  // here as soon as it is ready.
+  const building = check && "building" in check ? check.building : undefined;
+  useEffect(() => {
+    if (!building) return;
+    const t = setInterval(async () => {
+      if (window.lockin?.checkUpdate) setCheck(await window.lockin.checkUpdate());
+    }, 60_000);
+    return () => clearInterval(t);
+  }, [building]);
 
   if (!check || check.state === "unsupported") return null;
   const current = check.current;
@@ -54,6 +70,13 @@ export function AppUpdate() {
                   : "It needs a newer Electron or libraries, so it comes as the full download: open it and drag Lockin into Applications again."}
               </>
             )}
+            {building && (
+              <span className="update-building">
+                <br />
+                Newer changes ({building.notes ? `“${building.notes}”` : <code>{building.version}</code>}) are being built — come
+                back in {minutesLeft(building.readyAt)}.
+              </span>
+            )}
             {check.state === "error" && <span className="result err">Couldn&apos;t check: {check.message}</span>}
             {problem && <span className="result err"> Couldn&apos;t update: {problem}</span>}
           </div>
@@ -78,7 +101,14 @@ export function AppUpdate() {
             <Icon name="download" size={14} /> Download Lockin.dmg
           </a>
         ) : (
-          <button type="button" className="btn" disabled={!!busy} onClick={() => void run()}>
+          <button
+            type="button"
+            className="btn update-check"
+            disabled={!!busy}
+            onClick={() => void run()}
+            title={building ? `Newer changes are being built — ready in ${minutesLeft(building.readyAt)}` : undefined}
+          >
+            {building && <span className="update-dot" aria-label="Newer changes are being built" />}
             <Icon name="refresh" size={14} /> {busy === "checking" ? "Checking…" : "Check again"}
           </button>
         )}
