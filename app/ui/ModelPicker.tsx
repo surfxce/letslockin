@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import { deleteLocalModel, downloadModel, downloadVision, stopDownload, switchLocalModel, switchToMlx } from "@/app/actions";
 import { Icon } from "@/app/ui/Icon";
-import type { LocalModel } from "@/lib/llm/catalog";
+import { parameterCount, type LocalModel } from "@/lib/llm/catalog";
 import type { DownloadState } from "@/lib/models";
 import type { ModelsPayload } from "@/lib/payloads";
 
@@ -33,6 +33,7 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
   const [data, setData] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [alternatives, setAlternatives] = useState(false);
   const wasActive = useRef(initial.downloads.some((d) => d.status === "RUNNING" || d.status === "PENDING"));
 
   const busy = data.downloads.some((d) => d.status === "RUNNING" || d.status === "PENDING");
@@ -97,6 +98,21 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
           />
         ))}
       </div>
+      <div className="picker-more">
+        <button type="button" className="btn quiet sm" onClick={() => setAlternatives(true)}>
+          See alternatives
+        </button>
+      </div>
+      {alternatives && (
+        <Alternatives
+          data={data}
+          slots={slots}
+          disabled={pending}
+          onDownload={(id) => act(() => downloadModel(id))}
+          onUse={(id) => act(() => switchLocalModel(id))}
+          onClose={() => setAlternatives(false)}
+        />
+      )}
       <p className="picker-why">{picks.why}</p>
       {picks.caution && <p className="picker-caution">{picks.caution}</p>}
       {busy && !data.workerAlive && (
@@ -110,7 +126,7 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
       {showInstalled && data.installed.length > 0 && (
         <div className="files" style={{ marginTop: 18 }}>
           {data.installed.map((i) => {
-            const model = data.catalog.find((m) => m.id === i.id);
+            const model = [...data.catalog, ...data.more].find((m) => m.id === i.id);
             return (
               <div key={i.id} className="file" style={{ alignItems: "center" }}>
                 <Icon name="file" />
@@ -261,6 +277,128 @@ function ModelCard({
           </button>
         )}
         {failed && <p className="result err" style={{ margin: "6px 0 0" }}>{download!.error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Other models beside the three picked for this computer: those that see slides, in the
+ * column of the main model each compares with, and — under "Show all" — every model on
+ * offer, tiny to enormous, by size. They run on MLX, so only on Apple Silicon.
+ */
+function Alternatives({
+  data,
+  slots,
+  disabled,
+  onDownload,
+  onUse,
+  onClose,
+}: {
+  data: ModelsPayload;
+  slots: Array<{ role: "performance" | "recommended" | "quality"; label: string; model: LocalModel }>;
+  disabled: boolean;
+  onDownload: (id: string) => void;
+  onUse: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const busy = data.downloads.some((d) => d.status === "RUNNING" || d.status === "PENDING");
+  const action = (m: LocalModel) => {
+    const download = data.downloads.find((d) => d.modelId === m.id && (d.status === "RUNNING" || d.status === "PENDING"));
+    if (download) {
+      const pct = download.total > 0 ? Math.floor((download.downloaded / download.total) * 100) : 0;
+      return <span className="small muted">Downloading {pct}%</span>;
+    }
+    if (data.active === m.id) return <span className="tag t-green">In use</span>;
+    if (data.installed.some((i) => i.id === m.id)) {
+      return (
+        <button type="button" className="btn sm" disabled={disabled} onClick={() => onUse(m.id)}>
+          Use
+        </button>
+      );
+    }
+    const tooBig = m.needsRamGb > data.specs.ramGb * 1.25;
+    const why = !m.uri && !data.mlx ? "Runs on MLX only, on an Apple Silicon Mac" : tooBig ? `Needs ~${m.needsRamGb} GB of memory` : null;
+    return (
+      <button
+        type="button"
+        className="btn sm"
+        disabled={disabled || busy || !!why}
+        title={why ?? `Download ~${m.downloadGb} GB`}
+        onClick={() => onDownload(m.id)}
+      >
+        <Icon name="download" size={13} /> {why ? (tooBig ? "Too big" : "MLX only") : "Download"}
+      </button>
+    );
+  };
+
+  const everything = [...data.catalog, ...data.more].sort((a, b) => parameterCount(a) - parameterCount(b));
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal wide" role="dialog" aria-modal="true" aria-label="Other models" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-body">
+          <h2>{all ? "Every model" : "Alternatives"}</h2>
+          {!all ? (
+            <>
+              <p>Other models that see slides, beside each of the three picked for this {data.specs.kind}.</p>
+              <div className="alt-columns">
+                {slots.map(({ role, label, model }) => {
+                  const options = data.more.filter((m) => m.vision && m.like === model.id);
+                  return (
+                    <div key={role} className="alt-column">
+                      <div className="model-role">{role === "recommended" ? "Balanced" : label}</div>
+                      <div className="small faint" style={{ marginBottom: 8 }}>
+                        like {model.name}
+                      </div>
+                      {options.length === 0 && <p className="small faint">None at this size yet.</p>}
+                      {options.map((m) => (
+                        <div key={m.id} className="alt-model">
+                          <div className="model-name" style={{ fontSize: 15 }}>
+                            {m.name}
+                          </div>
+                          <div className="small muted">
+                            {m.maker} · {m.params} · ~{m.downloadGb} GB
+                          </div>
+                          {m.blurb && <p className="small" style={{ margin: "4px 0 6px" }}>{m.blurb}</p>}
+                          {action(m)}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="alt-all">
+              {everything.map((m) => (
+                <div key={m.id} className="alt-row">
+                  <span className="fname">{m.name}</span>
+                  <span className="small muted">{m.params}</span>
+                  {!m.vision && <span className="small faint">text only</span>}
+                  <span className="spacer" />
+                  {action(m)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn quiet" onClick={() => setAll(!all)}>
+            {all ? "Back to alternatives" : "Show all"}
+          </button>
+          <span className="spacer" />
+          <button type="button" className="btn" onClick={onClose}>
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

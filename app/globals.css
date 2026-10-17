@@ -633,3 +633,15 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
   /* FitToPage narrows a tall picture to fit its page; this is the fallback without it. */
   .export-doc .slide-fig img { max-height: 140mm; object-fit: contain; }
 }
+
+/* Other models: "See alternatives" under the three cards, and its window */
+.picker-more { display: flex; justify-content: flex-end; margin-top: 8px; }
+.alt-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.alt-column { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; }
+.alt-model { padding: 10px 0; border-top: 1px solid var(--rule); }
+.alt-model:first-of-type { border-top: 0; }
+.alt-all { max-height: 55vh; overflow: auto; border: 1px solid var(--rule); border-radius: 10px; }
+.alt-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--rule); }
+.alt-row:first-child { border-top: 0; }
+.alt-row .spacer { flex: 1; }
+@media (max-width: 720px) { .alt-columns { grid-template-columns: 1fr; } }

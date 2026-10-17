@@ -1,5 +1,5 @@
 import { mlxAvailable } from "@/lib/llm/mlx";
-import { findModel, LOCAL_MODELS, recommendModels, type LocalModel, type MachineSpecs, type ModelPicks } from "@/lib/llm/catalog";
+import { LOCAL_MODELS, type LocalModel, MORE_MODELS, type MachineSpecs, type ModelPicks, findModel, recommendModels } from "@/lib/llm/catalog";
 import { activity, type Activity } from "@/lib/jobs";
 import { visionParts } from "@/lib/llm/vision";
 import { downloads, installedModels, modelsDir, type DownloadState } from "@/lib/models";
@@ -64,6 +64,10 @@ export interface ModelsPayload {
   specs: MachineSpecs;
   picks: ModelPicks;
   catalog: readonly LocalModel[];
+  /** Alternatives and the full list (MLX only). */
+  more: readonly LocalModel[];
+  /** This computer runs MLX models (Apple Silicon, with the desktop app's engine). */
+  mlx: boolean;
   /** vision: the model takes images and can see slides ("ready"), could once its vision
    *  part is downloaded ("missing"), or never can (null). */
   installed: Array<{
@@ -94,6 +98,8 @@ export async function modelsPayload(): Promise<ModelsPayload> {
     specs,
     picks: recommendModels(specs),
     catalog: LOCAL_MODELS,
+    more: MORE_MODELS,
+    mlx: mlxAvailable(),
     installed: await Promise.all(
       installed.map(async (m) => {
         const model = findModel(m.id);

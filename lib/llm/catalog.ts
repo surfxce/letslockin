@@ -20,12 +20,15 @@ export interface LocalModel {
   needsRamGb: number;
   /** Relative speed on the same machine, 1 (slowest) to 5 (fastest). */
   speed: number;
-  uri: string;
+  /** Its llama.cpp (GGUF) download. Absent for a model offered on MLX only. */
+  uri?: string;
   /** Its MLX copy on Hugging Face, for the Swift engine on Apple Silicon (lib/llm/mlx.ts). */
   mlx?: string;
   blurb: string;
   /** Takes images, so it can be shown the slides (lib/llm/vision.ts). */
   vision?: boolean;
+  /** For an alternative: the main model it compares with, so it shows in that one's column. */
+  like?: string;
 }
 
 export const LOCAL_MODELS: readonly LocalModel[] = [
@@ -108,8 +111,36 @@ export const LOCAL_MODELS: readonly LocalModel[] = [
   },
 ];
 
+/**
+ * Other models to choose from, on MLX only — every one is in mlx-swift-lm's own model
+ * registry, so the engine is known to load it. Those that see images are offered as
+ * alternatives beside the main three (`like`); the rest, tiny to enormous, are in the
+ * full list. Sizes are the 4-bit downloads, roughly.
+ */
+const alt = (m: Omit<LocalModel, "blurb"> & { blurb?: string }): LocalModel => ({ blurb: "", ...m });
+export const MORE_MODELS: readonly LocalModel[] = [
+  // Sees slides
+  alt({ id: "fastvlm-0.5b", name: "FastVLM 0.5B", maker: "Apple", params: "0.5B", downloadGb: 1.2, needsRamGb: 3, speed: 5, mlx: "mlx-community/FastVLM-0.5B-bf16", vision: true, like: "qwen-3.5-0.8b" }),
+  alt({ id: "lfm2.5-vl-1.6b", name: "LFM2.5-VL 1.6B", maker: "Liquid AI", params: "1.6B", downloadGb: 1.0, needsRamGb: 3, speed: 5, mlx: "mlx-community/LFM2.5-VL-1.6B-4bit", vision: true, like: "gemma-4-e2b" }),
+  alt({ id: "ministral-3-3b", name: "Ministral 3 3B", maker: "Mistral", params: "3B", downloadGb: 2.2, needsRamGb: 5, speed: 5, mlx: "mlx-community/Ministral-3-3B-Instruct-2512-4bit", vision: true, like: "gemma-4-e2b", blurb: "Small and quick, with a good eye for diagrams." }),
+  alt({ id: "qwen3-vl-4b", name: "Qwen3-VL 4B", maker: "Alibaba", params: "4B", downloadGb: 4.6, needsRamGb: 8, speed: 4, mlx: "mlx-community/Qwen3-VL-4B-Instruct-8bit", vision: true, like: "gemma-4-e4b", blurb: "Qwen's vision model: strong at reading text in figures and tables." }),
+  alt({ id: "qwen-3.8-27b", name: "Qwen 3.8 27B", maker: "Alibaba", params: "27B", downloadGb: 15.5, needsRamGb: 24, speed: 1, mlx: "mlx-community/Qwen3.8-27B-4bit", vision: true, like: "gemma-4-31b", blurb: "The newest Qwen at this size: careful and thorough, a strong marker." }),
+  // Text only: slides are read as text
+  alt({ id: "lille-130m", name: "Lille 130M", maker: "Nikita Martynov", params: "130M", downloadGb: 0.26, needsRamGb: 1, speed: 5, mlx: "mlx-community/lille-130m-instruct-bf16" }),
+  alt({ id: "gpt-oss-20b", name: "gpt-oss 20B", maker: "OpenAI", params: "21B, 3.6B active", downloadGb: 12, needsRamGb: 16, speed: 4, mlx: "mlx-community/gpt-oss-20b-MXFP4-Q8" }),
+  alt({ id: "qwen-3.6-27b", name: "Qwen 3.6 27B", maker: "Alibaba", params: "27B", downloadGb: 15.5, needsRamGb: 24, speed: 1, mlx: "mlx-community/Qwen3.6-27B-4bit" }),
+  alt({ id: "deepseek-r1", name: "DeepSeek R1", maker: "DeepSeek", params: "671B, 37B active", downloadGb: 380, needsRamGb: 420, speed: 1, mlx: "mlx-community/DeepSeek-R1-4bit" }),
+];
+
+/** "35B, 3B active" → 35e9; "135M" → 135e6 — for listing models smallest first. */
+export function parameterCount(m: LocalModel): number {
+  const match = m.params.match(/([\d.]+)\s*([BM])/i);
+  if (!match) return 0;
+  return Number(match[1]) * (match[2].toUpperCase() === "B" ? 1e9 : 1e6);
+}
+
 export function findModel(id: string | null | undefined): LocalModel | undefined {
-  return LOCAL_MODELS.find((m) => m.id === id);
+  return LOCAL_MODELS.find((m) => m.id === id) ?? MORE_MODELS.find((m) => m.id === id);
 }
 
 export interface MachineSpecs {

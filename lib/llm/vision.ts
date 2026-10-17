@@ -157,6 +157,7 @@ export async function installMmproj(
     await download(`${mirror}/${model.id}.mmproj.gguf`, to, onProgress, signal);
     return to;
   }
+  if (!model.uri) throw new Error(`${model.name} has no llama.cpp vision part`);
   for (const repo of mmprojRepos(model.uri)) {
     const info = await fetch(`https://huggingface.co/api/models/${repo}`, { signal }).catch(() => null);
     if (!info?.ok) continue;

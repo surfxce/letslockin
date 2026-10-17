@@ -14,7 +14,9 @@ import { importLlamaCpp } from "@/lib/llm/runtime";
  */
 export function modelSource(model: LocalModel): string {
   const mirror = process.env.LOCKIN_MODEL_MIRROR?.replace(/\/+$/, "");
-  return mirror ? `${mirror}/${model.id}.gguf` : model.uri;
+  if (mirror) return `${mirror}/${model.id}.gguf`;
+  if (!model.uri) throw new Error(`${model.name} comes only as MLX, for Apple Silicon`);
+  return model.uri;
 }
 
 /**

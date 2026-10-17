@@ -160,7 +160,8 @@ export async function requestDownload(modelId: string, opts: { visionOnly?: bool
   const model = findModel(modelId);
   if (!model) throw new Error(`unknown model ${modelId}`);
   // On Apple Silicon with the engine, a model comes as its faster MLX copy.
-  const mlx = !opts.visionOnly && !!model.mlx && (opts.mlx ?? mlxAvailable());
+  const mlx = !opts.visionOnly && !!model.mlx && (opts.mlx ?? (mlxAvailable() || !model.uri));
+  if (mlx && !mlxAvailable()) throw new Error(`${model.name} runs only on MLX, on an Apple Silicon Mac with the desktop app`);
   const active = await prisma.job.findFirst({
     where: { kind: "DOWNLOAD", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: `"${modelId}"` } },
   });
