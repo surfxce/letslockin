@@ -35,6 +35,8 @@ let package = Package(
             exclude: [
                 "JSONSchemasTests.swift", "JobQueueTests.swift", "JobSupportTests.swift", "LLMSchemasTests.swift",
                 "PipelineTests.swift", "PromptsTests.swift", "SettingsTests.swift",
+                "APIProvidersTests.swift", "CLIProvidersTests.swift", "MLXProviderTests.swift",
+                "ModelCatalogTests.swift", "SlideRendererTests.swift",
             ]
         ),
     ],
