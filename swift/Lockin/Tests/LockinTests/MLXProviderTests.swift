@@ -209,7 +209,7 @@ final class MLXProviderTests: XCTestCase {
 
     func testDigestGetsMoreRoomForALongerLectureAndNeverSeesTheSlides() async throws {
         let engine = RecordingEngine(
-            reply: #"{"title":"Appetite","summaryMd":"## Ghrelin","concepts":[{"name":"Ghrelin","definition":"A hunger hormone."}]}"#
+            reply: ###"{"title":"Appetite","summaryMd":"## Ghrelin","concepts":[{"name":"Ghrelin","definition":"A hunger hormone."}]}"###
         )
         let model = provider(engine)
         let deck = SlideDeck(materialId: "m1", name: "Appetite.pdf", file: "/tmp/lockin/Appetite.pdf", pdf: true, pages: 3, first: 1)
@@ -237,7 +237,7 @@ final class MLXProviderTests: XCTestCase {
 
         var short = input
         short.durationHours = 0.7
-        let shortEngine = RecordingEngine(reply: #"{"title":"Appetite","summaryMd":"## Ghrelin","concepts":[]}"#)
+        let shortEngine = RecordingEngine(reply: ###"{"title":"Appetite","summaryMd":"## Ghrelin","concepts":[]}"###)
         _ = try await provider(shortEngine).digest(short)
         XCTAssertEqual(shortEngine.calls.first?.maxTokens, 3340)
     }
@@ -490,7 +490,7 @@ final class MLXProviderTests: XCTestCase {
         let body = String(line.dropLast())
         let breaks: Set<Unicode.Scalar> = ["\n", "\r", "\u{2028}", "\u{2029}", "\u{0085}"]
         XCTAssertFalse(body.unicodeScalars.contains { breaks.contains($0) }, "a raw line break in the request")
-        XCTAssertTrue(body.contains(#"a b c\u0085d\r\ne"#))
+        XCTAssertTrue(body.contains(#"a\u2028b\u2029c\u0085d\r\ne"#))
         XCTAssertEqual(try JSONValue.parse(body)["prompt"], JSONValue.string(prompt))
     }
 

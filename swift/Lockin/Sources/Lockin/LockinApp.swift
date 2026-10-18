@@ -278,20 +278,11 @@ struct SidebarView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Divider()
-                if let job = store.runningJob {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(job.stage.flatMap { Stage(rawValue: $0)?.label } ?? job.kind.rawValue)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                QueuePanelButton(store: store)
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
-                }
                 Text(URL(fileURLWithPath: store.databasePath).lastPathComponent)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -896,28 +887,7 @@ struct LectureDetailView: View {
 
                 switch selectedTab {
                 case .summary:
-                    if let md = detail.lecture.summaryMd, !md.isEmpty {
-                        Text(md)
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if detail.materials.isEmpty {
-                        Text("This lecture has no transcript or slides yet. Add them in Details & files first.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("No summary yet.")
-                                .foregroundStyle(.secondary)
-                            if store.mode != "manual" {
-                                Button {
-                                    store.prepareLectures([detail.lecture.id])
-                                } label: {
-                                    Label("Prepare with AI", systemImage: "sparkles")
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    }
+                    SummaryTabView(store: store, detail: detail)
 
                 case .laqs:
                     if detail.questions.isEmpty {

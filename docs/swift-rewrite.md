@@ -71,23 +71,27 @@ helpers (`existingFilesInCourse`, `homeLectureOf`, `buildImportReviewRows`,
 picker, local vs AI sorting, review list with untick, retitle, move/drop/restore files, and
 adding files to existing lectures).
 
-### 6. The job queue and the AI providers
-A queue actor in-process (no worker): stages and progress, cancel, the side lanes,
-cloud → offline fallback. Providers: Claude Code, Codex and Antigravity CLIs (Process),
-the API keys (URLSession; Anthropic over HTTP, OpenAI-compatible), and MLX from chunk 1.
+### 6. The job queue and the AI providers — built
+An in-process `JobQueue` actor (no worker process required): stages, progress steps, cancel,
+priority side lanes, and cloud → offline fallback. Providers: Claude Code, Codex, Antigravity CLIs,
+Anthropic / OpenAI-compatible HTTP APIs via URLSession, and local MLX. Worker heartbeat yielding
+between Electron worker and Swift app. SwiftUI `QueuePanelButton` with live activity popover.
 
-### 7. Slides
-PDFKit draws pages and crops (replaces unpdf + canvas); the Vision framework reads
-picture-only slides (replaces tesseract.js and its bundled data); slide notes; the
-vision pass on MLX.
+### 7. Slides — built
+`SlideRenderer` with PDFKit for page rasterisation (1280 px PNGs) and crop extraction; Vision
+framework `VNRecognizeTextRequest` for picture-only OCR slides; `SlideText` and deck collation;
+and `VisionPass` on MLX.
 
-### 8. Reading a summary
-The WKWebView reader: Markdown, slide pictures, crop, reading place, the glossary,
-select → break down, the ? Ask button, the left-out list.
+### 8. Reading a summary — built
+The `WKWebView`-backed summary reader: Markdown rendering, slide pictures served via custom
+`WKURLSchemeHandler` (`lockin-slide://`), slide crop modal/sheet with visual cropping rectangle,
+reading place (`lockin.readAt.<id>`) persistence, glossary term highlights and popovers, selection
+break-down tool, floating `? Ask` panel with history and questions, and left-out items banner.
 
-### 9. Editing a summary
-The editor (formatted / Markdown, dot point levels) in the same WKWebView, saving
-through a message handler.
+### 9. Editing a summary — built
+Formatted and Markdown summary editor in `WKWebView` with dot-point levels, line kinds, selection
+tools, and keyboard shortcuts, saving via `WKScriptMessageHandler` and debounced database updates.
+Ported `SummaryTools`, `SummaryEdit`, `renderMarkdown`, and Vitest test suites to Swift.
 
 ### 10. Practising
 Starting a sitting, closed-book answers with drafts that save, marking, scores,

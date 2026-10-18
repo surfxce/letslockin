@@ -41,6 +41,16 @@ extension String {
         guard units < ns.length else { return "" }
         return ns.substring(from: units)
     }
+
+    /// Slices by UTF-16 code unit indices `[from, to)`, matching JavaScript's `str.slice(from, to)`.
+    public func utf16Slice(_ from: Int, _ to: Int? = nil) -> String {
+        let ns = self as NSString
+        let len = ns.length
+        let start = max(0, min(len, from < 0 ? len + from : from))
+        let rawEnd = to ?? len
+        let end = max(start, min(len, rawEnd < 0 ? len + rawEnd : rawEnd))
+        return ns.substring(with: NSRange(location: start, length: end - start))
+    }
 }
 
 // MARK: - Internal regex helper
@@ -84,6 +94,24 @@ enum Regex {
         guard let m = re.firstMatch(in: text, options: [], range: range) else { return text }
         let replacement = re.replacementString(for: m, in: text, offset: 0, template: template)
         return (text as NSString).replacingCharacters(in: m.range, with: replacement)
+    }
+
+    /// Splits `text` by matches of `re` (`String.prototype.split(re)` without capturing groups).
+    static func split(_ re: NSRegularExpression, in text: String) -> [String] {
+        let ns = text as NSString
+        let matches = allMatches(re, in: text)
+        guard !matches.isEmpty else { return [text] }
+        var parts: [String] = []
+        var cursor = 0
+        for m in matches {
+            let r = m.range
+            if r.location >= cursor {
+                parts.append(ns.substring(with: NSRange(location: cursor, length: r.location - cursor)))
+                cursor = r.location + r.length
+            }
+        }
+        parts.append(ns.substring(from: cursor))
+        return parts
     }
 }
 

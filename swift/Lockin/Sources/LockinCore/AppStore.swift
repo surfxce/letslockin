@@ -27,6 +27,10 @@ public struct LectureDetailSnapshot: Sendable {
     public var modelInfo: ModelInfoData
     public var skipped: [Skipped]
     public var sittingBudget: Int
+    public var slidesInfo: SlidesInfo
+    public var glossaryTerms: [GlossaryEntry]
+    public var askHistory: [AskHistoryItem]
+    public var askJobs: [Job]
 }
 
 @Observable
@@ -36,12 +40,19 @@ public final class AppStore {
     public var databaseOpenError: String?
     public var databasePath: String
 
+    public let slideRenderer = SlideRenderer()
+    @ObservationIgnored public private(set) var jobQueue: JobQueue?
+
     public var courses: [Course] = []
     public var modules: [Module] = []
     public var lectureRows: [LectureRow] = []
     public var dueRows: [LectureRow] = []
     public var runningJob: Job? = nil
+    public var queueActivity: QueueActivity? = nil
+    public var settings: LockinSettings = .defaults
     public var mode: String = "local"
+    /// Incremented whenever database observation fires, so detail views re-read smoothly.
+    public var dbRevision: Int = 0
 
     public var selection: SidebarItem? = nil
     public var selectedLectureId: String? = nil
@@ -52,11 +63,11 @@ public final class AppStore {
     private var viewConfigs: [String: LectureTableViewConfig] = [:]
     @ObservationIgnored private var cancellable: AnyDatabaseCancellable?
 
-    public init(database: LockinDatabase) {
+    public init(database: LockinDatabase, startQueue: Bool = true) {
         self.database = database
         self.databasePath = database.path
         self.databaseOpenError = nil
-        startObserving(database: database)
+        startObserving(database: database, startQueue: startQueue)
     }
 
     public init(openError: Error, path: String = LockinPaths.databaseFile.path) {
@@ -81,16 +92,31 @@ public final class AppStore {
             self.database = db
             self.databaseOpenError = nil
             self.errorMessage = nil
-            startObserving(database: db)
+            startObserving(database: db, startQueue: true)
         } catch {
             self.database = nil
             self.databaseOpenError = error.localizedDescription
         }
     }
 
-    private func startObserving(database: LockinDatabase) {
+    private func startObserving(database: LockinDatabase, startQueue: Bool) {
         cancellable?.cancel()
-        let observation = ValueObservation.tracking { db -> ([Course], [Module], [LectureRow], [LectureRow], Job?, String) in
+        if let oldQueue = jobQueue {
+            Task { await oldQueue.stop() }
+            jobQueue = nil
+        }
+        if startQueue {
+            let services = LockinServices(
+                renderer: slideRenderer,
+                textReader: SlideOCR(),
+                engine: MLXEngine.shared
+            )
+            let q = JobQueue(database: database, services: services)
+            self.jobQueue = q
+            Task { await q.start() }
+        }
+
+        let observation = ValueObservation.tracking { db -> ([Course], [Module], [LectureRow], [LectureRow], Job?, QueueActivity, LockinSettings) in
             let courses = try Course.order(Column("createdAt").asc).fetchAll(db)
             let modules = try Module.order(Column("position").asc).fetchAll(db)
             let rows = try LockinCore.lectureRows(db: db)
@@ -99,9 +125,9 @@ public final class AppStore {
                 .filter(Column("status") == JobStatus.running.rawValue)
                 .order(Column("startedAt").desc)
                 .fetchOne(db)
-            let modeSetting = try Setting.fetchOne(db, key: "mode")?.value
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\"")) ?? "local"
-            return (courses, modules, rows, due, running, modeSetting)
+            let activity = try LockinCore.loadActivity(db: db)
+            let settings = try LockinCore.getSettings(db: db)
+            return (courses, modules, rows, due, running, activity, settings)
         }
 
         cancellable = observation.start(
@@ -111,7 +137,7 @@ public final class AppStore {
                     self?.errorMessage = err.localizedDescription
                 }
             },
-            onChange: { [weak self] (courses, modules, rows, due, running, modeSetting) in
+            onChange: { [weak self] (courses, modules, rows, due, running, activity, settings) in
                 Task { @MainActor in
                     guard let self else { return }
                     self.courses = courses
@@ -119,7 +145,10 @@ public final class AppStore {
                     self.lectureRows = rows
                     self.dueRows = due
                     self.runningJob = running
-                    self.mode = modeSetting
+                    self.queueActivity = activity
+                    self.settings = settings
+                    self.mode = settings.mode.rawValue
+                    self.dbRevision &+= 1
                     if self.selection == nil {
                         if courses.count == 1, let only = courses.first {
                             self.selection = .course(only.id)
@@ -319,8 +348,153 @@ public final class AppStore {
         }
     }
 
+    // MARK: - Queue Panel Actions (Chunk 6)
+
+    public func cancelQueueJob(_ jobId: String) {
+        if let queue = jobQueue {
+            Task {
+                try? await queue.cancel(jobId: jobId)
+            }
+        } else if let database {
+            _ = try? database.writer.write { db in
+                try cancelJob(db: db, jobId: jobId)
+            }
+        }
+    }
+
+    public func retryQueueJob(_ jobId: String) {
+        if let queue = jobQueue {
+            Task {
+                try? await queue.retry(jobId: jobId)
+            }
+        } else if let database {
+            try? database.writer.write { db in
+                try retryJob(db: db, jobId: jobId)
+            }
+        }
+    }
+
+    public func clearPendingQueue(lectureId: String? = nil) {
+        guard let database else { return }
+        _ = try? database.writer.write { db in
+            try clearQueue(db: db, lectureId: lectureId)
+        }
+    }
+
+    // MARK: - Summary Reader & Editor Actions (Chunks 7, 8 & 9)
+
+    public func saveSummary(
+        lectureId: String,
+        markdown: String,
+        base: String,
+        force: Bool = false
+    ) -> EditOutcome {
+        guard let database else {
+            return EditOutcome(ok: false, message: "Database is not open.")
+        }
+        do {
+            return try saveSummaryEdit(
+                database: database,
+                lectureId: lectureId,
+                markdown: markdown,
+                base: base,
+                force: force
+            )
+        } catch {
+            return EditOutcome(ok: false, message: messageOf(error))
+        }
+    }
+
+    public func addBlockToSummary(
+        lectureId: String,
+        markdown: String,
+        place: SummaryPlacement
+    ) -> EditOutcome {
+        guard let database else {
+            return EditOutcome(ok: false, message: "Database is not open.")
+        }
+        return addToSummary(
+            database: database,
+            lectureId: lectureId,
+            markdown: markdown,
+            place: place
+        )
+    }
+
+    public func addLeftOutPart(lectureId: String, what: String) -> EditOutcome {
+        guard let database else {
+            return EditOutcome(ok: false, message: "Database is not open.")
+        }
+        do {
+            return try addLeftOutToSummary(database: database, lectureId: lectureId, what: what)
+        } catch {
+            return EditOutcome(ok: false, message: messageOf(error))
+        }
+    }
+
+    public func cropSlideFigure(
+        lectureId: String,
+        figure: Int,
+        slide: Int,
+        crop: Crop?
+    ) -> EditOutcome {
+        guard let database else {
+            return EditOutcome(ok: false, message: "Database is not open.")
+        }
+        do {
+            return try setSlideCrop(
+                database: database,
+                lectureId: lectureId,
+                figure: figure,
+                slide: slide,
+                crop: crop
+            )
+        } catch {
+            return EditOutcome(ok: false, message: messageOf(error))
+        }
+    }
+
+    public func saveGlossaryTerm(
+        lectureId: String,
+        term: String,
+        explanation: String
+    ) -> Result<GlossaryEntry, LockinError> {
+        guard let database else {
+            return .failure(LockinError("Database is not open."))
+        }
+        do {
+            return try addGlossaryTerm(
+                database: database,
+                lectureId: lectureId,
+                term: term,
+                explanation: explanation
+            )
+        } catch {
+            return .failure(LockinError(messageOf(error)))
+        }
+    }
+
+    public func deleteGlossaryTerm(id: String) {
+        guard let database else { return }
+        try? removeGlossaryTerm(database: database, id: id)
+    }
+
+    public func askAboutLecture(payload: AskPayload) -> AskStartOutcome {
+        guard let database else {
+            return .error("Database is not open.")
+        }
+        do {
+            return try startAsk(database: database, payload: payload)
+        } catch {
+            return .error(messageOf(error))
+        }
+    }
+
     public func loadLectureDetail(id: String) -> LectureDetailSnapshot? {
         guard let database else { return nil }
+        let decks = (try? lectureDecks(database: database, lectureId: id, renderer: slideRenderer)) ?? []
+        let slidesInfo = SlidesInfo(lectureId: id, decks: decks)
+        let askHistory = (try? fetchAskHistory(database: database, lectureId: id)) ?? []
         return try? database.reader.read { db in
             guard let lecture = try Lecture.fetchOne(db, key: id),
                   let course = try Course.fetchOne(db, key: lecture.courseId),
@@ -355,14 +529,25 @@ public final class AppStore {
                 .fetchOne(db)
             let modelInfo = describeModels(lecture: lecture, questions: questions, lastRun: lastRun)
 
-            var skippedItems: [Skipped] = []
-            if let rawSkipped = lecture.skipped, let data = rawSkipped.data(using: .utf8) {
-                skippedItems = (try? JSONDecoder().decode([Skipped].self, from: data)) ?? []
-            }
+            let skippedItems = readSkipped(lecture.skipped)
 
             let sittingPerHourRaw = try Setting.fetchOne(db, key: "sittingPerHour")?.value ?? "2"
             let sittingPerHour = Double(sittingPerHourRaw) ?? 2.0
             let sittingBudget = questionBudget(durationHours: lecture.durationHours, perHour: sittingPerHour)
+
+            let glossaryRows = try GlossaryTerm
+                .filter(Column("lectureId") == id)
+                .order(Column("createdAt").asc)
+                .fetchAll(db)
+            let glossaryTerms = glossaryRows.map {
+                GlossaryEntry(id: $0.id, term: $0.term, explanation: $0.explanation)
+            }
+
+            let askJobs = try Job
+                .filter(Column("lectureId") == id && Column("kind") == JobKind.ask.rawValue)
+                .order(Column("createdAt").desc)
+                .limit(20)
+                .fetchAll(db)
 
             return LectureDetailSnapshot(
                 lecture: lecture,
@@ -376,7 +561,11 @@ public final class AppStore {
                 attempts: attempts,
                 modelInfo: modelInfo,
                 skipped: skippedItems,
-                sittingBudget: sittingBudget
+                sittingBudget: sittingBudget,
+                slidesInfo: slidesInfo,
+                glossaryTerms: glossaryTerms,
+                askHistory: askHistory,
+                askJobs: askJobs
             )
         }
     }

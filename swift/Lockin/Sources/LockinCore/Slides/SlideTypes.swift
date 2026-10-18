@@ -56,6 +56,11 @@ public struct SlidesInfo: Equatable, Sendable {
     public var hasPicturedDeck: Bool {
         decks.contains { $0.isPictured }
     }
+
+    /// Total slides across all decks.
+    public var total: Int {
+        decks.map(\.pages).reduce(0, +)
+    }
 }
 
 /// What a model saw on one slide (`SlideNote` in lib/sources.ts). Stored as JSON in

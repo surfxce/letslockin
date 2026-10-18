@@ -244,3 +244,9 @@ public func askVars(_ input: AskInput) -> (prompt: PromptName, vars: [String: St
         )
     }
 }
+
+public func renderAskPrompt(_ input: AskInput, directory: URL = LockinPaths.promptsDirectory) throws -> RenderedPrompt {
+    let (name, vars) = askVars(input)
+    return try renderPrompt(name, vars: vars, directory: directory)
+}
+

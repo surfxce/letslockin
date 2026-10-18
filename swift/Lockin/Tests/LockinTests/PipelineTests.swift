@@ -95,7 +95,7 @@ private class CannedProvider: LLMProvider, @unchecked Sendable {
 }
 
 /// The same, standing in for a model on this computer that the catalog doesn't know.
-private final class OfflineCannedProvider: CannedProvider, OfflineModelProvider {
+private final class OfflineCannedProvider: CannedProvider, OfflineModelProvider, @unchecked Sendable {
     let modelPath = "/nowhere/models/unknown"
     let modelId = "not-in-the-catalog"
     let modelName = "Unknown"

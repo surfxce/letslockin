@@ -134,6 +134,8 @@ export interface Heartbeat {
   at: string;
   pid: number;
   provider: string;
+  /** "swift" when the native macOS app owns the queue; omitted by the Electron worker. */
+  app?: string;
 }
 
 /** The worker counts as running if it has checked in within this window. */

@@ -31,7 +31,7 @@ import { lectureDecks } from "@/lib/slides";
 import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
-import { getSettings, HEARTBEAT_KEY } from "@/lib/settings";
+import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
 
 const POLL_MS = Number(process.env.LOCKIN_WORKER_POLL_MS ?? 2000);
@@ -39,6 +39,13 @@ const HEARTBEAT_MS = 5000;
 /** One retry. Each model call already gets a repair pass for bad JSON, so a second
  *  failure is usually real (not logged in, rate limited) and the queue should move on. */
 const MAX_ATTEMPTS = 2;
+
+/** True when no other live process (such as the Swift app) owns the queue. */
+async function canClaimQueue(): Promise<boolean> {
+  const beat = await readHeartbeat();
+  if (!beat || !beat.alive) return true;
+  return !beat.app && beat.pid === process.pid;
+}
 
 type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
@@ -201,12 +208,14 @@ async function withFallback<T>(
 }
 
 async function claimNext() {
+  if (!(await canClaimQueue())) return null;
   // Single-writer worker, so a read-then-update claim is sufficient here.
   const job = await prisma.job.findFirst({
     where: { status: "PENDING", kind: { notIn: SIDE_LANES } },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   if (!job) return null;
+  if (!(await canClaimQueue())) return null;
   return prisma.job.update({
     where: { id: job.id },
     // Each attempt gets a fresh timeline: an earlier one's stages are not this one's.
@@ -403,11 +412,13 @@ async function downloadOne(): Promise<boolean> {
 // import screen, so it must not queue behind a lecture being prepared.
 
 async function sortOne(): Promise<boolean> {
+  if (!(await canClaimQueue())) return false;
   const pending = await prisma.job.findFirst({
     where: { kind: "SORT", status: "PENDING" },
     orderBy: { createdAt: "asc" },
   });
   if (!pending) return false;
+  if (!(await canClaimQueue())) return false;
   const job = await prisma.job.update({
     where: { id: pending.id },
     data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 } },
@@ -461,11 +472,13 @@ async function sortOne(): Promise<boolean> {
 // answer, so it must not queue behind a lecture being prepared.
 
 async function askOne(): Promise<boolean> {
+  if (!(await canClaimQueue())) return false;
   const pending = await prisma.job.findFirst({
     where: { kind: "ASK", status: "PENDING" },
     orderBy: { createdAt: "asc" },
   });
   if (!pending) return false;
+  if (!(await canClaimQueue())) return false;
   const job = await prisma.job.update({
     where: { id: pending.id },
     data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 } },
@@ -505,9 +518,35 @@ async function askOne(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 let lastBeat = 0;
+let ownsQueue = false;
+
+async function releaseHeartbeatIfOurs() {
+  const beat = await readHeartbeat();
+  if (beat && !beat.app && beat.pid === process.pid) {
+    await prisma.setting.delete({ where: { key: HEARTBEAT_KEY } }).catch(() => undefined);
+  }
+  ownsQueue = false;
+}
+
 async function heartbeat() {
   if (Date.now() - lastBeat < HEARTBEAT_MS) return;
   lastBeat = Date.now();
+  if (!(await canClaimQueue())) {
+    if (ownsQueue) {
+      console.log("the queue is now run by the Swift app; yielding");
+      ownsQueue = false;
+    }
+    return;
+  }
+  if (!ownsQueue) {
+    // Taking over the queue: requeue any non-DOWNLOAD jobs left RUNNING by the last owner.
+    const { count } = await prisma.job.updateMany({
+      where: { status: "RUNNING", kind: { not: "DOWNLOAD" } },
+      data: { status: "PENDING", stage: null },
+    });
+    if (count) console.log(`requeued ${count} job(s) interrupted by the last shutdown`);
+    ownsQueue = true;
+  }
   const { mode, cloudEngine } = await getSettings();
   const provider = mode === "auto" ? CLOUD_ENGINE_LABEL[cloudEngine] : MODE_LABEL[mode];
   const value = JSON.stringify({ at: new Date().toISOString(), pid: process.pid, provider });
@@ -519,13 +558,13 @@ async function heartbeat() {
 }
 
 async function main() {
-  // A job left RUNNING means the last worker died mid-job. Put it back in the queue;
-  // a download picks up from its partial file.
-  const { count } = await prisma.job.updateMany({
-    where: { status: "RUNNING" },
+  // Always requeue interrupted DOWNLOAD jobs (only the Electron worker runs downloads).
+  const { count: downloadCount } = await prisma.job.updateMany({
+    where: { status: "RUNNING", kind: "DOWNLOAD" },
     data: { status: "PENDING", stage: null },
   });
-  if (count) console.log(`requeued ${count} job(s) interrupted by the last shutdown`);
+  if (downloadCount) console.log(`requeued ${downloadCount} download(s) interrupted by the last shutdown`);
+  // Non-download RUNNING jobs are requeued by heartbeat() when this worker acquires the queue.
   // A sort's answer is only wanted while its import screen is open.
   await prisma.job.deleteMany({ where: { kind: "SORT", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
   // Questions asked are kept a while: the lecture page lists recent ones.
@@ -541,10 +580,7 @@ async function main() {
     running = false;
   });
   process.on("SIGTERM", () => {
-    prisma.setting
-      .delete({ where: { key: HEARTBEAT_KEY } })
-      .catch(() => undefined)
-      .finally(() => process.exit(0));
+    releaseHeartbeatIfOurs().finally(() => process.exit(0));
   });
 
   // The heartbeat runs on its own timer so a long model call does not make the
@@ -574,7 +610,7 @@ async function main() {
   }
   await Promise.all([downloads, sorts, asks]);
   clearInterval(beat);
-  await prisma.setting.delete({ where: { key: HEARTBEAT_KEY } }).catch(() => undefined);
+  await releaseHeartbeatIfOurs();
   await prisma.$disconnect();
 }
 

@@ -236,7 +236,7 @@ func apiRetryDelay(
 }
 
 /// Waits before a retry; a cancelled task stops waiting at once.
-func apiDefaultSleep(_ seconds: TimeInterval) async throws {
+@Sendable func apiDefaultSleep(_ seconds: TimeInterval) async throws {
     let clamped = max(0, min(seconds, 2_147_483.647))
     try await Task.sleep(nanoseconds: UInt64(clamped * 1_000_000_000))
 }
