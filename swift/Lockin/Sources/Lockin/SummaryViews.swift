@@ -344,70 +344,6 @@ private struct QueuePopoverContent: View {
 
 // MARK: - Chunk 7: Custom WKURLSchemeHandler for lockin-slide://
 
-final class SlideURLSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable {
-    static let scheme = "lockin-slide"
-
-    private let database: LockinDatabase?
-    private let renderer: SlideRenderer
-
-    init(database: LockinDatabase?, renderer: SlideRenderer) {
-        self.database = database
-        self.renderer = renderer
-    }
-
-    func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
-        guard let url = urlSchemeTask.request.url,
-              let database = self.database else {
-            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
-            return
-        }
-        // Expected URL: lockin-slide://lectures/<lectureId>/slides/<n>?crop=...
-        let pathParts = url.pathComponents.filter { $0 != "/" }
-        let host = url.host ?? ""
-        let lectureId: String
-        let slideSegment: String
-        if host == "lectures", pathParts.count >= 3, pathParts[1] == "slides" {
-            lectureId = pathParts[0]
-            slideSegment = pathParts[2]
-        } else if pathParts.count >= 4, pathParts[0] == "lectures", pathParts[2] == "slides" {
-            lectureId = pathParts[1]
-            slideSegment = pathParts[3]
-        } else {
-            urlSchemeTask.didFailWithError(URLError(.badURL))
-            return
-        }
-
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let cropParam = components?.queryItems?.first(where: { $0.name == "crop" })?.value
-        let renderer = self.renderer
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let response = slideImageResponse(
-                database: database,
-                lectureId: lectureId,
-                slide: slideSegment,
-                crop: cropParam,
-                renderer: renderer
-            )
-            let httpResponse = HTTPURLResponse(
-                url: url,
-                statusCode: response.status,
-                httpVersion: "HTTP/1.1",
-                headerFields: response.headers
-            )
-            DispatchQueue.main.async {
-                if let httpResponse {
-                    urlSchemeTask.didReceive(httpResponse)
-                }
-                urlSchemeTask.didReceive(response.body)
-                urlSchemeTask.didFinish()
-            }
-        }
-    }
-
-    func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {}
-}
-
 // MARK: - Chunk 7: Slide Cropper Sheet (port of app/ui/slide-cropper.tsx)
 
 struct SlideCropTarget: Identifiable, Equatable {
@@ -435,6 +371,8 @@ struct SlideCropperSheet: View {
         self.target = target
         _box = State(initialValue: target.initialCrop ?? Crop(x: 0.08, y: 0.12, w: 0.84, h: 0.76))
     }
+
+    @State private var resizeStart: Crop?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -492,6 +430,20 @@ struct SlideCropperSheet: View {
                                 .background(Color.white.opacity(0.04))
                                 .frame(width: box.w * fitted.width, height: box.h * fitted.height)
                                 .offset(x: box.x * fitted.width, y: box.y * fitted.height)
+                            ForEach(0..<4, id: \.self) { corner in
+                                Circle().fill(Color.white).overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
+                                    .frame(width: 14, height: 14)
+                                    .offset(x: (box.x + (corner % 2 == 1 ? box.w : 0)) * fitted.width - 7,
+                                            y: (box.y + (corner >= 2 ? box.h : 0)) * fitted.height - 7)
+                                    .highPriorityGesture(DragGesture(minimumDistance: 0).onChanged { value in
+                                        if resizeStart == nil { resizeStart = box }
+                                        box = resizedSlideCrop(resizeStart ?? box, corner: corner,
+                                                               dx: value.translation.width / fitted.width,
+                                                               dy: value.translation.height / fitted.height)
+                                    }.onEnded { _ in resizeStart = nil })
+                                    .accessibilityLabel("Crop corner \(corner + 1)")
+                            }
+
                         }
                         .frame(width: fitted.width, height: fitted.height)
                         .contentShape(Rectangle())
@@ -1578,230 +1530,6 @@ private func encodeGlossaryJSON(_ entries: [GlossaryEntry]) -> String {
     return str
 }
 
-private func buildReaderDocumentHTML(
-    bodyHTML: String,
-    termsJSON: String,
-    savedScroll: Double
-) -> String {
-    return """
-    <!doctype html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <style>
-      :root {
-        color-scheme: light dark;
-        --fg: #1d1d1f;
-        --muted: #6e6e73;
-        --border: rgba(128,128,128,0.22);
-        --card-bg: rgba(128,128,128,0.06);
-        --accent: #5856d6;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #f5f5f7;
-          --muted: #98989d;
-          --border: rgba(255,255,255,0.16);
-          --card-bg: rgba(255,255,255,0.06);
-          --accent: #7d7aff;
-        }
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        font-size: 15px;
-        line-height: 1.62;
-        color: var(--fg);
-        margin: 0;
-        padding: 4px 2px 48px 2px;
-        background: transparent;
-      }
-      h1, h2, h3, h4 {
-        font-weight: 650;
-        line-height: 1.3;
-        margin-top: 1.35em;
-        margin-bottom: 0.45em;
-      }
-      h2 { font-size: 1.28em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-      h3 { font-size: 1.1em; }
-      p, ul, ol { margin-top: 0.45em; margin-bottom: 0.65em; }
-      ul, ol { padding-left: 1.45em; }
-      li { margin: 0.24em 0; }
-      ul ul { list-style-type: circle; }
-      ul ul ul { list-style-type: square; }
-      code {
-        font-family: "SF Mono", ui-monospace, Menlo, monospace;
-        font-size: 0.9em;
-        background: var(--card-bg);
-        padding: 1px 5px;
-        border-radius: 4px;
-      }
-      pre {
-        background: var(--card-bg);
-        padding: 10px 12px;
-        border-radius: 8px;
-        overflow-x: auto;
-      }
-      figure.slide-figure {
-        margin: 14px 0;
-        padding: 10px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: var(--card-bg);
-      }
-      .slide-figure-frame {
-        position: relative;
-        display: inline-block;
-        max-width: 100%;
-      }
-      .slide-figure-row {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .slide-figure-row .slide-figure-frame {
-        flex: 1 1 280px;
-      }
-      figure.slide-figure img {
-        display: block;
-        max-width: 100%;
-        height: auto;
-        border-radius: 6px;
-      }
-      button.slide-crop-btn {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        font-size: 12px;
-        font-weight: 500;
-        padding: 4px 9px;
-        border-radius: 6px;
-        border: 1px solid var(--border);
-        background: rgba(20, 20, 22, 0.75);
-        color: #fff;
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.15s ease;
-      }
-      .slide-figure-frame:hover button.slide-crop-btn {
-        opacity: 1;
-      }
-      figure.slide-figure figcaption {
-        margin-top: 6px;
-        font-size: 12.5px;
-        color: var(--muted);
-      }
-      .slide-tag {
-        font-weight: 600;
-        color: var(--fg);
-      }
-      mark.glossary-term {
-        background: transparent;
-        color: inherit;
-        border-bottom: 2px dotted var(--accent);
-        cursor: pointer;
-        padding-bottom: 1px;
-      }
-      mark.glossary-term:hover {
-        background: rgba(88, 86, 214, 0.14);
-      }
-    </style>
-    </head>
-    <body>
-    <div id="summary-root">\(bodyHTML)</div>
-    <script>
-      const TERMS = \(termsJSON);
-      const SAVED_SCROLL = \(savedScroll);
-
-      function post(msg) {
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lockinReader) {
-          window.webkit.messageHandlers.lockinReader.postMessage(msg);
-        }
-      }
-
-      // Highlight glossary terms across text nodes
-      function highlightTerms() {
-        if (!TERMS || !TERMS.length) return;
-        const root = document.getElementById('summary-root');
-        if (!root) return;
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        const textNodes = [];
-        while (walker.nextNode()) {
-          const n = walker.currentNode;
-          if (!n.parentElement) continue;
-          if (n.parentElement.closest('code, pre, figcaption, button, mark')) continue;
-          textNodes.push(n);
-        }
-        const sorted = [...TERMS].sort((a, b) => b.term.length - a.term.length);
-        for (const node of textNodes) {
-          const text = node.nodeValue;
-          if (!text || !text.trim()) continue;
-          for (const entry of sorted) {
-            if (!entry.term) continue;
-            const escaped = entry.term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-            const re = new RegExp('(?<![\\\\p{L}\\\\p{N}])(' + escaped + ')(?![\\\\p{L}\\\\p{N}])', 'iu');
-            const m = re.exec(text);
-            if (m) {
-              const before = document.createTextNode(text.slice(0, m.index));
-              const mark = document.createElement('mark');
-              mark.className = 'glossary-term';
-              mark.dataset.termId = entry.id;
-              mark.textContent = m[1];
-              const after = document.createTextNode(text.slice(m.index + m[1].length));
-              const parent = node.parentNode;
-              parent.insertBefore(before, node);
-              parent.insertBefore(mark, node);
-              parent.insertBefore(after, node);
-              parent.removeChild(node);
-              break;
-            }
-          }
-        }
-      }
-
-      highlightTerms();
-
-      document.addEventListener('selectionchange', () => {
-        const sel = window.getSelection();
-        const text = sel ? sel.toString() : '';
-        post({ type: 'selection', text });
-      });
-
-      document.addEventListener('click', (e) => {
-        const cropBtn = e.target.closest('button.slide-crop-btn');
-        if (cropBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          const figure = parseInt(cropBtn.getAttribute('data-crop-figure') || '0', 10);
-          const slide = parseInt(cropBtn.getAttribute('data-crop-slide') || '1', 10);
-          const crop = cropBtn.getAttribute('data-crop-box') || null;
-          post({ type: 'crop', figure, slide, crop });
-          return;
-        }
-        const mark = e.target.closest('mark.glossary-term');
-        if (mark) {
-          e.preventDefault();
-          post({ type: 'term', id: mark.dataset.termId });
-        }
-      });
-
-      document.addEventListener('dblclick', (e) => {
-        if (e.target.closest('button, a, mark, figure')) return;
-        post({ type: 'dblclickEdit' });
-      });
-
-      window.addEventListener('scroll', () => {
-        post({ type: 'scroll', y: window.scrollY });
-      }, { passive: true });
-
-      if (SAVED_SCROLL > 0) {
-        setTimeout(() => window.scrollTo(0, SAVED_SCROLL), 30);
-      }
-    </script>
-    </body>
-    </html>
-    """
-}
-
 // MARK: - Chunk 9: Summary Editor (Formatted + Markdown modes, Drafts, Conflict Resolution)
 
 enum SummaryEditorMode: String, CaseIterable {
@@ -1823,6 +1551,8 @@ struct SummaryEditorContainerView: View {
     @State private var errorText: String? = nil
     @State private var hasConflict = false
     @State private var activeLineKind: LineKind? = .text
+    @State private var editorWebView: WKWebView?
+    @State private var rawSelection = NSRange(location: 0, length: 0)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1849,6 +1579,8 @@ struct SummaryEditorContainerView: View {
                 }
 
                 Spacer()
+                Text(sameSummary(draftMarkdown, summaryMd) ? "Saved" : "Unsaved changes")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 Button("Cancel") {
                     clearSavedDraft()
@@ -1915,7 +1647,7 @@ struct SummaryEditorContainerView: View {
             }
 
             if mode == .markdown {
-                TextEditor(text: $draftMarkdown)
+                MarkdownSourceEditor(text: $draftMarkdown, selection: $rawSelection)
                     .font(.system(size: 14, design: .monospaced))
                     .frame(minHeight: 480)
                     .padding(6)
@@ -1930,6 +1662,7 @@ struct SummaryEditorContainerView: View {
                     lectureId: lectureId,
                     markdown: $draftMarkdown,
                     slidesInfo: slidesInfo,
+                    onReady: { editorWebView = $0 },
                     onPersistDraft: { persistDraft($0) },
                     onSaveShortcut: { save(force: false) },
                     onCancelShortcut: {
@@ -1950,7 +1683,11 @@ struct SummaryEditorContainerView: View {
     @ViewBuilder
     private func toolbarKindButton(_ title: String, kind: LineKind) -> some View {
         Button(title) {
-            let edited = setLineKind(draftMarkdown, 0, 0, kind)
+            if mode == .formatted {
+                editorWebView?.evaluateJavaScript("window.setLineKind(\(JSONValue.string(kind.rawValue).stringified()))")
+                return
+            }
+            let edited = setLineKind(draftMarkdown, rawSelection.location, NSMaxRange(rawSelection), kind)
             draftMarkdown = edited.text
             activeLineKind = kind
             persistDraft(edited.text)
@@ -2020,6 +1757,7 @@ struct FormattedSummaryEditorWebView: NSViewRepresentable {
     let lectureId: String
     @Binding var markdown: String
     let slidesInfo: SlidesInfo
+    let onReady: (WKWebView) -> Void
     let onPersistDraft: (String) -> Void
     let onSaveShortcut: () -> Void
     let onCancelShortcut: () -> Void
@@ -2040,6 +1778,7 @@ struct FormattedSummaryEditorWebView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.webView = webView
+        DispatchQueue.main.async { onReady(webView) }
         context.coordinator.loadInitialHTML(
             lectureId: lectureId,
             markdown: markdown,
@@ -2077,7 +1816,7 @@ struct FormattedSummaryEditorWebView: NSViewRepresentable {
                 ranges: ranges,
                 croppable: false
             )
-            let bodyHTML = renderMarkdown(markdown, slides: slides)
+            let bodyHTML = renderMarkdown(markdown, slides: slides, preserveSlideSource: true)
             let html = buildEditorDocumentHTML(bodyHTML: bodyHTML)
             webView.loadHTMLString(html, baseURL: URL(string: "\(SlideURLSchemeHandler.scheme)://lectures/\(lectureId)/"))
         }
@@ -2104,167 +1843,4 @@ struct FormattedSummaryEditorWebView: NSViewRepresentable {
             }
         }
     }
-}
-
-private func buildEditorDocumentHTML(bodyHTML: String) -> String {
-    return """
-    <!doctype html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <style>
-      :root {
-        color-scheme: light dark;
-        --fg: #1d1d1f;
-        --muted: #6e6e73;
-        --border: rgba(128,128,128,0.25);
-        --card-bg: rgba(128,128,128,0.06);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #f5f5f7;
-          --muted: #98989d;
-          --border: rgba(255,255,255,0.18);
-          --card-bg: rgba(255,255,255,0.06);
-        }
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        font-size: 15px;
-        line-height: 1.62;
-        color: var(--fg);
-        margin: 0;
-        padding: 10px;
-        background: transparent;
-      }
-      #editor {
-        outline: none;
-        min-height: 440px;
-      }
-      h2 { font-size: 1.28em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-      h3 { font-size: 1.1em; }
-      ul, ol { padding-left: 1.45em; }
-      ul ul { list-style-type: circle; }
-      ul ul ul { list-style-type: square; }
-      figure.slide-figure {
-        margin: 12px 0;
-        padding: 10px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: var(--card-bg);
-      }
-      figure.slide-figure img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 6px;
-      }
-    </style>
-    </head>
-    <body>
-    <div id="editor" contenteditable="true">\(bodyHTML)</div>
-    <script>
-      function post(msg) {
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.lockinEditor) {
-          window.webkit.messageHandlers.lockinEditor.postMessage(msg);
-        }
-      }
-
-      const editor = document.getElementById('editor');
-      for (const fig of editor.querySelectorAll('figure.slide-figure')) {
-        fig.setAttribute('contenteditable', 'false');
-      }
-
-      function inlineToMd(node) {
-        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
-        if (node.nodeType !== Node.ELEMENT_NODE) return '';
-        const tag = node.tagName.toLowerCase();
-        if (tag === 'br') return '\\n';
-        const inner = Array.from(node.childNodes).map(inlineToMd).join('');
-        if (tag === 'strong' || tag === 'b') return '**' + inner + '**';
-        if (tag === 'em' || tag === 'i') return '*' + inner + '*';
-        if (tag === 'code') return '`' + inner + '`';
-        if (tag === 'a') return '[' + inner + '](' + (node.getAttribute('href') || '') + ')';
-        return inner;
-      }
-
-      function listToMd(listEl, indent) {
-        const lines = [];
-        const ordered = listEl.tagName.toLowerCase() === 'ol';
-        let idx = 1;
-        for (const li of Array.from(listEl.children)) {
-          if (li.tagName.toLowerCase() !== 'li') continue;
-          let textParts = [];
-          let childLists = [];
-          for (const child of Array.from(li.childNodes)) {
-            if (child.nodeType === Node.ELEMENT_NODE && (child.tagName.toLowerCase() === 'ul' || child.tagName.toLowerCase() === 'ol')) {
-              childLists.push(child);
-            } else {
-              textParts.push(inlineToMd(child));
-            }
-          }
-          const prefix = ' '.repeat(indent) + (ordered ? (idx++ + '. ') : '- ');
-          lines.push(prefix + textParts.join('').trim());
-          for (const sub of childLists) {
-            lines.push(listToMd(sub, indent + 2));
-          }
-        }
-        return lines.join('\\n');
-      }
-
-      function serializeEditor() {
-        const blocks = [];
-        for (const child of Array.from(editor.childNodes)) {
-          if (child.nodeType === Node.TEXT_NODE) {
-            const t = (child.nodeValue || '').trim();
-            if (t) blocks.push(t);
-            continue;
-          }
-          if (child.nodeType !== Node.ELEMENT_NODE) continue;
-          const tag = child.tagName.toLowerCase();
-          if (tag === 'h1') blocks.push('# ' + inlineToMd(child).trim());
-          else if (tag === 'h2') blocks.push('## ' + inlineToMd(child).trim());
-          else if (tag === 'h3') blocks.push('### ' + inlineToMd(child).trim());
-          else if (tag === 'h4') blocks.push('#### ' + inlineToMd(child).trim());
-          else if (tag === 'ul' || tag === 'ol') blocks.push(listToMd(child, 0));
-          else if (tag === 'pre') blocks.push('```\\n' + (child.textContent || '').trim() + '\\n```');
-          else if (tag === 'figure') {
-            const cap = child.querySelector('figcaption');
-            const img = child.querySelector('img');
-            let slideAttr = 'slide:1';
-            if (img) {
-              const src = img.getAttribute('src') || '';
-              const m = src.match(/\\/slides\\/(\\d+)/);
-              if (m) slideAttr = 'slide:' + m[1];
-            }
-            const alt = cap ? cap.textContent.trim() : '';
-            blocks.push('![' + alt + '](' + slideAttr + ')');
-          } else {
-            const t = inlineToMd(child).trim();
-            if (t) blocks.push(t);
-          }
-        }
-        return blocks.join('\\n\\n') + '\\n';
-      }
-
-      editor.addEventListener('input', () => {
-        post({ type: 'change', markdown: serializeEditor() });
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-          e.preventDefault();
-          post({ type: 'save' });
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          post({ type: 'cancel' });
-        } else if (e.key === 'Tab') {
-          e.preventDefault();
-          document.execCommand(e.shiftKey ? 'outdent' : 'indent');
-          post({ type: 'change', markdown: serializeEditor() });
-        }
-      });
-    </script>
-    </body>
-    </html>
-    """
 }

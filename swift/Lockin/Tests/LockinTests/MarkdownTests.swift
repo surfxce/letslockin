@@ -149,3 +149,25 @@ final class MarkdownTests: XCTestCase {
         XCTAssertTrue(html.contains(#"data-fig="1" data-slide="4""#))
     }
 }
+
+extension MarkdownTests {
+    func testTableRenderingAndEditorSlideMetadata() {
+        let table = renderMarkdown("| Fact | Value |\n| --- | ---: |\n| ATP | **Energy** |")
+        XCTAssertTrue(table.contains("<table>"))
+        XCTAssertTrue(table.contains("text-align:right"))
+        XCTAssertTrue(table.contains("<strong>Energy</strong>"))
+        let figure = renderMarkdown("![A & B](slide:2-3#crop=2:0.1,0.2,0.5,0.4)", preserveSlideSource: true)
+        XCTAssertTrue(figure.contains("data-slide-source=\"slide:2-3#crop=2:0.1,0.2,0.5,0.4\""))
+        XCTAssertTrue(figure.contains("data-slide-caption=\"A &amp; B\""))
+    }
+    func testCropHandlesClampAtEdgesAndDoNotInvert() {
+        let crop = Crop(x: 0.1, y: 0.2, w: 0.5, h: 0.4)
+        let expanded = resizedSlideCrop(crop, corner: 0, dx: -1, dy: -1)
+        XCTAssertEqual(expanded.x, 0); XCTAssertEqual(expanded.y, 0)
+        XCTAssertEqual(expanded.w, 0.6, accuracy: 0.001)
+        let crossed = resizedSlideCrop(crop, corner: 3, dx: -1, dy: -1)
+        XCTAssertEqual(crossed.w, 0.02, accuracy: 0.001)
+        XCTAssertEqual(crossed.h, 0.02, accuracy: 0.001)
+        XCTAssertEqual(resizedSlideCrop(crop, corner: 1, dx: .nan, dy: 0), crop)
+    }
+}

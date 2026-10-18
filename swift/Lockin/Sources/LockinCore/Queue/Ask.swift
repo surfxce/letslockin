@@ -222,6 +222,7 @@ public func runAsk(
                 )
             )
         )
+        try Task.checkCancellation()
         let found = !Regex.test(notFoundRe, in: reply.answer)
         let trimmed = pipelineTrim(reply.answer)
         if found {

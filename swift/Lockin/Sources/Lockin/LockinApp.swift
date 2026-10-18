@@ -417,6 +417,7 @@ struct LectureLibraryView: View {
                         }
                     }
                     Spacer()
+                    LibraryExportButton(store: store, lectureIds: rows.map(\.id))
                     if let weakest = weakestPractised {
                         Button {
                             store.selectedLectureId = weakest.id
@@ -758,6 +759,9 @@ struct LectureDetailView: View {
 
     @State private var selectedTab: LectureTab = .summary
     @State private var showingModelInfo = false
+    @State private var practice: PracticeDestination?
+    @State private var showingPaste = false
+    @State private var showingExport = false
 
     @State private var editTitle: String = ""
     @State private var editModule: String = ""
@@ -868,6 +872,22 @@ struct LectureDetailView: View {
                 .background(Color.primary.opacity(0.03))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
+                HStack {
+                    Button("Start / resume sitting") {
+                        do {
+                            if let database = store.database {
+                                let id = try database.writer.write { db in try startPractice(db: db, lectureId: detail.lecture.id) }
+                                practice = PracticeDestination(id: id)
+                            }
+                        } catch { store.errorMessage = error.localizedDescription }
+                    }.buttonStyle(.borderedProminent).disabled(detail.questions.isEmpty)
+                    Button("Copy & paste…") { showingPaste = true }
+                    Button("Export PDF…") { showingExport = true }.disabled(detail.lecture.summaryMd?.isEmpty != false)
+                }
+                .sheet(item: $practice) { destination in PracticeSheet(store: store, attemptId: destination.id) }
+                .sheet(isPresented: $showingPaste) { LecturePasteSheet(store: store, lectureId: detail.lecture.id) }
+                .sheet(isPresented: $showingExport) { StudyExportSheet(store: store, initialLectureIds: [detail.lecture.id]) }
+
                 // Tabs
                 Picker("", selection: $selectedTab) {
                     ForEach(LectureTab.allCases, id: \.self) { t in
@@ -927,6 +947,7 @@ struct LectureDetailView: View {
                                     Text("\(shortDate(a.sittingDate)) · \(clockTime(a.sittingDate))")
                                         .font(.callout)
                                     Spacer()
+                                    Button("Open sitting") { practice = PracticeDestination(id: a.id) }
                                     Text(a.source == .pasted ? "Pasted" : "In Lockin")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)

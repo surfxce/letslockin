@@ -841,3 +841,34 @@ final class JobQueueTests: XCTestCase {
         XCTAssertEqual(serviceHostName("http://"), "API")
     }
 }
+
+extension JobQueueTests {
+    func testCancellingSideLaneStopsWorkAndDoesNotReplaceCancelledStatus() async throws {
+        let db = try LockinDatabase.inMemory()
+        let id = try writeSync(db) { conn in
+            try enqueue(db: conn, kind: .sort, payload: ["files": .array([])], lectureId: nil).id
+        }
+        let queue = JobQueue(database: db, services: stubServices(), timing: fast, pid: 4901,
+                             hooks: testHooks(provider: FakeProvider(delayMs: 60_000)) { _, _, _ in .null })
+        await queue.start()
+        let running = try await eventually { try fetchJob(db, id)?.status == .running }
+        XCTAssertTrue(running)
+        try await queue.cancel(jobId: id)
+        let stopped = try await eventually { try fetchJob(db, id)?.durationMs != nil }
+        XCTAssertTrue(stopped)
+        await queue.stop()
+        XCTAssertEqual(try fetchJob(db, id)?.error, "Cancelled")
+        XCTAssertEqual(try fetchJob(db, id)?.status, .failed)
+    }
+
+    func testLateCompletionCannotReviveCancelledJob() throws {
+        let db = try LockinDatabase.inMemory()
+        try writeSync(db) { conn in
+            let job = try enqueue(db: conn, kind: .sort, payload: [:], lectureId: nil)
+            try cancelJob(db: conn, jobId: job.id)
+            try completeJob(db: conn, jobId: job.id, result: ["late": true], promptVersion: nil, model: nil, durationMs: 10, closeTimeline: false)
+            XCTAssertEqual(try Job.fetchOne(conn, key: job.id)?.status, .failed)
+            XCTAssertEqual(try Job.fetchOne(conn, key: job.id)?.error, "Cancelled")
+        }
+    }
+}

@@ -130,7 +130,7 @@ final class JobSupportTests: XCTestCase {
 
         try db.writer.write { conn in
             XCTAssertTrue(try cancelJob(db: conn, jobId: job.id))
-            XCTAssertFalse(try cancelJob(db: conn, jobId: sort.id))
+            XCTAssertTrue(try cancelJob(db: conn, jobId: sort.id))
             XCTAssertEqual(try jobStatus(db: conn, jobId: job.id), .failed)
             XCTAssertNil(try jobStatus(db: conn, jobId: "gone"))
         }

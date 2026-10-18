@@ -394,6 +394,18 @@ private let mdListLineRe = Regex.compile(#"^( *)(?:([-*+])|(\d+)\.)\s+(.*)$"#)
 private let mdBlockquoteLineRe = Regex.compile(#"^ {0,3}>\s?(.*)$"#)
 private let mdFenceOpenRe = Regex.compile(#"^ {0,3}(```+|~~~+)\s*([^\s`~]*).*$"#)
 
+private func markdownTableCells(_ line: String) -> [String] {
+    var value = line.trimmingCharacters(in: .whitespaces)
+    if value.hasPrefix("|") { value.removeFirst() }
+    if value.hasSuffix("|") { value.removeLast() }
+    return value.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+}
+
+private func isTableDivider(_ line: String) -> Bool {
+    let cells = markdownTableCells(line)
+    return !cells.isEmpty && line.contains("|") && cells.allSatisfy { $0.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil }
+}
+
 private func parseMarkdownBlocks(_ md: String) -> String {
     let lines = md.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
     var out: [String] = []
@@ -423,6 +435,30 @@ private func parseMarkdownBlocks(_ md: String) -> String {
             let escaped = escapeHtmlCode(codeLines.joined(separator: "\n"))
             let classAttr = lang.isEmpty ? "" : #" class="language-\#(escapeHtmlAttr(lang))""#
             out.append("<pre><code\(classAttr)>\(escaped)\n</code></pre>")
+            continue
+        }
+
+        // GitHub-style tables, used in lecture summaries and pasted marking guides.
+        if i + 1 < lines.count, line.contains("|"), isTableDivider(lines[i + 1]) {
+            let headings = markdownTableCells(line)
+            let alignments = markdownTableCells(lines[i + 1]).map { cell -> String in
+                if cell.hasPrefix(":") && cell.hasSuffix(":") { return "center" }
+                return cell.hasSuffix(":") ? "right" : "left"
+            }
+            func row(_ cells: [String], tag: String) -> String {
+                "<tr>" + headings.indices.map { index in
+                    let alignment = index < alignments.count ? alignments[index] : "left"
+                    let text = index < cells.count ? cells[index] : ""
+                    return "<\(tag) style=\"text-align:\(alignment)\">\(parseMarkdownInline(text))</\(tag)>"
+                }.joined() + "</tr>"
+            }
+            var table = "<table><thead>" + row(headings, tag: "th") + "</thead><tbody>"
+            i += 2
+            while i < lines.count && lines[i].contains("|") && !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
+                table += row(markdownTableCells(lines[i]), tag: "td")
+                i += 1
+            }
+            out.append(table + "</tbody></table>")
             continue
         }
 
@@ -587,7 +623,7 @@ private func slideFigure(
 }
 
 /// Port of `renderMarkdown(md, slides)` in `lib/markdown.ts`.
-public func renderMarkdown(_ md: String, slides: SlideImages? = nil) -> String {
+public func renderMarkdown(_ md: String, slides: SlideImages? = nil, preserveSlideSource: Bool = false) -> String {
     let prepared = replaceRegexWithCallback(slideAnglePrepareRe, in: md) { m, str in
         let open = Regex.group(m, at: 1, in: str) ?? ""
         let ref = Regex.group(m, at: 2, in: str) ?? ""
@@ -627,14 +663,27 @@ public func renderMarkdown(_ md: String, slides: SlideImages? = nil) -> String {
         if numbers != nil {
             figure += 1
         }
-        return slideFigure(
+        let rendered = slideFigure(
             numbers: numbers,
             caption: alt,
             slides: slides,
             marker: numbers != nil ? (index: figure, crops: markerCrops(src)) : nil
         )
+        guard preserveSlideSource else { return rendered }
+        return rendered.replacingOccurrences(of: "<figure ", with: "<figure data-slide-source=\"\(src)\" data-slide-caption=\"\(alt)\" ")
     }
 
     html = Regex.replace(wrappedFigureRe, in: html, with: "$1")
     return html
+}
+
+/// Trackpad crop handles stay within the image and cannot invert the rectangle.
+public func resizedSlideCrop(_ crop: Crop, corner: Int, dx: Double, dy: Double) -> Crop {
+    guard dx.isFinite, dy.isFinite else { return crop }
+    var left = crop.x, right = crop.x + crop.w, top = crop.y, bottom = crop.y + crop.h
+    if corner % 2 == 0 { left = min(max(0, left + dx), right - 0.02) }
+    else { right = max(min(1, right + dx), left + 0.02) }
+    if corner < 2 { top = min(max(0, top + dy), bottom - 0.02) }
+    else { bottom = max(min(1, bottom + dy), top + 0.02) }
+    return Crop(x: left, y: top, w: right - left, h: bottom - top)
 }

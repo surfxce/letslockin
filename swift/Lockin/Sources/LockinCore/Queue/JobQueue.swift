@@ -148,6 +148,7 @@ public actor JobQueue {
     /// The main lane's running work, so a cancel stops it at once.
     private var workTasks: [String: Task<FallbackOutcome<JSONValue>, Error>] = [:]
     /// Jobs cancelled while running here (the × in the AI panel, in either app).
+    private var sideCancels: [String: @Sendable () -> Void] = [:]
     private var cancelledJobIds: Set<String> = []
     /// The last reason no provider could be chosen, so it is logged once.
     private var providerProblem: String?
@@ -467,9 +468,10 @@ public actor JobQueue {
 
     /// Stops the main lane's job if it is the one running here.
     private func cancelLocally(_ jobId: String) {
-        guard running[.main] == jobId else { return }
+        guard running.values.contains(jobId) else { return }
         cancelledJobIds.insert(jobId)
         workTasks[jobId]?.cancel()
+        sideCancels[jobId]?()
     }
 
     // MARK: - The side lanes
@@ -480,7 +482,8 @@ public actor JobQueue {
         running[.sort] = job.id
         let startedAt = Date()
         do {
-            let done = try await sortFolder(job, database: database, services: services, hooks: hooks)
+            let database = self.database, services = self.services, hooks = self.hooks
+            let done = try await sideWork(jobId: job.id) { try await sortFolder(job, database: database, services: services, hooks: hooks) }
             let durationMs = elapsedMs(since: startedAt)
             let result = sortedFolderJSON(done.folder)
             let used = done.used
@@ -509,7 +512,8 @@ public actor JobQueue {
         running[.ask] = job.id
         let startedAt = Date()
         do {
-            let done = try await answerAsk(job, database: database, services: services, hooks: hooks)
+            let database = self.database, services = self.services, hooks = self.hooks
+            let done = try await sideWork(jobId: job.id) { try await answerAsk(job, database: database, services: services, hooks: hooks) }
             let durationMs = elapsedMs(since: startedAt)
             let used = done.used
             let result = askResultJSON(done.result, model: used.lastModel)
@@ -532,8 +536,26 @@ public actor JobQueue {
         return true
     }
 
+    private func sideWork<T: Sendable>(jobId: String, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        let task = Task.detached(operation: operation)
+        sideCancels[jobId] = { task.cancel() }
+        let watcher = startCancelWatch(jobId: jobId)
+        defer {
+            watcher.cancel()
+            sideCancels[jobId] = nil
+        }
+        let result = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        if cancelledJobIds.contains(jobId) { throw CancellationError() }
+        try Task.checkCancellation()
+        return result
+    }
+
     /// A side job failed: parked as FAILED, no second attempt.
     private func sideJobFailed(_ job: Job, startedAt: Date, error: Error) {
+        if cancelledJobIds.remove(job.id) != nil {
+            try? queueWrite(database) { db in try markJobCancelled(db: db, jobId: job.id, durationMs: elapsedMs(since: startedAt)) }
+            return
+        }
         if stopping || Task.isCancelled {
             queueInfo("■ \(job.kind.rawValue) \(job.id) stopped with the queue; it runs again at the next start")
             return

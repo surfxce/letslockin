@@ -207,7 +207,7 @@ public func cancelJob(db: Database, jobId: String, now: Date = Date()) throws ->
     try db.execute(
         sql: #"""
         UPDATE "Job" SET "status" = 'FAILED', "error" = 'Cancelled', "finishedAt" = ?
-        WHERE "id" = ? AND "status" IN ('PENDING', 'RUNNING') AND "kind" IN ('PREPARE', 'GENERATE', 'MARK')
+        WHERE "id" = ? AND "status" IN ('PENDING', 'RUNNING') AND "kind" IN ('PREPARE', 'GENERATE', 'MARK', 'SORT', 'ASK')
         """#,
         arguments: [PrismaDate.encode(now), jobId]
     )
@@ -218,7 +218,7 @@ public func retryJob(db: Database, jobId: String) throws {
     try db.execute(
         sql: #"""
         UPDATE "Job" SET "status" = 'PENDING', "attempts" = 0, "error" = NULL, "finishedAt" = NULL, "stage" = NULL, "steps" = NULL
-        WHERE "id" = ?
+        WHERE "id" = ? AND "status" = 'FAILED'
         """#,
         arguments: [jobId]
     )
@@ -324,7 +324,7 @@ public func completeJob(
             sql: #"""
             UPDATE "Job" SET "status" = 'DONE', "stage" = NULL, "steps" = ?, "result" = ?, "promptVersion" = ?,
               "model" = ?, "durationMs" = ?, "finishedAt" = ?, "error" = NULL
-            WHERE "id" = ?
+            WHERE "id" = ? AND "status" = 'RUNNING'
             """#,
             arguments: [closeSteps(stored.steps, now: now), result.stringified(), version, model, durationMs, PrismaDate.encode(now), jobId]
         )
@@ -332,7 +332,7 @@ public func completeJob(
         try db.execute(
             sql: #"""
             UPDATE "Job" SET "status" = 'DONE', "result" = ?, "promptVersion" = ?, "model" = ?, "durationMs" = ?, "finishedAt" = ?
-            WHERE "id" = ?
+            WHERE "id" = ? AND "status" = 'RUNNING'
             """#,
             arguments: [result.stringified(), version, model, durationMs, PrismaDate.encode(now), jobId]
         )
