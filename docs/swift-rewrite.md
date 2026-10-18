@@ -93,13 +93,18 @@ Formatted and Markdown summary editor in `WKWebView` with dot-point levels, line
 tools, and keyboard shortcuts, saving via `WKScriptMessageHandler` and debounced database updates.
 Ported `SummaryTools`, `SummaryEdit`, `renderMarkdown`, and Vitest test suites to Swift.
 
-### 10. Practising
-Starting a sitting, closed-book answers with drafts that save, marking, scores,
-the notes sheet, the review schedule.
+### 10. Practising — built
+Starting or resuming a sitting, closed-book answers with saved drafts, submission,
+blank-answer scoring, priority marking jobs, AI or pasted marks, feedback, scores,
+the notes sheet, and the review schedule. The UI reads the same Attempt, Response,
+Gap, Review, and Job rows as Electron.
 
-### 11. Export and copy & paste mode
-PDF export through WKWebView's `createPDF` (the same document the Electron app
-prints), and copy & paste mode's prompts and paste boxes.
+### 11. Export and copy & paste mode — built
+A native export sheet selects courses, modules, or lectures; configures paper size,
+glossary, contents and page breaks; previews the result; and writes a paginated PDF
+from the same WebKit-rendered Markdown and slide pictures. Copy-and-paste prompts
+cover summaries, LAQs, sitting marks, and externally completed scores. Pasted data is
+validated before it is stored in the shared database.
 
 ### 12. Settings, onboarding, reminders
 Settings (engines, models and downloads, LAQs, cloud), the onboarding tour,
@@ -109,6 +114,15 @@ UserNotifications reminders and the dock badge.
 Sparkle for updates (signed with its own key; no Apple developer account needed),
 the .dmg from CI, a parity checklist against the Electron app, then switching the
 download link over.
+
+## Verification still to do on a Mac
+Chunks 6–11 compile and their automated suites pass. The WebKit reader/editor and PDF
+pagination are covered by integration tests, and the sitting screen was exercised with
+synthetic data. Before closing hardware validation, compare dark and light appearance
+on the supported macOS release, drag crop handles on a real trackpad, and run an end-to-end
+sitting on a real lecture with both automatic marking and pasted marking. A throughput
+comparison still needs a matching llama.cpp text model: this Mac has an MLX Gemma 4
+model and its multimodal projector, but no llama.cpp text model to make a fair comparison.
 
 ## Not ported
 The browser version and the dev server, `node-llama-cpp` (MLX replaces it on the
