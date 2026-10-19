@@ -1,9 +1,10 @@
-# Builds the Swift app's Lockin.dmg on a Mac and publishes it as the "Lockin (Swift)"
-# release, with the Sparkle appcast beside it — that is what Settings → Updates checks
-# (SUFeedURL points at swift-latest/appcast.xml).
+# Builds the Swift app's Lockin.dmg on a Mac and publishes it as the "Lockin for Mac"
+# release (mac-latest) — this is the Mac download. Settings → Updates reads the appcast
+# published beside it (SUFeedURL points at mac-latest/appcast.xml).
 #
-# The parity checklist (docs/parity-checklist.md) gates switching the public download
-# link over to this build; until every box is ticked, this release is for testing.
+# The Electron mac build no longer publishes: mac-app.yml still builds it as a compile
+# check and uploads the artifact. docs/parity-checklist.md records the switch and the
+# hand checks that remain open.
 name: Swift app dmg
 
 on:
@@ -85,10 +86,14 @@ jobs:
       - name: Make the .dmg
         working-directory: swift/Lockin
         run: |
-          mkdir -p ../../release stage
+          # Both directories live at the repo root: creating "stage" here and copying to
+          # "../../stage/" once renamed the whole bundle to "stage" (BSD cp, missing
+          # target) and the .dmg shipped with the app's contents at its root.
+          mkdir -p ../../release ../../stage
           cp -R .build-xcode/Build/Products/Release/Lockin.app ../../stage/
           cd ../..
           # The same designed window the Electron .dmg uses (build/background@2x.png).
+          # --skip-jenkins skips only the Finder cosmetics; the layout is still right.
           create-dmg --volname "Lockin" --background build/background@2x.png \
             --window-size 660 400 --icon-size 112 \
             --icon "Lockin.app" 180 205 --app-drop-link 480 205 \
@@ -123,15 +128,18 @@ jobs:
             release/Lockin.dmg
             release/appcast.xml
 
-      - name: Publish as the latest Swift build
+      - name: Publish as the Mac download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           files=(release/Lockin.dmg)
           [ -f release/appcast.xml ] && files+=(release/appcast.xml)
+          # The old testing tag goes away with the switch; this workflow is the only
+          # publisher of mac-latest now.
           gh release delete swift-latest --yes --cleanup-tag || true
-          gh release create swift-latest "${files[@]}" \
+          gh release delete mac-latest --yes --cleanup-tag || true
+          gh release create mac-latest "${files[@]}" \
             --prerelease \
             --target "$GITHUB_SHA" \
-            --title "Lockin for Mac (Swift, latest build)" \
-            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so macOS says it can't verify it the first time: either System Settings → Privacy & Security → Open Anyway, or once in Terminal: xattr -dr com.apple.quarantine /Applications/Lockin.app"
+            --title "Lockin for Mac (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so macOS says it can't verify it the first time: either System Settings → Privacy & Security → Open Anyway, or once in Terminal: xattr -dr com.apple.quarantine /Applications/Lockin.app — updates from Settings → Updates never ask again."

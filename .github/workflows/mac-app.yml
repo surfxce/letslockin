@@ -64,13 +64,8 @@ jobs:
             release/lockin-update.tar.gz
             release/update.json
           if-no-files-found: error
-      - name: Publish as the latest Mac build
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete mac-latest --yes --cleanup-tag || true
-          gh release create mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "Lockin for Mac (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so macOS says it can't verify it the first time: either System Settings → Privacy & Security → Open Anyway, or once in Terminal: xattr -dr com.apple.quarantine /Applications/Lockin.app — updates from Settings → Updates never ask again."
+
+      # No longer published: the native Swift app is the Mac download now
+      # (.github/workflows/swift-dmg.yml publishes mac-latest). This build stays as a
+      # compile check and its artifact, until the Electron app retires to Windows only
+      # (docs/parity-checklist.md).

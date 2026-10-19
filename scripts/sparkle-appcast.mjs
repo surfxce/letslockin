@@ -1,7 +1,7 @@
 /**
  * Writes the Sparkle appcast (release/appcast.xml) for the Swift app's .dmg: one item
  * for the build just made, with the EdDSA signature sign_update printed. The appcast is
- * published beside the .dmg on the swift-latest release, which is where the app's
+ * published beside the .dmg on the mac-latest release, which is where the app's
  * SUFeedURL points.
  *
  *   node scripts/sparkle-appcast.mjs \
@@ -41,7 +41,7 @@ if (Number(length) !== size) {
   process.exit(1);
 }
 
-const url = "https://github.com/surfxce/letslockin/releases/download/swift-latest/Lockin.dmg";
+const url = "https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg";
 const now = new Date().toUTCString();
 const notes = `Built from ${process.env.GITHUB_SHA?.slice(0, 7) ?? "the latest sources"}. Open Lockin.dmg and drag Lockin into Applications.`;
 

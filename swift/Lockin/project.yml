@@ -45,9 +45,9 @@ targets:
         NSPrincipalClass: NSApplication
         NSHighResolutionCapable: true
         # Updates (Sparkle). The appcast is published by .github/workflows/swift-dmg.yml
-        # beside the .dmg; the key pairs with the private one kept out of the repository
-        # (docs/parity-checklist.md tells the whole story).
-        SUFeedURL: https://github.com/surfxce/letslockin/releases/download/swift-latest/appcast.xml
+        # beside the .dmg on the mac-latest release; the key pairs with the private one
+        # kept out of the repository (docs/parity-checklist.md tells the whole story).
+        SUFeedURL: https://github.com/surfxce/letslockin/releases/download/mac-latest/appcast.xml
         SUPublicEDKey: kA6p5kjRb4I3FqOd8v9uEXsWaRZuhUpM/MfqmTF6VRU=
     settings:
       base:

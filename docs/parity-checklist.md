@@ -1,9 +1,8 @@
 # Swift app vs Electron — the parity checklist
 
 Chunk 13's gate: before the download link moves to the Swift build, everything below is
-ticked. Electron stays the shipping app until then; the Swift build publishes to the
-`swift-latest` release (`Settings → Updates` reads its appcast) while this list is worked
-through.
+ticked. The link moved on 2026-10-19 by owner decision (see the last section); the QA
+list below is what still needs a real Mac and hands on it.
 
 The app runs from the repo with `swift run Lockin` (uses the repo's own database), or as
 a real app by generating the project and building:
@@ -103,10 +102,17 @@ cd swift/Lockin && xcodegen generate && open Lockin.xcodeproj   # Run in Xcode
 
 ## When every box is ticked — switching the link over
 
-1. Point the download link (README, and anywhere else it appears) at the Swift release:
-   `https://github.com/surfxce/letslockin/releases/latest/download/Lockin.dmg` after
-   renaming `swift-latest` to be the primary release — or move the workflow's publish
-   target to `mac-latest` and retire the Electron one.
-2. Remove the Electron app's `paths-ignore` from `mac-app.yml` or disable the workflow.
-3. Keep the Electron code for Windows/Intel on llama.cpp, in maintenance mode, as the
-   plan says.
+**Switched on 2026-10-19 by owner decision**, ahead of the hand checks: the Swift build
+is now what `mac-latest` publishes and what the README's download link serves
+(`.github/workflows/swift-dmg.yml` is the only publisher of `mac-latest`; the Electron
+mac build no longer publishes, and mac-app.yml keeps building it as a compile check).
+The first `mac-latest` DMG from the Swift pipeline was broken — the app's contents sat
+at the volume root instead of `Lockin.app`, from a BSD `cp` that renamed the bundle
+when the stage folder didn't exist — which is the kind of thing the boxes below exist
+to catch. The QA list stays open until it is worked through on a real Mac:
+
+1. ~~Point the download link at the Swift release~~ done (same link, new publisher).
+2. [x] The Electron workflow no longer publishes `mac-latest`.
+3. [ ] Windows keeps the Electron app on llama.cpp, in maintenance mode, as the plan
+       says — that port is still to do (see the conversation of 2026-10-19: wire
+       `lib/command.ts` into the spawn sites, an nsis target, and a Windows QA pass).

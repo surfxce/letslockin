@@ -116,12 +116,14 @@ shows the due count, and UserNotifications announce each due lecture once a day 
 8am and 10pm, opening its page when clicked.
 
 ### 13. Updates and release — built
-Sparkle checks the `swift-latest` release's appcast in the background and from
+Sparkle checks the `mac-latest` release's appcast in the background and from
 Settings → Updates. The `.dmg` is built by CI (`.github/workflows/swift-dmg.yml`) with
 the engine in its Resources, signed with the project's own EdDSA key (the public one is
 in the Info.plist; the private one is a repository secret, never committed). The parity
-checklist against the Electron app is `docs/parity-checklist.md`; the download link
-moves once every box on it is ticked.
+checklist against the Electron app is `docs/parity-checklist.md`; on 2026-10-19 the
+owner switched the Mac download over to this build — `mac-latest` is published by the
+Swift pipeline and the Electron mac build no longer publishes, with its QA list still
+open in the checklist.
 
 ## Verification still to do on a Mac
 Chunks 6–13 compile and their automated suites pass. The WebKit reader/editor and PDF
