@@ -12,7 +12,6 @@ struct LectureLibraryView: View {
     var onNewLecture: (String) -> Void
 
     @State private var searchQuery = ""
-    @State private var hoverRow: String?
 
     private var activeCourse: Course? { store.activeCourse }
     private var rows: [LectureRow] { store.visibleLectureRows }
@@ -200,6 +199,22 @@ struct LectureLibraryView: View {
     // MARK: toolbar (`.toolbar`, `.chip-btn`)
 
     private var toolbar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                toolbarActions.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 12)
+                toolbarFilters.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                toolbarActions
+                toolbarFilters
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.bottom, 8)
+    }
+
+    private var toolbarActions: some View {
         HStack(spacing: 4) {
             if let active = activeCourse {
                 Button {
@@ -237,8 +252,11 @@ struct LectureLibraryView: View {
                 .buttonStyle(.lockin)
             }
 
-            Spacer()
+        }
+    }
 
+    private var toolbarFilters: some View {
+        HStack(spacing: 4) {
             Menu {
                 Button("Lecture date — first to last") { updateView { $0.sort = .date; $0.dir = .asc } }
                 Button("Lecture date — latest first") { updateView { $0.sort = .date; $0.dir = .desc } }
@@ -283,8 +301,6 @@ struct LectureLibraryView: View {
                     .strokeBorder(searchQuery.isEmpty ? Color.clear : L.ruleStrong, lineWidth: 1)
             )
         }
-        .padding(.vertical, 6)
-        .padding(.bottom, 8)
     }
 
     private func chipLabel(_ text: String, icon: String) -> some View {
@@ -301,6 +317,14 @@ struct LectureLibraryView: View {
     // MARK: the table (`.db`)
 
     private var table: some View {
+        ScrollView(.horizontal) {
+            tableContents.containerRelativeFrame(.horizontal) { width, _ in
+                max(width, activeCourse == nil ? 1040 : 950)
+            }
+        }
+    }
+
+    private var tableContents: some View {
         VStack(spacing: 0) {
             if rows.isEmpty {
                 emptyState
@@ -343,7 +367,7 @@ struct LectureLibraryView: View {
         .padding(.vertical, 60)
     }
 
-    private func tableHeaderCell(_ key: LectureSortKey, _ label: String, width: CGFloat?, alignment: HorizontalAlignment = .leading) -> some View {
+    private func tableHeaderCell(_ key: LectureSortKey, _ label: String, width: CGFloat?) -> some View {
         Button {
             updateView { $0.toggleSort(key) }
         } label: {
@@ -357,7 +381,8 @@ struct LectureLibraryView: View {
                         .foregroundStyle(L.accentText)
                 }
             }
-            .frame(maxWidth: width == nil ? .infinity : width, alignment: alignment == .leading ? .leading : .leading)
+            .frame(minWidth: width, maxWidth: width ?? .infinity, alignment: .leading)
+            .padding(.horizontal, width == nil ? 0 : 9)
         }
         .buttonStyle(.plain)
     }
@@ -461,8 +486,7 @@ struct LectureLibraryView: View {
         }
         .frame(minHeight: 38)
         .contentShape(Rectangle())
-        .background(hoverRow == row.id ? L.hover : Color.clear)
-        .onHover { inside in hoverRow = inside ? row.id : nil }
+        .modifier(RowHover())
         .onTapGesture { store.selectedLectureId = row.id }
     }
 

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import LockinCore
 
@@ -32,13 +33,17 @@ struct ModelPickerSection: View {
         .onReceive(tick) { _ in
             // Follow a download while one runs, as the web picker polls /api/models.
             if snapshot?.busy == true || wasBusy {
-                refresh()
+                refresh(progressOnly: true)
             }
         }
     }
 
-    private func refresh() {
-        snapshot = store.modelsSnapshot()
+    private func refresh(progressOnly: Bool = false) {
+        if progressOnly, let previous = snapshot {
+            snapshot = store.refreshingModelDownloads(previous)
+        } else {
+            snapshot = store.modelsSnapshot()
+        }
         if snapshot?.busy == false && wasBusy {
             // The last download finished: the registry changed, so every view catches up.
             store.refreshAfterModelChange()
@@ -422,7 +427,7 @@ private struct AlternativesSheet: View {
         }
         .onReceive(tick) { _ in
             if data.busy {
-                data = store.modelsSnapshot()
+                data = store.refreshingModelDownloads(data)
             }
         }
     }

@@ -102,11 +102,15 @@ public struct LectureRow: Identifiable, Equatable, Sendable {
     }
 }
 
-private let sideLaneKinds: Set<String> = [
-    JobKind.download.rawValue,
-    JobKind.sort.rawValue,
-    JobKind.ask.rawValue,
-]
+// Avoid loading payloads/token buffers and observing every progress write merely to
+// show a lecture's status in the library.
+private struct LibraryJob: FetchableRecord, Decodable {
+    var id: String
+    var lectureId: String?
+    var status: JobStatus
+    var stage: String?
+    var error: String?
+}
 
 public func lectureRows(
     db: Database,
@@ -130,15 +134,11 @@ public func lectureRows(
     let moduleById = Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
 
     // Places in the queue lectures wait in; side lanes (downloads, sorts, asks) run beside it.
-    let pendingJobs = try Job
-        .filter(Column("status") == JobStatus.pending.rawValue)
-        .order(Column("priority").desc, Column("createdAt").asc)
-        .fetchAll(db)
-        .filter { !sideLaneKinds.contains($0.kind.rawValue) }
-    var positionById: [String: Int] = [:]
-    for (idx, job) in pendingJobs.enumerated() {
-        positionById[job.id] = idx + 1
-    }
+    let pendingIds = try String.fetchAll(db, sql: """
+        SELECT id FROM Job WHERE status = 'PENDING' AND kind NOT IN ('DOWNLOAD', 'SORT', 'ASK')
+        ORDER BY priority DESC, createdAt ASC
+        """)
+    let positionById = Dictionary(uniqueKeysWithValues: pendingIds.enumerated().map { ($0.element, $0.offset + 1) })
 
     // L-numbers count within a course, so they need the whole course even when filtered.
     let courseIds = Array(Set(lectures.map(\.courseId)))
@@ -178,13 +178,15 @@ public func lectureRows(
     let attemptsByLecture = Dictionary(grouping: attempts, by: \.lectureId)
 
     let prepJobs = try Job
+        .select(Column("id"), Column("lectureId"), Column("status"), Column("stage"), Column("error"), Column("createdAt"))
         .filter(
             lectureIds.contains(Column("lectureId")) &&
                 [JobKind.prepare.rawValue, JobKind.generate.rawValue].contains(Column("kind"))
         )
         .order(Column("createdAt").desc)
+        .asRequest(of: LibraryJob.self)
         .fetchAll(db)
-    var latestJobByLecture: [String: Job] = [:]
+    var latestJobByLecture: [String: LibraryJob] = [:]
     for j in prepJobs {
         if let lid = j.lectureId, latestJobByLecture[lid] == nil {
             latestJobByLecture[lid] = j
@@ -271,9 +273,18 @@ public func dueLectures(
     now: Date = Date(),
     calendar: Calendar = .gregorian
 ) throws -> [LectureRow] {
+    dueLectures(rows: try lectureRows(db: db), now: now, calendar: calendar)
+}
+
+/// Reuses the library snapshot instead of querying and scoring every lecture twice.
+public func dueLectures(
+    rows: [LectureRow],
+    now: Date = Date(),
+    calendar: Calendar = .gregorian
+) -> [LectureRow] {
     let startOfToday = calendar.startOfDay(for: now)
     let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
-    return try lectureRows(db: db)
+    return rows
         .filter { row in
             guard let dueAt = row.dueAt else { return false }
             return dueAt < endOfToday

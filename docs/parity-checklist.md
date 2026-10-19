@@ -19,6 +19,24 @@ cd swift/Lockin && xcodegen generate && open Lockin.xcodeproj   # Run in Xcode
       (`.github/workflows/swift-dmg.yml`), with the Sparkle appcast when
       `SPARKLE_PRIVATE_KEY` is set.
 
+## Performance and layout review — 2026-10-20
+
+- Library observation is separate from queue activity and settings. Heartbeats and job
+  output updates no longer reload lecture details; due rows reuse the library snapshot.
+  Regression tests cover progress updates and real summary/status/settings/glossary changes.
+- Download progress polling reuses installed-model metadata until a download ends.
+  Row hover stays local, detail reads occur on refresh events, and WebKit handlers detach
+  when the reader/editor closes. Reminders have one app-owned timer and wake observer.
+- Windows use a 1100 × 860 default and 720-point minimum width with native resizing.
+  Narrow library toolbars wrap and tables scroll horizontally. Page spacing, title bar,
+  summary colors/typography and table columns now follow the Electron styles more closely.
+- Validation: Swift build passed; 378 tests ran with no failures and one environment-based
+  Antigravity detection test skipped. An isolated app with fixture data was checked at
+  normal and half-screen widths, including the summary reader. macOS window-menu resizing
+  works. Direct edge dragging did not produce a reliable result through UI automation;
+  confirm it with a mouse/trackpad on the rebuilt app. Full screen-by-screen visual parity
+  and measured CPU/memory benchmarks are still separate checks, not claimed by this pass.
+
 ## One-time setup still to do (key holder)
 
 1. [ ] Put the signing key in CI: `gh secret set SPARKLE_PRIVATE_KEY < .sparkle-private-key`

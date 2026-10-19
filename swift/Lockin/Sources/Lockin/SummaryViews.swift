@@ -869,6 +869,7 @@ struct SummaryTabView: View {
                             } label: {
                                 Label("Ask", systemImage: "questionmark.circle")
                             }
+                            .buttonStyle(.lockin(.normal, size: .small))
                             .help("Ask a question about this lecture")
 
                             Button {
@@ -876,6 +877,7 @@ struct SummaryTabView: View {
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                             }
+                            .buttonStyle(.lockin(.normal, size: .small))
                             .help("Edit this summary (or double-click any paragraph)")
                         }
                     }
@@ -1451,6 +1453,12 @@ struct SummaryReaderWebView: NSViewRepresentable {
         )
     }
 
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.stopLoading()
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "lockinReader")
+        coordinator.webView = nil
+    }
+
     final class Coordinator: NSObject, WKScriptMessageHandler {
         var parent: SummaryReaderWebView
         weak var webView: WKWebView?
@@ -1796,6 +1804,14 @@ struct FormattedSummaryEditorWebView: NSViewRepresentable {
                 slidesInfo: slidesInfo
             )
         }
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.stopLoading()
+        // The controller retains its handler, which holds editor callbacks. Detach it
+        // when switching mode or closing the editor so the old WebView can be freed.
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "lockinEditor")
+        coordinator.webView = nil
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler {

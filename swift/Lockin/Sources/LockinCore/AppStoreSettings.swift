@@ -54,6 +54,8 @@ extension AppStore {
                 }
             }
             settings = next
+            mode = next.mode.rawValue
+            dbRevision &+= 1
         } catch {
             errorMessage = messageOf(error)
         }
@@ -193,6 +195,19 @@ extension AppStore {
         )
     }
 
+    /// Progress polling only reads job rows. Installed model directories can be many
+    /// gigabytes and only need scanning when a download finishes or an action runs.
+    public func refreshingModelDownloads(_ previous: ModelsSnapshot) -> ModelsSnapshot {
+        guard let database, let states = try? downloadStates(database: database) else { return previous }
+        let previousActive = Set(previous.downloads.filter(\.isActive).map(\.jobId))
+        let active = Set(states.filter(\.isActive).map(\.jobId))
+        if !previousActive.isSubset(of: active) { return modelsSnapshot() }
+        var next = previous
+        next.downloads = states
+        next.workerAlive = queueActivity?.worker?.alive ?? false
+        return next
+    }
+
     // MARK: - Model actions (app/actions.ts)
 
     /// The model registry changed (a download finished, a model was deleted): views that
@@ -227,7 +242,7 @@ extension AppStore {
     /// `downloadModel`: queues the download; the lane links it up when it finishes.
     public func downloadModel(_ modelId: String) -> ActionResult {
         withDatabase { database in
-            try database.writer.write { db in
+            _ = try database.writer.write { db in
                 try enqueueDownload(db: db, modelId: modelId, environment: environment)
             }
             return .ok("Downloading \(findModel(modelId)?.name ?? modelId).")
@@ -267,7 +282,7 @@ extension AppStore {
                 return .failed("Pick a model that sees slides, and one that writes")
             }
             let reader: String? = eyeId == writerId ? nil : eyeId
-            if let reader, !MLXEngine.isAvailable {
+            if reader != nil, !MLXEngine.isAvailable {
                 return .failed("A separate eye runs on MLX, on an Apple Silicon Mac with the desktop app")
             }
             return try database.writer.write { db in

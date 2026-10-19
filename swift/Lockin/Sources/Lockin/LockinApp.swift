@@ -7,9 +7,13 @@ import SwiftUI
 
 @main
 struct LockinApp: App {
-    @State private var store = AppStore.openDefault()
+    @State private var store: AppStore
+    @State private var reminders: ReminderDaemon
 
     init() {
+        let store = AppStore.openDefault()
+        _store = State(initialValue: store)
+        _reminders = State(initialValue: ReminderDaemon(store: store))
         // The notification click handler must be in place before launch finishes.
         ReminderClickHandler.store = store
         // Updates are checked in the background from here on (Settings can ask again).
@@ -19,9 +23,15 @@ struct LockinApp: App {
     var body: some Scene {
         WindowGroup("Lockin") {
             RootView(store: store)
-                .frame(minWidth: 960, minHeight: 620)
+                .frame(minWidth: 720, maxWidth: .infinity, minHeight: 620, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .top)
+                .onAppear { reminders.start() }
+                .onChange(of: store.lectureRows) { reminders.check() }
+                .onChange(of: store.settings.notify) { reminders.check() }
         }
         .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 1100, height: 860)
         Settings {
             SettingsScreen(store: store)
         }
@@ -78,7 +88,6 @@ struct RootView: View {
     @Bindable var store: AppStore
     @State private var showingNewCourse = false
     @State private var newLectureCourseId: String? = nil
-    @State private var reminders: ReminderDaemon?
     @State private var showingOnboarding = false
 
     var body: some View {
@@ -103,13 +112,9 @@ struct RootView: View {
                             course: course,
                             onDone: { store.importingCourseId = nil }
                         )
-                    } else if let lectureId = store.selectedLectureId,
-                              let detail = store.loadLectureDetail(id: lectureId) {
-                        LectureDetailView(
-                            store: store,
-                            detail: detail,
-                            onBack: { store.selectedLectureId = nil }
-                        )
+                    } else if let lectureId = store.selectedLectureId {
+                        ObservedLectureDetail(store: store, lectureId: lectureId)
+                            .id(lectureId)
                     } else {
                         LectureLibraryView(
                             store: store,
@@ -119,16 +124,6 @@ struct RootView: View {
                 }
                 .background(L.bg)
             }
-        }
-        .onAppear {
-            let daemon = ReminderDaemon(store: store)
-            daemon.start()
-            reminders = daemon
-        }
-        // Any change in the database may move the due set: the badge follows it at once,
-        // and the notification check does not wait out its five minutes.
-        .onChange(of: store.dbRevision) {
-            reminders?.check()
         }
         .onChange(of: store.settingsLoaded) {
             // The tour opens by itself once (`firstRun` in Onboarding.tsx).
@@ -282,17 +277,48 @@ struct TopBarView: View {
     }
 }
 
-/// Makes the window draggable from its background, as `-webkit-app-region: drag` does
-/// for the top bar; interactive controls still take their own clicks.
+/// Only the top bar is a drag surface; the content and window edges keep their
+/// normal text selection, scrolling and resizing behavior.
 private struct DragBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            view.window?.isMovableByWindowBackground = true
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.styleMask.insert(.resizable)
+            window?.isMovableByWindowBackground = false
         }
-        return view
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
     }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func makeNSView(context: Context) -> DragView { DragView() }
+    func updateNSView(_ nsView: DragView, context: Context) {}
+}
+
+/// Database reads belong to refresh events, not SwiftUI body evaluation (which also
+/// happens while a window is resized or a toolbar updates).
+private struct ObservedLectureDetail: View {
+    let store: AppStore
+    let lectureId: String
+    @State private var detail: LectureDetailSnapshot?
+
+    var body: some View {
+        Group {
+            if let detail {
+                LectureDetailView(store: store, detail: detail, onBack: { store.selectedLectureId = nil })
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear { reload() }
+        .onChange(of: store.dbRevision) { reload() }
+    }
+
+    private func reload() {
+        detail = store.loadLectureDetail(id: lectureId)
+        if detail == nil { store.selectedLectureId = nil }
+    }
 }
 
 // MARK: - Welcome Empty State

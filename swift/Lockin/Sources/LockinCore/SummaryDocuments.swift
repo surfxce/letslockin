@@ -14,25 +14,25 @@ public func buildReaderDocumentHTML(
     <style>
       :root {
         color-scheme: light dark;
-        --fg: #1d1d1f;
-        --muted: #6e6e73;
-        --border: rgba(128,128,128,0.22);
-        --card-bg: rgba(128,128,128,0.06);
-        --accent: #5856d6;
+        --fg: #37352f;
+        --muted: #73726e;
+        --border: #e9e9e7;
+        --card-bg: #f7f7f5;
+        --accent: #2383e2;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --fg: #f5f5f7;
-          --muted: #98989d;
-          --border: rgba(255,255,255,0.16);
-          --card-bg: rgba(255,255,255,0.06);
-          --accent: #7d7aff;
+          --fg: #d4d4d4;
+          --muted: #9b9b9b;
+          --border: #2f2f2f;
+          --card-bg: #202020;
+          --accent: #2383e2;
         }
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        font-size: 15px;
-        line-height: 1.62;
+        font-size: 15.5px;
+        line-height: 1.7;
         color: var(--fg);
         margin: 0;
         padding: 4px 2px 48px 2px;
@@ -46,11 +46,16 @@ public func buildReaderDocumentHTML(
       }
       table { border-collapse: collapse; width: 100%; }
       td, th { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-      h2 { font-size: 1.28em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-      h3 { font-size: 1.1em; }
-      p, ul, ol { margin-top: 0.45em; margin-bottom: 0.65em; }
-      ul, ol { padding-left: 1.45em; }
-      li { margin: 0.24em 0; }
+      h1, h2 { font-size: 21px; margin: 30px 0 8px; }
+      h3 { font-size: 17px; margin: 24px 0 6px; }
+      h4 { font-size: 15.5px; margin: 18px 0 4px; }
+      #summary-root > :first-child, #editor > :first-child { margin-top: 0; }
+      blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--fg); }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+      th { background: var(--card-bg); font-weight: 550; }
+      p, ul, ol { margin: 0 0 12px; }
+      ul, ol { padding-left: 24px; }
+      li { margin: 3px 0; }
       ul ul { list-style-type: circle; }
       ul ul ul { list-style-type: square; }
       code {
@@ -127,7 +132,7 @@ public func buildReaderDocumentHTML(
         padding-bottom: 1px;
       }
       mark.glossary-term:hover {
-        background: rgba(88, 86, 214, 0.14);
+        background: rgba(35, 131, 226, 0.1);
       }
     </style>
     </head>
@@ -235,23 +240,23 @@ public func buildEditorDocumentHTML(bodyHTML: String) -> String {
     <style>
       :root {
         color-scheme: light dark;
-        --fg: #1d1d1f;
-        --muted: #6e6e73;
-        --border: rgba(128,128,128,0.25);
-        --card-bg: rgba(128,128,128,0.06);
+        --fg: #37352f;
+        --muted: #73726e;
+        --border: #e9e9e7;
+        --card-bg: #f7f7f5;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --fg: #f5f5f7;
-          --muted: #98989d;
-          --border: rgba(255,255,255,0.18);
-          --card-bg: rgba(255,255,255,0.06);
+          --fg: #d4d4d4;
+          --muted: #9b9b9b;
+          --border: #2f2f2f;
+          --card-bg: #202020;
         }
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        font-size: 15px;
-        line-height: 1.62;
+        font-size: 15.5px;
+        line-height: 1.7;
         color: var(--fg);
         margin: 0;
         padding: 10px;
@@ -263,9 +268,14 @@ public func buildEditorDocumentHTML(bodyHTML: String) -> String {
       }
       table { border-collapse: collapse; width: 100%; }
       td, th { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-      h2 { font-size: 1.28em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-      h3 { font-size: 1.1em; }
-      ul, ol { padding-left: 1.45em; }
+      h1, h2 { font-size: 21px; margin: 30px 0 8px; }
+      h3 { font-size: 17px; margin: 24px 0 6px; }
+      h4 { font-size: 15.5px; margin: 18px 0 4px; }
+      #summary-root > :first-child, #editor > :first-child { margin-top: 0; }
+      blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--fg); }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+      th { background: var(--card-bg); font-weight: 550; }
+      ul, ol { padding-left: 24px; }
       ul ul { list-style-type: circle; }
       ul ul ul { list-style-type: square; }
       figure.slide-fig {

@@ -5,7 +5,7 @@ import LockinCore
 // Port of electron/main.ts's reminder side: the badge is the quiet reminder and shows
 // whether or not notifications are on; a notification goes out for each lecture due for
 // LAQs, one a day per lecture, between 8am and 10pm. Checked every five minutes and
-// whenever anything in the database changes, so it is right without waiting out the
+// when the due schedule or notification preference changes, so it is right without waiting out the
 // timer.
 
 /// Answers for a notification's click (`n.on("click")`), which opens the lecture.
@@ -38,11 +38,11 @@ final class ReminderClickHandler: NSObject, UNUserNotificationCenterDelegate {
 }
 
 @MainActor
-@Observable
 final class ReminderDaemon {
     /// lectureId → the day it was last announced (`announced` in checkReminders).
     private var announced: [String: String] = [:]
     private var timer: Timer?
+    private var wakeObserver: NSObjectProtocol?
     private unowned let store: AppStore
 
     /// The notification centre only exists for a bundled app; a bare `swift run`
@@ -56,20 +56,19 @@ final class ReminderDaemon {
     }
 
     func start() {
-        guard Self.notificationsAvailable else { return }
+        guard Self.notificationsAvailable, timer == nil else { return }
         UNUserNotificationCenter.current().delegate = sharedClickHandler
-        let daemon = self
-        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
-            Task { @MainActor in daemon.check() }
+        timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.check() }
         }
         // Right after sleep, and right now: the timer alone misses a laptop asleep at
         // the hour a lecture came due.
-        NotificationCenter.default.addObserver(
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
-        ) { _ in
-            Task { @MainActor in daemon.check() }
+        ) { [weak self] _ in
+            Task { @MainActor in self?.check() }
         }
         check()
     }
@@ -77,12 +76,15 @@ final class ReminderDaemon {
     func stop() {
         timer?.invalidate()
         timer = nil
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
     }
 
     /// One round: the badge always, a notification when the hour and the settings allow.
     func check() {
         guard Self.notificationsAvailable else { return }
         let now = Date()
+        store.refreshDueRows(now: now)
         let due = store.dueRows.filter { $0.dueAt != nil }.map(DueLecture.init(row:))
 
         // The dock badge is the quiet reminder; it shows whether or not notifications are on.

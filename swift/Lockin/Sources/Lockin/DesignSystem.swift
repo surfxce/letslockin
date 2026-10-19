@@ -249,16 +249,20 @@ struct PageContainer<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        ScrollView {
-            content()
-                .frame(maxWidth: narrow ? 800 : 1120, alignment: .center)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 48)
-                .padding(.top, 36)
-                .padding(.bottom, 80)
+        GeometryReader { geometry in
+            let compact = geometry.size.width <= 720
+            ScrollView {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, compact ? 16 : 48)
+                    .padding(.top, compact ? 28 : 44)
+                    .padding(.bottom, compact ? 96 : 120)
+                    .frame(maxWidth: narrow ? 800 : 1120)
+                    .frame(maxWidth: .infinity)
+            }
+            .defaultScrollAnchor(.top)
         }
         .background(L.bg)
-        .defaultScrollAnchor(.top)
     }
 }
 
@@ -297,7 +301,6 @@ struct Crumbs: View {
                         .font(.system(size: 14))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(index == parts.count - 1 ? Color.clear : Color.clear)
                         .foregroundStyle(L.textSoft)
                 }
                 .buttonStyle(.plain)
@@ -379,5 +382,14 @@ struct UnderlineTabs<Tab: Hashable>: View {
             Rectangle().fill(L.rule).frame(height: 1)
         }
         .padding(.bottom, 1)
+    }
+}
+
+/// Hover belongs to the row, so moving the pointer does not regroup the whole library.
+struct RowHover: ViewModifier {
+    @State private var hovered = false
+    func body(content: Content) -> some View {
+        content.background(hovered ? L.hover : Color.clear)
+            .onHover { hovered = $0 }
     }
 }

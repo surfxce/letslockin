@@ -54,7 +54,7 @@ public final class AppStore {
     /// Whether the settings have been read once — before that, defaults are on show, so
     /// the first-run tour must not open for someone who has already been round it.
     public var settingsLoaded: Bool = false
-    /// Incremented whenever database observation fires, so detail views re-read smoothly.
+    /// Content changes that require detail views to reload; heartbeat writes are excluded.
     public var dbRevision: Int = 0
 
     public var selection: SidebarItem? = nil
@@ -64,7 +64,7 @@ public final class AppStore {
     public var errorMessage: String? = nil
 
     private var viewConfigs: [String: LectureTableViewConfig] = [:]
-    @ObservationIgnored private var cancellable: AnyDatabaseCancellable?
+    @ObservationIgnored private var cancellables: [AnyDatabaseCancellable] = []
 
     public init(database: LockinDatabase, startQueue: Bool = true) {
         self.database = database
@@ -103,7 +103,8 @@ public final class AppStore {
     }
 
     private func startObserving(database: LockinDatabase, startQueue: Bool) {
-        cancellable?.cancel()
+        cancellables.forEach { $0.cancel() }
+        cancellables.removeAll()
         if let oldQueue = jobQueue {
             Task { await oldQueue.stop() }
             jobQueue = nil
@@ -119,50 +120,67 @@ public final class AppStore {
             Task { await q.start() }
         }
 
-        let observation = ValueObservation.tracking { db -> ([Course], [Module], [LectureRow], [LectureRow], Job?, QueueActivity, LockinSettings) in
+        let onError: @MainActor @Sendable (Error) -> Void = { [weak self] error in
+            Task { @MainActor in self?.errorMessage = error.localizedDescription }
+        }
+        // Keep Setting heartbeats and token streaming out of the library's dependency
+        // region. These observations run their reads on GRDB's background queue.
+        let library = ValueObservation.tracking { db in
             let courses = try Course.order(Column("createdAt").asc).fetchAll(db)
             let modules = try Module.order(Column("position").asc).fetchAll(db)
             let rows = try LockinCore.lectureRows(db: db)
-            let due = try LockinCore.dueLectures(db: db)
-            let running = try Job
-                .filter(Column("status") == JobStatus.running.rawValue)
-                .order(Column("startedAt").desc)
-                .fetchOne(db)
-            let activity = try LockinCore.loadActivity(db: db)
-            let settings = try LockinCore.getSettings(db: db)
-            return (courses, modules, rows, due, running, activity, settings)
+            // A glossary change must also refresh the open reader.
+            _ = try GlossaryTerm.fetchCount(db)
+            return (courses, modules, rows)
         }
-
-        cancellable = observation.start(
-            in: database.reader,
-            onError: { [weak self] err in
-                Task { @MainActor in
-                    self?.errorMessage = err.localizedDescription
-                }
-            },
-            onChange: { [weak self] (courses, modules, rows, due, running, activity, settings) in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.courses = courses
-                    self.modules = modules
-                    self.lectureRows = rows
-                    self.dueRows = due
-                    self.runningJob = running
-                    self.queueActivity = activity
-                    self.settings = settings
-                    self.mode = settings.mode.rawValue
-                    self.settingsLoaded = true
-                    self.dbRevision &+= 1
-                    if self.selection == nil {
-                        if courses.count == 1, let only = courses.first {
-                            self.selection = .course(only.id)
-                        } else if !courses.isEmpty {
-                            self.selection = .allLectures
-                        }
+        cancellables.append(library.start(in: database.reader, onError: onError) { [weak self] courses, modules, rows in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.courses != courses { self.courses = courses }
+                if self.modules != modules { self.modules = modules }
+                if self.lectureRows != rows { self.lectureRows = rows }
+                self.refreshDueRows()
+                self.dbRevision &+= 1
+                if self.selection == nil {
+                    if courses.count == 1, let only = courses.first {
+                        self.selection = .course(only.id)
+                    } else if !courses.isEmpty {
+                        self.selection = .allLectures
                     }
                 }
             }
-        )
+        })
+        let activity = ValueObservation.tracking { db in
+            let running = try Job.filter(Column("status") == JobStatus.running.rawValue)
+                .order(Column("startedAt").desc).fetchOne(db)
+            return (running, try LockinCore.loadActivity(db: db))
+        }
+        cancellables.append(activity.start(in: database.reader, onError: onError) { [weak self] running, activity in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.runningJob != running { self.runningJob = running }
+                if self.queueActivity != activity { self.queueActivity = activity }
+            }
+        })
+        let preferences = ValueObservation.tracking { db in try LockinCore.getSettings(db: db) }
+            .removeDuplicates()
+        cancellables.append(preferences.start(in: database.reader, onError: onError) { [weak self] settings in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.settings != settings {
+                    self.settings = settings
+                    self.dbRevision &+= 1
+                }
+                self.mode = settings.mode.rawValue
+                self.settingsLoaded = true
+            }
+        })
+    }
+
+    /// Also called by the reminder timer: the day can change without a database write.
+    public func refreshDueRows(now: Date = Date()) {
+        let due = LockinCore.dueLectures(rows: lectureRows, now: now)
+        if dueRows != due { dueRows = due }
     }
 
     // MARK: - Active Course & Filtered Rows
@@ -518,7 +536,7 @@ public final class AppStore {
                 .filter(Column("lectureId") == id)
                 .order(Column("createdAt").asc, Column("id").asc)
                 .fetchAll(db)
-            let qNumbers = try LockinCore.questionNumbers(db: db, lectureId: id)
+            let qNumbers = Dictionary(uniqueKeysWithValues: questions.enumerated().map { ($0.element.id, $0.offset + 1) })
             let attempts = try Attempt
                 .filter(Column("lectureId") == id)
                 .order(Column("sittingDate").desc)
