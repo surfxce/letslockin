@@ -45,11 +45,18 @@ final class ReminderDaemon {
     private var timer: Timer?
     private unowned let store: AppStore
 
+    /// The notification centre only exists for a bundled app; a bare `swift run`
+    /// binary has none and touching it throws. Reminders then wait for the real app.
+    static var notificationsAvailable: Bool {
+        Bundle.main.bundleIdentifier != nil
+    }
+
     init(store: AppStore) {
         self.store = store
     }
 
     func start() {
+        guard Self.notificationsAvailable else { return }
         UNUserNotificationCenter.current().delegate = sharedClickHandler
         let daemon = self
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
@@ -74,6 +81,7 @@ final class ReminderDaemon {
 
     /// One round: the badge always, a notification when the hour and the settings allow.
     func check() {
+        guard Self.notificationsAvailable else { return }
         let now = Date()
         let due = store.dueRows.filter { $0.dueAt != nil }.map(DueLecture.init(row:))
 

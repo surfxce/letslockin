@@ -21,6 +21,7 @@ struct LockinApp: App {
             RootView(store: store)
                 .frame(minWidth: 960, minHeight: 620)
         }
+        .windowStyle(.hiddenTitleBar)
         Settings {
             SettingsScreen(store: store)
         }
@@ -35,34 +36,9 @@ struct LockinApp: App {
     }
 }
 
-// MARK: - Tone Color Helper
+// MARK: - Status Tag
 
-private struct ScoreTagView: View {
-    let score: Double?
-    var prev: Double? = nil
-
-    var body: some View {
-        if let score {
-            HStack(spacing: 4) {
-                TagBadge(text: formatScore(score), tone: scoreTone(score))
-                if let prev {
-                    let diff = score - prev
-                    if abs(diff) >= 0.05 {
-                        Text(String(format: "%@%.1f", diff > 0 ? "+" : "", diff))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(diff > 0 ? .green : .red)
-                    }
-                }
-            }
-        } else {
-            Text("—")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-}
-
-private struct StatusTagView: View {
+struct StatusTagView: View {
     let status: LectureStatus
     var stageLabel: String? = nil
     var queuePosition: Int? = nil
@@ -116,10 +92,10 @@ struct RootView: View {
             } else if store.courses.isEmpty {
                 WelcomeEmptyStateView(onAddCourse: { showingNewCourse = true })
             } else {
-                NavigationSplitView {
-                    SidebarView(store: store, onAddCourse: { showingNewCourse = true })
-                        .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
-                } detail: {
+                VStack(spacing: 0) {
+                    TopBarView(store: store)
+                    Rectangle().fill(L.rule).frame(height: 1)
+
                     if let importCourseId = store.importingCourseId,
                        let course = store.courses.first(where: { $0.id == importCourseId }) {
                         ImportFolderView(
@@ -141,6 +117,7 @@ struct RootView: View {
                         )
                     }
                 }
+                .background(L.bg)
             }
         }
         .onAppear {
@@ -215,14 +192,14 @@ struct DatabaseErrorView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.05))
+            .background(L.hover)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack(spacing: 12) {
                 Button(action: onRetry) {
                     Label("Retry", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.lockinPrimary)
                 .controlSize(.large)
 
                 Button("Show in Finder") {
@@ -237,77 +214,85 @@ struct DatabaseErrorView: View {
     }
 }
 
-// MARK: - Sidebar
+// MARK: - Top Bar (the web app's shell: brand, nav, activity)
 
-struct SidebarView: View {
+/// `.topbar` — 46px, the brand, the nav, and the queue activity at the end. Dragging
+/// the window works anywhere the bar isn't a control (`movableByWindowBackground`).
+struct TopBarView: View {
     @Bindable var store: AppStore
-    var onAddCourse: () -> Void
 
     var body: some View {
-        List(selection: Binding(
-            get: { store.selection },
-            set: { newValue in
-                store.selection = newValue
-                store.selectedLectureId = nil
-                store.importingCourseId = nil
-            }
-        )) {
-            if store.courses.count > 1 {
-                Label("All Lectures", systemImage: "tray.full")
-                    .tag(SidebarItem.allLectures)
-            }
+        HStack(spacing: 10) {
+            // The 84px the web app leaves for the traffic lights, which now float here.
+            Color.clear.frame(width: 64)
 
-            Section("Courses") {
-                ForEach(store.courses) { course in
-                    let count = store.lectureRows.filter { $0.courseId == course.id }.count
-                    HStack {
-                        Text(course.code)
-                            .font(.system(.subheadline, weight: .semibold))
-                        Text(course.title)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer()
-                        if count > 0 {
-                            Text("\(count)")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .tag(SidebarItem.course(course.id))
-                }
+            HStack(spacing: 7) {
+                Text("L")
+                    .font(.system(size: 12, weight: .heavy))
+                    .frame(width: 20, height: 20)
+                    .background(L.text)
+                    .foregroundStyle(L.bg)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                Text("Lockin")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(L.text)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
 
-                Button(action: onAddCourse) {
-                    Label("New Course…", systemImage: "plus")
+            HStack(spacing: 2) {
+                Button {
+                    store.selectedLectureId = nil
+                    store.importingCourseId = nil
+                    store.selection = store.courses.count > 1 ? .allLectures : (store.courses.first.map { .course($0.id) } ?? .allLectures)
+                } label: {
+                    Label("Lectures", systemImage: "tablecells")
+                        .font(.system(size: 14))
+                        .foregroundStyle(onLecturesPage ? L.text : L.textSoft)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(onLecturesPage ? L.hover : Color.clear)
+                        .cornerRadius(5)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 6) {
-                Divider()
-                QueuePanelButton(store: store)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-                HStack {
-                    SettingsLink {
-                        Image(systemName: "gearshape")
-                            .foregroundStyle(.secondary)
-                            .help("Settings")
-                    }
-                    .buttonStyle(.plain)
-                    Text(URL(fileURLWithPath: store.databasePath).lastPathComponent)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .help(store.databasePath)
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+
+            Spacer()
+
+            QueuePanelButton(store: store)
+
+            SettingsLink {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14))
+                    .foregroundStyle(L.textSoft)
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.plain)
+            .help("Settings")
+
+            Color.clear.frame(width: 10)
         }
+        .frame(height: 46)
+        .background(DragBackground())
+        .background(L.bg)
     }
+
+    private var onLecturesPage: Bool {
+        store.selectedLectureId == nil && store.importingCourseId == nil
+    }
+}
+
+/// Makes the window draggable from its background, as `-webkit-app-region: drag` does
+/// for the top bar; interactive controls still take their own clicks.
+private struct DragBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            view.window?.isMovableByWindowBackground = true
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: - Welcome Empty State
@@ -316,36 +301,36 @@ struct WelcomeEmptyStateView: View {
     var onAddCourse: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("📚")
-                .font(.system(size: 40))
-            Text("Welcome to Lockin")
-                .font(.system(size: 28, weight: .bold))
-            Text("Lockin turns your lecture recordings and slides into a summary and long-answer questions for each lecture, marks your answers, and reminds you when each lecture is due again.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        PageContainer(narrow: true) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("📚")
+                    .font(.system(size: 44))
+                PageTitle(text: "Welcome to Lockin")
+                Text("Lockin turns your lecture recordings and slides into a summary and long-answer questions for each lecture, marks your answers, and reminds you when each lecture is due again.")
+                    .font(.lockinBody)
+                    .foregroundStyle(L.textSoft)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 10) {
-                StepRow(number: "1", text: "Add a course, then point it at the folder your lecture files are in.")
-                StepRow(number: "2", text: "Each lecture gets a summary and LAQs — automatically, or by copy and paste with any AI chat.")
-                StepRow(number: "3", text: "Answer closed book, get marked, and come back when it is due.")
-            }
-            .padding(16)
-            .background(Color.primary.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            HStack(spacing: 12) {
-                Button(action: onAddCourse) {
-                    Label("Add your first course", systemImage: "plus")
+                VStack(alignment: .leading, spacing: 10) {
+                    StepRow(number: "1", text: "Add a course, then point it at the folder your lecture files are in.")
+                    StepRow(number: "2", text: "Each lecture gets a summary and LAQs — automatically, or by copy and paste with any AI chat.")
+                    StepRow(number: "3", text: "Answer closed book, get marked, and come back when it is due.")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(L.bgSoft)
+                .cornerRadius(8)
+
+                HStack(spacing: 12) {
+                    Button(action: onAddCourse) {
+                        Label("Add your first course", systemImage: "plus")
+                    }
+                    .buttonStyle(.lockinPrimary)
+                    .controlSize(.large)
+                }
             }
+            .padding(.top, 40)
         }
-        .frame(maxWidth: 540)
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -357,741 +342,14 @@ private struct StepRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(number)
                 .font(.system(.callout, design: .rounded, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(L.textSoft)
             Text(text)
-                .font(.callout)
+                .font(.lockinBody)
+                .foregroundStyle(L.text)
         }
     }
 }
 
-// MARK: - Chunk 4: Lecture Library View
-
-struct LectureLibraryView: View {
-    @Bindable var store: AppStore
-    var onNewLecture: (String) -> Void
-
-    @State private var searchQuery = ""
-
-    private var activeCourse: Course? { store.activeCourse }
-    private var rows: [LectureRow] { store.visibleLectureRows }
-    private var due: [LectureRow] { store.visibleDueRows }
-    private var storageKey: String { activeCourse?.id ?? "all" }
-
-    private var viewConfig: LectureTableViewConfig {
-        store.viewConfig(for: storageKey)
-    }
-
-    private func updateView(_ transform: (inout LectureTableViewConfig) -> Void) {
-        var next = viewConfig
-        transform(&next)
-        store.setViewConfig(next, for: storageKey)
-    }
-
-    private var toPrepareIds: [String] {
-        rows.filter { $0.status == .todo || $0.status == .failed || $0.status == .summary }.map(\.id)
-    }
-
-    private var weakestPractised: LectureRow? {
-        let practised = rows.filter { $0.lastScore != nil }
-        guard practised.count > 1 else { return nil }
-        return practised.min { ($0.lastScore ?? 10) < ($1.lastScore ?? 10) }
-    }
-
-    private var groups: [LectureGroup] {
-        groupLectures(rows, query: searchQuery, view: viewConfig)
-    }
-
-    private var totalFilteredCount: Int {
-        groups.reduce(0) { $0 + $1.rows.count }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(activeCourse?.title ?? "Lectures")
-                            .font(.system(size: 26, weight: .bold))
-                        HStack(spacing: 6) {
-                            if let active = activeCourse {
-                                TagBadge(text: active.code, tone: tagTone(active.code))
-                                Text("· \(plural(rows.count, "lecture"))")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                if let exam = active.examDate {
-                                    let d = daysUntil(exam)
-                                    Text(d >= 0 ? "· exam in \(plural(d, "day"))" : "· exam has passed")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } else {
-                                Text("Every lecture across \(plural(store.courses.count, "course")), with how you are doing on each.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    Spacer()
-                    LibraryExportButton(store: store, lectureIds: rows.map(\.id))
-                    if let weakest = weakestPractised {
-                        Button {
-                            store.selectedLectureId = weakest.id
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text("Weakest: L\(weakest.ordinal)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                ScoreTagView(score: weakest.lastScore)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                if let notice = store.lastImportNotice {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.blue)
-                        Text(notice)
-                            .font(.callout)
-                        Spacer()
-                        Button {
-                            store.lastImportNotice = nil
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .background(Color.blue.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
-                // Due for LAQs strip
-                if !due.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Due for LAQs", systemImage: "bell.fill")
-                            .font(.subheadline.weight(.semibold))
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(due.prefix(8)) { d in
-                                    Button {
-                                        store.selectedLectureId = d.id
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(d.title)
-                                                .font(.callout.weight(.medium))
-                                                .lineLimit(1)
-                                            HStack(spacing: 6) {
-                                                let lbl = dueLabel(d.dueAt)
-                                                TagBadge(text: lbl.text, tone: lbl.tone)
-                                                if activeCourse == nil {
-                                                    Text(d.courseCode)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                                Text("L\(d.ordinal)")
-                                                    .font(.caption.monospacedDigit())
-                                                    .foregroundStyle(.secondary)
-                                                if let s = d.lastScore {
-                                                    ScoreTagView(score: s)
-                                                }
-                                            }
-                                        }
-                                        .padding(10)
-                                        .background(Color.primary.opacity(0.04))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Action Row + Toolbar
-                HStack(spacing: 8) {
-                    if let active = activeCourse {
-                        Button {
-                            store.importingCourseId = active.id
-                        } label: {
-                            Label("Import folder", systemImage: "folder.badge.plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button {
-                            onNewLecture(active.id)
-                        } label: {
-                            Label("New lecture", systemImage: "plus")
-                        }
-                    } else if !store.courses.isEmpty {
-                        Menu {
-                            ForEach(store.courses) { c in
-                                Button("Import into \(c.code) — \(c.title)") {
-                                    store.importingCourseId = c.id
-                                }
-                            }
-                        } label: {
-                            Label("Import folder", systemImage: "folder.badge.plus")
-                        }
-                    }
-
-                    if store.mode != "manual" && !toPrepareIds.isEmpty {
-                        Button {
-                            store.prepareLectures(toPrepareIds)
-                        } label: {
-                            Label("Prepare \(plural(toPrepareIds.count, "lecture"))", systemImage: "sparkles")
-                        }
-                    }
-
-                    Spacer()
-
-                    // Sort Preset Menu
-                    Menu {
-                        Button("Lecture date — first to last") { updateView { $0.sort = .date; $0.dir = .asc } }
-                        Button("Lecture date — latest first") { updateView { $0.sort = .date; $0.dir = .desc } }
-                        Button("Weakest first") { updateView { $0.sort = .score; $0.dir = .asc } }
-                        Button("Strongest first") { updateView { $0.sort = .score; $0.dir = .desc } }
-                        Button("Due soonest") { updateView { $0.sort = .due; $0.dir = .asc } }
-                        Button("Name A–Z") { updateView { $0.sort = .name; $0.dir = .asc } }
-                    } label: {
-                        Label("Sort: \(viewConfig.sort.rawValue.capitalized) \(viewConfig.dir == .asc ? "↑" : "↓")", systemImage: "arrow.up.arrow.down")
-                    }
-                    .frame(width: 150)
-
-                    // Group Menu
-                    Menu {
-                        ForEach(LectureGroupKey.allCases, id: \.self) { g in
-                            if activeCourse == nil || g != .course {
-                                Button(g.label) { updateView { $0.group = g } }
-                            }
-                        }
-                    } label: {
-                        Label(
-                            viewConfig.group == .none ? "Group" : "Grouped by \(viewConfig.group.label.lowercased())",
-                            systemImage: "square.grid.2x2"
-                        )
-                    }
-                    .frame(width: 150)
-
-                    TextField("Search lectures", text: $searchQuery)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 180)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-
-            Divider()
-
-            if rows.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.tertiary)
-                    Text("No lectures in \(activeCourse?.code ?? "any course") yet.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                    if let active = activeCourse {
-                        Button {
-                            store.importingCourseId = active.id
-                        } label: {
-                            Label("Import a folder of lectures", systemImage: "folder")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                // Table Header
-                HStack(spacing: 10) {
-                    sortHeader(.name, "Lecture", width: nil)
-                    if activeCourse == nil {
-                        sortHeader(.course, "Course", width: 85)
-                    }
-                    sortHeader(.module, "Module", width: 140)
-                    sortHeader(.date, "Date", width: 100)
-                    sortHeader(.status, "Status", width: 120)
-                    sortHeader(.laqs, "LAQs", width: 55)
-                    sortHeader(.score, "Score", width: 90)
-                    sortHeader(.due, "Next review", width: 110)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.03))
-
-                Divider()
-
-                List {
-                    ForEach(groups) { group in
-                        if viewConfig.group != .none {
-                            Section {
-                                ForEach(group.rows) { row in
-                                    lectureRowView(row)
-                                }
-                            } header: {
-                                HStack(spacing: 8) {
-                                    TagBadge(text: group.name, tone: tagTone(group.name))
-                                    Text("\(group.rows.count)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                    if let avg = group.avg {
-                                        Text("average")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        TagBadge(text: formatScore(avg), tone: scoreTone(avg))
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        } else {
-                            ForEach(group.rows) { row in
-                                lectureRowView(row)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.inset)
-
-                Divider()
-                HStack {
-                    if let active = activeCourse {
-                        Button {
-                            onNewLecture(active.id)
-                        } label: {
-                            Label("New lecture", systemImage: "plus")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text("\(totalFilteredCount) of \(plural(rows.count, "lecture"))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func sortHeader(_ key: LectureSortKey, _ label: String, width: CGFloat?) -> some View {
-        Button {
-            updateView { $0.toggleSort(key) }
-        } label: {
-            HStack(spacing: 4) {
-                Text(label)
-                    .font(.caption.weight(viewConfig.sort == key ? .bold : .medium))
-                    .foregroundStyle(viewConfig.sort == key ? .primary : .secondary)
-                if viewConfig.sort == key {
-                    Text(viewConfig.dir == .asc ? "↑" : "↓")
-                        .font(.caption2.weight(.bold))
-                }
-            }
-            .frame(maxWidth: width == nil ? .infinity : width, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func lectureRowView(_ row: LectureRow) -> some View {
-        Button {
-            store.selectedLectureId = row.id
-        } label: {
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("L\(row.ordinal)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, alignment: .leading)
-                    Text(row.title)
-                        .font(.body.weight(.medium))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if activeCourse == nil {
-                    TagBadge(text: row.courseCode, tone: tagTone(row.courseCode))
-                        .frame(width: 85, alignment: .leading)
-                }
-
-                Group {
-                    if let mod = row.moduleTitle {
-                        TagBadge(text: mod, tone: tagTone(mod))
-                    } else {
-                        Text("—").font(.caption).foregroundStyle(.tertiary)
-                    }
-                }
-                .frame(width: 140, alignment: .leading)
-
-                Text(shortDate(row.deliveredOn))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 100, alignment: .leading)
-
-                StatusTagView(
-                    status: row.status,
-                    stageLabel: row.stageLabel,
-                    queuePosition: row.queuePosition,
-                    error: row.error
-                )
-                .frame(width: 120, alignment: .leading)
-
-                Text(row.laqCount > 0 ? "\(row.laqCount)" : "—")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(row.laqCount > 0 ? .primary : .tertiary)
-                    .frame(width: 55, alignment: .leading)
-
-                ScoreTagView(score: row.lastScore, prev: row.prevScore)
-                    .frame(width: 90, alignment: .leading)
-
-                Group {
-                    let lbl = dueLabel(row.dueAt)
-                    if row.dueAt != nil {
-                        TagBadge(text: lbl.text, tone: lbl.tone)
-                    } else {
-                        Text("—").font(.caption).foregroundStyle(.tertiary)
-                    }
-                }
-                .frame(width: 110, alignment: .leading)
-            }
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Chunk 4: Lecture Page View & ModelInfo Popover
-
-struct LectureDetailView: View {
-    @Bindable var store: AppStore
-    let detail: LectureDetailSnapshot
-    let onBack: () -> Void
-
-    @State private var selectedTab: LectureTab = .summary
-    @State private var showingModelInfo = false
-    @State private var practice: PracticeDestination?
-    @State private var showingPaste = false
-    @State private var showingExport = false
-
-    @State private var editTitle: String = ""
-    @State private var editModule: String = ""
-    @State private var editDate: Date = Date()
-    @State private var editHours: Double = 1.0
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                // Breadcrumbs
-                HStack(spacing: 6) {
-                    Button("Lectures", action: onBack)
-                        .buttonStyle(.link)
-                    Text("/").foregroundStyle(.tertiary)
-                    Button(detail.course.code) {
-                        store.selection = .course(detail.course.id)
-                        onBack()
-                    }
-                    .buttonStyle(.link)
-                    if let mod = detail.module {
-                        Text("/").foregroundStyle(.tertiary)
-                        Text(mod.title).foregroundStyle(.secondary)
-                    }
-                }
-                .font(.subheadline)
-
-                // L-ordinal + ModelInfo (i) popover
-                HStack(spacing: 6) {
-                    Text("L\(detail.row.ordinal)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Button {
-                        showingModelInfo.toggle()
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showingModelInfo) {
-                        ModelInfoPopoverView(info: detail.modelInfo)
-                    }
-                }
-
-                Text(detail.lecture.title)
-                    .font(.system(size: 28, weight: .bold))
-
-                // Properties Grid
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-                    GridRow {
-                        Text("Date").foregroundStyle(.secondary)
-                        Text(longDate(detail.lecture.deliveredOn))
-                    }
-                    GridRow {
-                        Text("Module").foregroundStyle(.secondary)
-                        if let mod = detail.module {
-                            TagBadge(text: mod.title, tone: tagTone(mod.title))
-                        } else {
-                            Text("None").foregroundStyle(.tertiary)
-                        }
-                    }
-                    GridRow {
-                        Text("Length").foregroundStyle(.secondary)
-                        Text("\(formatHours(detail.lecture.durationHours)) · \(plural(detail.sittingBudget, "LAQ")) per sitting")
-                    }
-                    GridRow {
-                        Text("Status").foregroundStyle(.secondary)
-                        StatusTagView(
-                            status: detail.row.status,
-                            stageLabel: detail.row.stageLabel,
-                            queuePosition: detail.row.queuePosition,
-                            error: detail.row.error
-                        )
-                    }
-                    GridRow {
-                        Text("Last score").foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
-                            ScoreTagView(score: detail.row.lastScore, prev: detail.row.prevScore)
-                            if detail.row.sittings > 0, let best = detail.row.bestScore {
-                                Text("· best \(formatScore(best)) · \(plural(detail.row.sittings, "sitting"))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    GridRow {
-                        Text("Next review").foregroundStyle(.secondary)
-                        let lbl = dueLabel(detail.row.dueAt)
-                        if detail.row.dueAt != nil {
-                            TagBadge(text: lbl.text, tone: lbl.tone)
-                        } else {
-                            Text(detail.questions.isEmpty ? "once it has LAQs" : "—")
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    if !detail.skipped.isEmpty {
-                        GridRow {
-                            Text("Left out").foregroundStyle(.secondary)
-                            Text(detail.skipped.map { "\($0.what)\($0.where.isEmpty ? "" : " (\($0.where))")" }.joined(separator: ", "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .font(.callout)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.03))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                HStack {
-                    Button("Start / resume sitting") {
-                        do {
-                            if let database = store.database {
-                                let id = try database.writer.write { db in try startPractice(db: db, lectureId: detail.lecture.id) }
-                                practice = PracticeDestination(id: id)
-                            }
-                        } catch { store.errorMessage = error.localizedDescription }
-                    }.buttonStyle(.borderedProminent).disabled(detail.questions.isEmpty)
-                    Button("Copy & paste…") { showingPaste = true }
-                    Button("Export PDF…") { showingExport = true }.disabled(detail.lecture.summaryMd?.isEmpty != false)
-                }
-                .sheet(item: $practice) { destination in PracticeSheet(store: store, attemptId: destination.id) }
-                .sheet(isPresented: $showingPaste) { LecturePasteSheet(store: store, lectureId: detail.lecture.id) }
-                .sheet(isPresented: $showingExport) { StudyExportSheet(store: store, initialLectureIds: [detail.lecture.id]) }
-
-                // Tabs
-                Picker("", selection: $selectedTab) {
-                    ForEach(LectureTab.allCases, id: \.self) { t in
-                        switch t {
-                        case .summary:
-                            Text("Summary").tag(t)
-                        case .laqs:
-                            Text("LAQs (\(detail.questions.count))").tag(t)
-                        case .scores:
-                            Text("Scores (\(detail.attempts.count))").tag(t)
-                        case .details:
-                            Text("Details & files (\(detail.materials.count))").tag(t)
-                        }
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                switch selectedTab {
-                case .summary:
-                    SummaryTabView(store: store, detail: detail)
-
-                case .laqs:
-                    if detail.questions.isEmpty {
-                        Text("No LAQs yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(detail.questions) { q in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("LAQ \(detail.questionNumbers[q.id] ?? 0)")
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    Text(q.stem)
-                                        .font(.body.weight(.medium))
-                                }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.primary.opacity(0.04))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                        }
-                    }
-
-                case .scores:
-                    if detail.attempts.isEmpty {
-                        Text("No sittings yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(detail.attempts) { a in
-                                HStack {
-                                    if let gm = a.geometricMean {
-                                        TagBadge(text: "\(formatScore(gm)) / 10", tone: scoreTone(gm))
-                                    } else {
-                                        TagBadge(text: "In progress", tone: .blue)
-                                    }
-                                    Text("\(shortDate(a.sittingDate)) · \(clockTime(a.sittingDate))")
-                                        .font(.callout)
-                                    Spacer()
-                                    Button("Open sitting") { practice = PracticeDestination(id: a.id) }
-                                    Text(a.source == .pasted ? "Pasted" : "In Lockin")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(10)
-                                .background(Color.primary.opacity(0.04))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                        }
-                    }
-
-                case .details:
-                    VStack(alignment: .leading, spacing: 16) {
-                        Form {
-                            TextField("Title", text: $editTitle)
-                            TextField("Module", text: $editModule)
-                            DatePicker("Delivered on", selection: $editDate, displayedComponents: .date)
-                            Stepper(
-                                "Hours: \(formatHours(editHours))",
-                                value: $editHours,
-                                in: 0.5...8.0,
-                                step: 0.5
-                            )
-                            Button("Save") {
-                                store.updateLectureDetails(
-                                    lectureId: detail.lecture.id,
-                                    title: editTitle,
-                                    moduleTitle: editModule,
-                                    deliveredOn: editDate,
-                                    durationHours: editHours
-                                )
-                            }
-                        }
-                        .onAppear {
-                            editTitle = detail.lecture.title
-                            editModule = detail.module?.title ?? ""
-                            editDate = detail.lecture.deliveredOn
-                            editHours = detail.lecture.durationHours
-                        }
-
-                        Divider()
-                        Text("Files")
-                            .font(.headline)
-                        if detail.materials.isEmpty {
-                            Text("None yet.").foregroundStyle(.secondary)
-                        } else {
-                            ForEach(detail.materials) { m in
-                                HStack {
-                                    Image(systemName: "doc.text")
-                                    Text(m.originalName)
-                                        .font(.body.weight(.medium))
-                                    TagBadge(
-                                        text: m.kind.rawValue.lowercased(),
-                                        tone: m.kind == .transcript ? .blue : .gray
-                                    )
-                                    if let pages = m.pageCount {
-                                        Text("\(plural(pages, "page"))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(8)
-                                .background(Color.primary.opacity(0.04))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(24)
-        }
-    }
-}
-
-struct ModelInfoPopoverView: View {
-    let info: ModelInfoData
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if info.isEmpty {
-                Text("No AI has worked on this lecture yet.")
-                    .font(.callout)
-            } else {
-                if let summary = info.summary {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Summary").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(summary.isEmpty ? "written before Lockin recorded the model" : summary)
-                            .font(.callout)
-                    }
-                }
-                if !info.laqs.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("LAQs").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        ForEach(info.laqs, id: \.model) { item in
-                            Text("\(item.count) by \(item.model)")
-                                .font(.callout)
-                        }
-                    }
-                }
-                if let run = info.lastRun {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Last run").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        let modelText = run.model.map { " on \($0)" } ?? ""
-                        let durText = run.durationMs.map { ", took \(duration($0))" } ?? ""
-                        Text("\(run.what)\(modelText)\(durText)")
-                            .font(.callout)
-                        Text("\(shortDate(run.finishedAt)) · \(clockTime(run.finishedAt))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let fb = run.fellBack {
-                            Text("The cloud AI failed, so the offline model did it: \(fb)")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-            }
-            Text("Choose the AI and its model in Settings.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(14)
-        .frame(width: 280, alignment: .leading)
-    }
-}
-
-// MARK: - Chunk 5: Import Folder View
 
 struct ImportFolderView: View {
     @Bindable var store: AppStore
@@ -1138,7 +396,7 @@ struct ImportFolderView: View {
                     Button(scannedFiles.isEmpty ? "Scan folder" : "Scan again") {
                         runScan()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.lockinPrimary)
                     .disabled(folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
@@ -1338,7 +596,7 @@ struct ImportFolderView: View {
                                 }
                             }
                             .padding(10)
-                            .background(Color.primary.opacity(row.included ? 0.04 : 0.015))
+                            .background(row.included ? L.bgSoft : Color.clear)
                             .opacity(row.included ? 1.0 : 0.6)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
@@ -1374,7 +632,7 @@ struct ImportFolderView: View {
                         Button("Import \(plural(includedCount, "lecture"))") {
                             commitImport()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.lockinPrimary)
                         .controlSize(.large)
                         .disabled(includedCount == 0)
                     }

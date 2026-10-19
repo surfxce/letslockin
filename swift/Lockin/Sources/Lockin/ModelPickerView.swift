@@ -158,7 +158,7 @@ struct ModelPickerSection: View {
                         .buttonStyle(.link)
                     }
                     .padding(8)
-                    .background(Color.primary.opacity(0.04))
+                    .background(L.bgSoft)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
@@ -238,7 +238,7 @@ private struct ModelCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(active ? Color.blue.opacity(0.08) : Color.primary.opacity(0.04))
+        .background(active ? L.accentSoft : L.bgSoft)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 

@@ -3,398 +3,167 @@ import SwiftUI
 import UserNotifications
 import LockinCore
 
-// Port of app/settings/page.tsx and its parts (controls.tsx, CloudSettings.tsx,
-// ModelPicker.tsx): the Settings window, reached from the app menu and from the sidebar's
-// gear. Like the web page there is no save button — every change is written as it is
-// made.
+// The Settings window as the web app's settings page (app/settings/page.tsx and its
+// parts): a narrow page of section headings and `.setting` rows — title and description
+// on the left, the control on the right, a hairline under each — with the `.seg`
+// segmented choice and `.stepper` controls. No save button: every change writes as it
+// is made.
 
-// MARK: - The window
+// MARK: - Shared pieces of the design
 
-struct SettingsScreen: View {
-    @Bindable var store: AppStore
-    @State private var detection: AppStore.AiDetection?
-    @State private var showingOnboarding = false
-
-    var body: some View {
-        Form {
-            Section("Summaries and LAQs") {
-                ModePickerSection(store: store)
-                if store.settings.mode.usesAi {
-                    WorkerStatusLine(store: store)
-                }
-            }
-
-            if store.settings.mode == .auto {
-                CloudSettingsSection(store: store, detection: detection)
-            }
-
-            Section("LAQs") {
-                LaqSettingsSection(store: store)
-            }
-
-            Section {
-                ModelPickerSection(store: store)
-            } header: {
-                Text("Offline AI on this computer")
-            } footer: {
-                Text("Download a model once and Lockin works with no internet. The middle one is chosen for this computer; downloading any of them switches Lockin to it when it finishes.")
-            }
-
-            Section("Getting started") {
-                Button {
-                    showingOnboarding = true
-                } label: {
-                    Label("Repeat onboarding", systemImage: "arrow.counterclockwise")
-                }
-            }
-
-            Section("Reminders") {
-                RemindersSection(store: store)
-            }
-
-            Section("Courses") {
-                ForEach(store.courses) { course in
-                    HStack {
-                        TagBadge(text: course.code, tone: tagTone(course.code))
-                        Text(course.title)
-                        Spacer()
-                        Text("· \(plural(store.lectureRows.filter { $0.courseId == course.id }.count, "lecture"))")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Section("Updates") {
-                UpdatesSection(store: store)
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 620, height: 680)
-        .task {
-            detection = await store.detectAiTools()
-        }
-        .sheet(isPresented: $showingOnboarding) {
-            OnboardingSheet(store: store, hasCourses: !store.courses.isEmpty, detection: detection)
-        }
-    }
-}
-
-// MARK: - Choosing a mode (ModePicker)
-
-private struct ModePickerSection: View {
-    @Bindable var store: AppStore
-    @State private var detection: AppStore.AiDetection?
+/// `.setting`: a row with what it does on the left and its control on the right.
+struct SettingRow<Control: View>: View {
+    let title: String
+    var detail: String?
+    @ViewBuilder var control: () -> Control
 
     var body: some View {
-        Picker("How the AI part happens", selection: Binding(
-            get: { store.settings.mode },
-            set: { mode in store.updateSettings { $0.mode = mode } }
-        )) {
-            Text(modeTitle(.auto)).tag(AppMode.auto)
-            Text(modeTitle(.local)).tag(AppMode.local)
-            Text(modeTitle(.manual)).tag(AppMode.manual)
-        }
-        .pickerStyle(.radioGroup)
-        .labelsHidden()
-
-        ForEach(AppMode.allKnown, id: \.rawValue) { mode in
-            if mode == store.settings.mode {
-                Text(modeDescription(mode))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 20)
-            }
-        }
-    }
-
-    /// "Automatic — Claude Code" with whether it is ready, as the web page's tag says it.
-    private func modeTitle(_ mode: AppMode) -> String {
-        switch mode {
-        case .auto:
-            let ready = detection?.claude.found ?? true
-            return "Automatic — \(ready ? "Claude Code" : "Claude Code not found on this computer")"
-        case .local:
-            let model = store.modelsSnapshot().installedInfo(forModel: store.settings.localModel ?? "")
-            return "On this computer — \(model?.name ?? "no model yet")"
-        case .manual:
-            return "Copy & paste"
-        default:
-            return mode.label ?? mode.rawValue
-        }
-    }
-
-    private func modeDescription(_ mode: AppMode) -> String {
-        switch mode {
-        case .auto:
-            return "Lockin prepares lectures itself with a cloud AI — Claude Code, ChatGPT Codex, Google Antigravity or an API key, chosen below — one lecture at a time, and marks your answers."
-        case .local:
-            return "A model downloaded to this computer does the work: fully offline, private and free, a little slower. Pick one below."
-        case .manual:
-            return "No AI runs here. Each lecture has Copy prompt buttons for any AI chat, and boxes that format what you paste back."
-        default:
-            return ""
-        }
-    }
-}
-
-/// The heartbeat line the web page shows under the mode (`beat?.alive`).
-private struct WorkerStatusLine: View {
-    @Bindable var store: AppStore
-
-    var body: some View {
-        let alive = store.queueActivity?.worker?.alive ?? false
-        HStack(alignment: .firstTextBaseline) {
-            Text("AI worker")
-                .font(.callout.weight(.semibold))
-            Spacer()
-            TagBadge(text: alive ? "Running" : "Stopped", tone: alive ? .green : .orange)
-        }
-        Text(alive
-            ? "Running — prepares one lecture at a time, and marks answers first."
-            : "Not running, so nothing queued will start. It runs with this app.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-    }
-}
-
-// MARK: - The cloud AI (CloudSettings)
-
-private struct CloudSettingsSection: View {
-    @Bindable var store: AppStore
-    let detection: AppStore.AiDetection?
-
-    @State private var codexModel: String = ""
-    @State private var agyModel: String = ""
-    @State private var apiBaseUrl: String = ""
-    @State private var apiModel: String = ""
-    @State private var apiKeyDraft = ""
-    @State private var keyNote: String?
-    @State private var test: AppStore.ActionResult?
-    @State private var testing = false
-
-    var body: some View {
-        Picker("Cloud AI", selection: Binding(
-            get: { store.settings.cloudEngine },
-            set: { engine in store.updateSettings { $0.cloudEngine = engine } }
-        )) {
-            ForEach(CloudEngine.allCases, id: \.self) { engine in
-                Text(engine.label).tag(engine)
-            }
-        }
-        .pickerStyle(.radioGroup)
-
-        enginePanel
-
-        if store.settings.mode == .auto {
-            fallbackRow
-        }
-    }
-
-    @ViewBuilder
-    private var enginePanel: some View {
-        let status = detection
-        switch store.settings.cloudEngine {
-        case .claude:
-            toolStatus(
-                found: status?.claude.found ?? true,
-                version: status?.claude.version,
-                name: "Claude Code",
-                install: "Install it with npm i -g @anthropic-ai/claude-code, then run claude once to sign in with your Claude plan."
-            )
-            modelBlurb
-            Picker("Claude model", selection: Binding(
-                get: { store.settings.cloudModel },
-                set: { model in store.updateSettings { $0.cloudModel = model } }
-            )) {
-                Text("Sonnet · default").tag(CloudModel.sonnet)
-                Text("Opus").tag(CloudModel.opus)
-                Text("Haiku").tag(CloudModel.haiku)
-            }
-            .pickerStyle(.segmented)
-        case .codex:
-            toolStatus(
-                found: status?.codex.found ?? true,
-                version: status?.codex.version,
-                name: "Codex",
-                install: "Install it with npm i -g @openai/codex, then run codex login once to sign in with your ChatGPT plan."
-            )
-            Text("Uses your ChatGPT plan. It sees the slides as pictures.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            TextSettingRow(label: "Model", initial: store.settings.codexModel, placeholder: "Codex's default", hint: "Leave empty for the model Codex is set to use.") { newValue in
-                store.updateSettings { $0.codexModel = newValue }
-            }
-        case .antigravity:
-            toolStatus(
-                found: status?.antigravity.found ?? true,
-                version: status?.antigravity.version,
-                name: status?.antigravity.binary == "gemini" ? "Gemini CLI" : "Antigravity CLI",
-                install: "Install the Antigravity CLI from antigravity.google/cli, then run agy once to sign in with your Google account. The older Gemini CLI (gemini) works too."
-            )
-            Text("Uses your Google account. Gemini reads the slide PDFs itself.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            TextSettingRow(label: "Model", initial: store.settings.agyModel, placeholder: "auto", hint: "Leave empty to let it choose.") { newValue in
-                store.updateSettings { $0.agyModel = newValue }
-            }
-        case .api:
-            apiPanel
-        }
-
-        testRow
-    }
-
-    @ViewBuilder
-    private var apiPanel: some View {
-        Picker("Service", selection: Binding(
-            get: { store.settings.apiService },
-            set: { service in store.updateSettings { $0.apiService = service } }
-        )) {
-            ForEach(ApiService.allCases, id: \.self) { service in
-                Text(service.info.label).tag(service)
-            }
-        }
-
-        if store.settings.apiService == .anthropic {
-            Text("Billed per use to your Anthropic account. \(cloudModelBlurb)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Picker("Claude model", selection: Binding(
-                get: { store.settings.cloudModel },
-                set: { model in store.updateSettings { $0.cloudModel = model } }
-            )) {
-                Text("Sonnet · default").tag(CloudModel.sonnet)
-                Text("Opus").tag(CloudModel.opus)
-                Text("Haiku").tag(CloudModel.haiku)
-            }
-            .pickerStyle(.segmented)
-        } else {
-            if store.settings.apiService == .custom {
-                TextSettingRow(label: "Address", initial: store.settings.apiBaseUrl, placeholder: "http://localhost:11434/v1", hint: "Any service that speaks OpenAI's chat format — Ollama, LM Studio, a company endpoint.") { newValue in
-                    store.updateSettings { $0.apiBaseUrl = newValue }
-                }
-            }
-            TextSettingRow(label: "Model", initial: store.settings.apiModel, placeholder: "model name", hint: "Required: \(store.settings.apiService.info.modelHint).") { newValue in
-                store.updateSettings { $0.apiModel = newValue }
-            }
-            Toggle(isOn: Binding(
-                get: { store.settings.apiVision },
-                set: { on in store.updateSettings { $0.apiVision = on } }
-            )) {
-                Text("This model can see images — it is shown the slides as pictures. Untick it for a text-only model.")
-            }
-        }
-
-        keyRow
-    }
-
-    private var keyRow: some View {
-        let saved = store.savedApiKeySuffix
-        return HStack {
-            Text("API key")
-            SecureField(
-                saved != nil ? "Saved (\(saved!)) — paste a new one to replace it" : "Paste your key",
-                text: $apiKeyDraft
-            )
-            Button("Save key") {
-                store.setApiKeySetting(apiKeyDraft)
-                keyNote = saved == nil ? "Saved. It stays on this computer, in Lockin's own database." : "Replaced."
-                apiKeyDraft = ""
-            }
-            .disabled(apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-            if saved != nil {
-                Button("Remove") {
-                    store.setApiKeySetting(nil)
-                    keyNote = "Removed."
-                }
-            }
-        }
-        HStack {
-            Text("It stays on this computer, in Lockin's own database.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            if let note = keyNote {
-                Text(note).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var testRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Button {
-                    testing = true
-                    test = nil
-                    Task {
-                        let result = await store.testCloudEngine()
-                        test = result
-                        testing = false
-                    }
-                } label: {
-                    Label(testing ? "Asking…" : "Test it", systemImage: "bolt")
-                }
-                .disabled(testing)
-                if test == nil {
-                    Text("Sends one tiny question, to check it is set up.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            if let test {
-                Text(test.message ?? (test.ok ? "Working." : "It did not work."))
-                    .font(.callout)
-                    .foregroundStyle(test.ok ? Color.green : Color.red)
-            }
-        }
-    }
-
-    private var fallbackRow: some View {
-        Toggle(isOn: Binding(
-            get: { store.settings.fallbackLocal },
-            set: { on in store.updateSettings { $0.fallbackLocal = on } }
-        )) {
+        HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("If the cloud AI fails, use the offline model")
-                let offline = store.modelsSnapshot().installedInfo(forModel: store.settings.localModel ?? "")?.name
-                Text(offline != nil
-                    ? "When \(store.settings.cloudEngine.label) can't do a job — signed out, over a usage limit, offline — \(offline!) on this computer does it instead. The cloud AI is always tried first."
-                    : "Download an offline model below and Lockin uses it whenever \(store.settings.cloudEngine.label) can't do a job — signed out, over a usage limit, offline. The cloud AI is always tried first.")
-                    .font(.callout.weight(.regular))
-                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(L.text)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(L.textSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 16)
+            control()
+        }
+        .padding(.vertical, 14)
+        .background(alignment: .bottom) { Rectangle().fill(L.rule).frame(height: 1) }
+    }
+}
+
+/// `.seg`: a sunk pill of choices; the selected one sits on the canvas with the shadow.
+struct SegButtons<Option: Hashable>: View {
+    @Binding var selection: Option
+    let options: [(option: Option, label: String)]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.option) { item in
+                let on = item.option == selection
+                Button {
+                    selection = item.option
+                } label: {
+                    Text(item.label)
+                        .font(.system(size: 13.5, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? L.text : L.textSoft)
+                        .padding(.horizontal, 11)
+                        .frame(height: 28)
+                        .background(on ? L.bg : Color.clear)
+                        .cornerRadius(5)
+                        .shadow(color: on ? Color.black.opacity(0.06) : .clear, radius: 0.5, y: 1)
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(2)
+        .background(L.bgSunk)
+        .cornerRadius(7)
     }
+}
 
-    private var cloudModelBlurb: String {
-        switch store.settings.cloudModel {
-        case .sonnet: return "Fast and thorough — the right size for summaries, LAQs and marking."
-        case .opus: return "The most thorough, and the slowest: a lecture takes noticeably longer."
-        case .haiku: return "The quickest and lightest. Fine for short lectures; less depth in summaries."
+/// `.stepper`: − value +, with the count between rules.
+struct NumberStepper: View {
+    @Binding var value: Int
+    var range: ClosedRange<Int>
+
+    var body: some View {
+        HStack(spacing: 0) {
+            stepButton("−", disabled: value <= range.lowerBound) { value -= 1 }
+            Text("\(value)")
+                .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                .foregroundStyle(L.text)
+                .frame(minWidth: 34)
+                .frame(height: 30)
+                .background(alignment: .leading) { Rectangle().fill(L.rule).frame(width: 1).offset(x: 0) }
+                .background(alignment: .trailing) { Rectangle().fill(L.rule).frame(width: 1) }
+            stepButton("+", disabled: value >= range.upperBound) { value += 1 }
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(L.ruleStrong, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 
-    @ViewBuilder
-    private var modelBlurb: some View {
-        Text(cloudModelBlurb)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+    private func stepButton(_ glyph: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(glyph)
+                .font(.system(size: 16))
+                .foregroundStyle(disabled ? L.textFaint : L.text)
+                .frame(width: 32, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
+}
 
-    @ViewBuilder
-    private func toolStatus(found: Bool, version: String?, name: String, install: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            TagBadge(text: found ? "Found" : "Not found", tone: found ? .green : .red)
-            if found, let version {
-                Text(version)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+/// `.choice`: a bordered card with a radio circle; checked, it turns blue and soft.
+struct ChoiceRow<Option: Hashable>: View {
+    let option: Option
+    @Binding var selection: Option
+    let title: String
+    var tag: TagBadge?
+    let detail: String
+
+    var body: some View {
+        let on = option == selection
+        Button {
+            selection = option
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: on ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(on ? L.accent : L.textFaint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(L.text)
+                        if let tag {
+                            tag
+                        }
+                    }
+                    Text(detail)
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(L.textSoft)
+                        .multilineTextAlignment(.leading)
+                }
             }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(on ? L.accentSoft : Color.clear)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(on ? L.accent : L.ruleStrong, lineWidth: 1)
+            )
         }
-        if !found {
-            Text(install)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        .buttonStyle(.plain)
+    }
+}
+
+/// `.engine-panel`: the chosen cloud AI's own settings, in a soft box.
+struct EnginePanel<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(L.bgSoft)
+        .cornerRadius(8)
     }
 }
 
@@ -421,14 +190,26 @@ private struct TextSettingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label).frame(width: 64, alignment: .leading)
+            HStack(spacing: 10) {
+                Text(label)
+                    .font(.lockinSmall)
+                    .foregroundStyle(L.textSoft)
+                    .frame(width: 64, alignment: .leading)
                 TextField(placeholder, text: $value)
+                    .textFieldStyle(.plain)
                     .onSubmit(commit)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(L.bg)
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(L.ruleStrong, lineWidth: 1)
+                    )
             }
             Text(hint)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 12.5))
+                .foregroundStyle(L.textFaint)
         }
         .onDisappear(perform: commit)
     }
@@ -440,68 +221,473 @@ private struct TextSettingRow: View {
     }
 }
 
+// MARK: - The window
+
+struct SettingsScreen: View {
+    @Bindable var store: AppStore
+    @State private var detection: AppStore.AiDetection?
+    @State private var showingOnboarding = false
+
+    var body: some View {
+        PageContainer(narrow: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                PageTitle(text: "Settings")
+                Text("Everything stays on this computer.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(L.textSoft)
+                    .padding(.bottom, 24)
+
+                SectionHeading(text: "Summaries and LAQs")
+                    .padding(.bottom, 8)
+                ModePickerSection(store: store, detection: detection)
+                if store.settings.mode.usesAi {
+                    WorkerStatusLine(store: store)
+                }
+
+                if store.settings.mode == .auto {
+                    SectionHeading(text: "Cloud AI")
+                        .padding(.top, 26)
+                        .padding(.bottom, 8)
+                    CloudSettingsSection(store: store, detection: detection)
+                }
+
+                SectionHeading(text: "LAQs")
+                    .padding(.top, 26)
+                    .padding(.bottom, 8)
+                LaqSettingsSection(store: store)
+
+                SectionHeading(text: "Offline AI on this computer")
+                    .padding(.top, 26)
+                    .padding(.bottom, 4)
+                Text("Download a model once and Lockin works with no internet. The middle one is chosen for this computer; downloading any of them switches Lockin to it when it finishes.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(L.textSoft)
+                    .padding(.bottom, 12)
+                ModelPickerSection(store: store)
+
+                SectionHeading(text: "Getting started")
+                    .padding(.top, 26)
+                    .padding(.bottom, 8)
+                SettingRow(
+                    title: "Onboarding",
+                    detail: "The walkthrough from the first time you opened Lockin: adding lectures, choosing the AI, practising and reminders."
+                ) {
+                    Button {
+                        showingOnboarding = true
+                    } label: {
+                        Label("Repeat onboarding", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.lockin)
+                }
+
+                SectionHeading(text: "Reminders")
+                    .padding(.top, 26)
+                    .padding(.bottom, 8)
+                RemindersSection(store: store)
+
+                SectionHeading(text: "Courses")
+                    .padding(.top, 26)
+                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(store.courses) { course in
+                        HStack(spacing: 10) {
+                            TagBadge(text: course.code, tone: tagTone(course.code))
+                            Text(course.title)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(L.text)
+                            Text("· \(plural(store.lectureRows.filter { $0.courseId == course.id }.count, "lecture"))")
+                                .font(.lockinSmall)
+                                .foregroundStyle(L.textSoft)
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                        .background(alignment: .bottom) { Rectangle().fill(L.rule).frame(height: 1) }
+                    }
+                }
+
+                SectionHeading(text: "Updates")
+                    .padding(.top, 26)
+                    .padding(.bottom, 8)
+                UpdatesSection(store: store)
+            }
+        }
+        .task {
+            detection = await store.detectAiTools()
+        }
+        .sheet(isPresented: $showingOnboarding) {
+            OnboardingSheet(store: store, hasCourses: !store.courses.isEmpty, detection: detection)
+        }
+    }
+}
+
+// MARK: - Choosing a mode (ModePicker)
+
+private struct ModePickerSection: View {
+    @Bindable var store: AppStore
+    let detection: AppStore.AiDetection?
+    @State private var selection: AppMode?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ChoiceRow(
+                option: AppMode.auto,
+                selection: Binding(get: { store.settings.mode }, set: { mode in
+                    store.updateSettings { $0.mode = mode }
+                }),
+                title: "Automatic",
+                tag: TagBadge(
+                    text: {
+                        guard let status = detection?.claude else { return "Claude Code" }
+                        return status.found
+                            ? "Claude Code\(status.version.map { " · \($0)" } ?? "")"
+                            : "Claude Code not found on this computer"
+                    }(),
+                    tone: (detection?.claude.found ?? true) ? .green : .red
+                ),
+                detail: "Lockin prepares lectures itself with a cloud AI — Claude Code, ChatGPT Codex, Google Antigravity or an API key, chosen below — one lecture at a time, and marks your answers."
+            )
+            ChoiceRow(
+                option: AppMode.local,
+                selection: Binding(get: { store.settings.mode }, set: { mode in
+                    store.updateSettings { $0.mode = mode }
+                }),
+                title: "On this computer",
+                tag: TagBadge(text: store.modelsSnapshot().installedInfo(forModel: store.settings.localModel ?? "")?.name ?? "no model yet", tone: store.settings.localModel != nil ? .green : .gray),
+                detail: "A model downloaded to this computer does the work: fully offline, private and free, a little slower. Pick one below."
+            )
+            ChoiceRow(
+                option: AppMode.manual,
+                selection: Binding(get: { store.settings.mode }, set: { mode in
+                    store.updateSettings { $0.mode = mode }
+                }),
+                title: "Copy & paste",
+                tag: nil,
+                detail: "No AI runs here. Each lecture has Copy prompt buttons for any AI chat, and boxes that format what you paste back."
+            )
+        }
+    }
+}
+
+/// The heartbeat line the web page shows under the mode (`beat?.alive`).
+private struct WorkerStatusLine: View {
+    @Bindable var store: AppStore
+
+    var body: some View {
+        SettingRow(title: "AI worker", detail: {
+            let alive = store.queueActivity?.worker?.alive ?? false
+            return alive
+                ? "Running — prepares one lecture at a time, and marks answers first."
+                : "Not running, so nothing queued will start. It runs with this app."
+        }()) {
+            TagBadge(
+                text: (store.queueActivity?.worker?.alive ?? false) ? "Running" : "Stopped",
+                tone: (store.queueActivity?.worker?.alive ?? false) ? .green : .orange
+            )
+        }
+    }
+}
+
+// MARK: - The cloud AI (CloudSettings)
+
+private struct CloudSettingsSection: View {
+    @Bindable var store: AppStore
+    let detection: AppStore.AiDetection?
+
+    @State private var apiKeyDraft = ""
+    @State private var keyNote: String?
+    @State private var test: AppStore.ActionResult?
+    @State private var testing = false
+
+    var body: some View {
+        SettingRow(title: "Cloud AI", detail: "Which AI prepares lectures, writes LAQs and marks. Each uses your own sign-in or key.") {
+            SegButtons(
+                selection: Binding(
+                    get: { store.settings.cloudEngine },
+                    set: { engine in store.updateSettings { $0.cloudEngine = engine } }
+                ),
+                options: CloudEngine.allCases.map { ($0, $0.label) }
+            )
+        }
+
+        EnginePanel {
+            enginePanel
+        }
+        .padding(.bottom, 6)
+
+        SettingRow(title: "If the cloud AI fails, use the offline model", detail: {
+            let offline = store.modelsSnapshot().installedInfo(forModel: store.settings.localModel ?? "")?.name
+            return offline != nil
+                ? "When \(store.settings.cloudEngine.label) can't do a job — signed out, over a usage limit, offline — \(offline!) on this computer does it instead. The cloud AI is always tried first."
+                : "Download an offline model below and Lockin uses it whenever \(store.settings.cloudEngine.label) can't do a job — signed out, over a usage limit, offline. The cloud AI is always tried first."
+        }()) {
+            Toggle("", isOn: Binding(
+                get: { store.settings.fallbackLocal },
+                set: { on in store.updateSettings { $0.fallbackLocal = on } }
+            ))
+            .toggleStyle(.switch)
+            .tint(L.accent)
+            .labelsHidden()
+        }
+    }
+
+    @ViewBuilder
+    private var enginePanel: some View {
+        let status = detection
+        switch store.settings.cloudEngine {
+        case .claude:
+            toolStatus(
+                found: status?.claude.found ?? true,
+                version: status?.claude.version,
+                name: "Claude Code",
+                install: "Install it with npm i -g @anthropic-ai/claude-code, then run claude once to sign in with your Claude plan."
+            )
+            Text(cloudModelBlurb)
+                .font(.system(size: 13.5))
+                .foregroundStyle(L.textSoft)
+            SettingRow(title: "Claude model", detail: nil) {
+                SegButtons(
+                    selection: Binding(
+                        get: { store.settings.cloudModel },
+                        set: { model in store.updateSettings { $0.cloudModel = model } }
+                    ),
+                    options: [
+                        (.sonnet, "Sonnet · default"), (.opus, "Opus"), (.haiku, "Haiku"),
+                    ]
+                )
+            }
+        case .codex:
+            toolStatus(
+                found: status?.codex.found ?? true,
+                version: status?.codex.version,
+                name: "Codex",
+                install: "Install it with npm i -g @openai/codex, then run codex login once to sign in with your ChatGPT plan."
+            )
+            Text("Uses your ChatGPT plan. It sees the slides as pictures.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(L.textSoft)
+            TextSettingRow(label: "Model", initial: store.settings.codexModel, placeholder: "Codex's default", hint: "Leave empty for the model Codex is set to use.") { newValue in
+                store.updateSettings { $0.codexModel = newValue }
+            }
+        case .antigravity:
+            toolStatus(
+                found: status?.antigravity.found ?? true,
+                version: status?.antigravity.version,
+                name: status?.antigravity.binary == "gemini" ? "Gemini CLI" : "Antigravity CLI",
+                install: "Install the Antigravity CLI from antigravity.google/cli, then run agy once to sign in with your Google account. The older Gemini CLI (gemini) works too."
+            )
+            Text("Uses your Google account. Gemini reads the slide PDFs itself.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(L.textSoft)
+            TextSettingRow(label: "Model", initial: store.settings.agyModel, placeholder: "auto", hint: "Leave empty to let it choose.") { newValue in
+                store.updateSettings { $0.agyModel = newValue }
+            }
+        case .api:
+            apiPanel
+        }
+
+        testRow
+    }
+
+    @ViewBuilder
+    private var apiPanel: some View {
+        SettingRow(title: "Service", detail: nil) {
+            Picker("", selection: Binding(
+                get: { store.settings.apiService },
+                set: { service in store.updateSettings { $0.apiService = service } }
+            )) {
+                ForEach(ApiService.allCases, id: \.self) { service in
+                    Text(service.info.label).tag(service)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 220)
+        }
+
+        if store.settings.apiService == .anthropic {
+            Text("Billed per use to your Anthropic account. \(cloudModelBlurb)")
+                .font(.system(size: 13.5))
+                .foregroundStyle(L.textSoft)
+            SettingRow(title: "Claude model", detail: nil) {
+                SegButtons(
+                    selection: Binding(
+                        get: { store.settings.cloudModel },
+                        set: { model in store.updateSettings { $0.cloudModel = model } }
+                    ),
+                    options: [(.sonnet, "Sonnet · default"), (.opus, "Opus"), (.haiku, "Haiku")]
+                )
+            }
+        } else {
+            if store.settings.apiService == .custom {
+                TextSettingRow(label: "Address", initial: store.settings.apiBaseUrl, placeholder: "http://localhost:11434/v1", hint: "Any service that speaks OpenAI's chat format — Ollama, LM Studio, a company endpoint.") { newValue in
+                    store.updateSettings { $0.apiBaseUrl = newValue }
+                }
+            }
+            TextSettingRow(label: "Model", initial: store.settings.apiModel, placeholder: "model name", hint: "Required: \(store.settings.apiService.info.modelHint).") { newValue in
+                store.updateSettings { $0.apiModel = newValue }
+            }
+            Toggle(isOn: Binding(
+                get: { store.settings.apiVision },
+                set: { on in store.updateSettings { $0.apiVision = on } }
+            )) {
+                Text("This model can see images — it is shown the slides as pictures.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(L.textSoft)
+            }
+            .tint(L.accent)
+        }
+
+        keyRow
+    }
+
+    private var keyRow: some View {
+        let saved = store.savedApiKeySuffix
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text("API key")
+                    .font(.lockinSmall)
+                    .foregroundStyle(L.textSoft)
+                    .frame(width: 64, alignment: .leading)
+                SecureField(
+                    saved != nil ? "Saved (\(saved!)) — paste a new one to replace it" : "Paste your key",
+                    text: $apiKeyDraft
+                )
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(L.bg)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(L.ruleStrong, lineWidth: 1)
+                )
+                Button("Save key") {
+                    store.setApiKeySetting(apiKeyDraft)
+                    keyNote = "Saved. It stays on this computer, in Lockin's own database."
+                    apiKeyDraft = ""
+                }
+                .buttonStyle(.lockin(size: .small))
+                .disabled(apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                if saved != nil {
+                    Button("Remove") {
+                        store.setApiKeySetting(nil)
+                        keyNote = "Removed."
+                    }
+                    .buttonStyle(.lockin(.quiet, size: .small))
+                }
+            }
+            HStack(spacing: 6) {
+                Text("It stays on this computer, in Lockin's own database.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(L.textFaint)
+                if let note = keyNote {
+                    Text(note)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(L.textSoft)
+                }
+            }
+        }
+    }
+
+    private var testRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Button {
+                    testing = true
+                    test = nil
+                    Task {
+                        let result = await store.testCloudEngine()
+                        test = result
+                        testing = false
+                    }
+                } label: {
+                    Label(testing ? "Asking…" : "Test it", systemImage: "bolt")
+                }
+                .buttonStyle(.lockin(size: .small))
+                .disabled(testing)
+                if test == nil {
+                    Text("Sends one tiny question, to check it is set up.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(L.textFaint)
+                }
+            }
+            if let test {
+                Text(test.message ?? (test.ok ? "Working." : "It did not work."))
+                    .font(.system(size: 13))
+                    .foregroundStyle(test.ok ? L.strong[.green] ?? .green : L.danger)
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    private var cloudModelBlurb: String {
+        switch store.settings.cloudModel {
+        case .sonnet: return "Fast and thorough — the right size for summaries, LAQs and marking."
+        case .opus: return "The most thorough, and the slowest: a lecture takes noticeably longer."
+        case .haiku: return "The quickest and lightest. Fine for short lectures; less depth in summaries."
+        }
+    }
+
+    @ViewBuilder
+    private func toolStatus(found: Bool, version: String?, name: String, install: String) -> some View {
+        HStack(spacing: 8) {
+            TagBadge(text: found ? "Found" : "Not found", tone: found ? .green : .red)
+            if found, let version {
+                Text(version)
+                    .font(.lockinSmall)
+                    .foregroundStyle(L.textSoft)
+            }
+        }
+        if !found {
+            Text(install)
+                .font(.system(size: 13.5))
+                .foregroundStyle(L.textSoft)
+        }
+    }
+}
+
 // MARK: - LAQs (LaqSettings)
 
 private struct LaqSettingsSection: View {
     @Bindable var store: AppStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            stepperRow(
-                title: "LAQs written per lecture hour",
-                detail: "When a lecture is prepared, and each time you press Write new LAQs — a 2-hour lecture gets \(store.settings.laqsPerHour * 2).",
-                value: store.settings.laqsPerHour
-            ) { n in
-                store.updateSettings { $0.laqsPerHour = n }
-            }
-            stepperRow(
-                title: "LAQs per sitting, per lecture hour",
-                detail: "How many a sitting asks, closed book — your weakest concepts first, so more written means more variety from one sitting to the next.",
-                value: store.settings.sittingPerHour
-            ) { n in
-                store.updateSettings { $0.sittingPerHour = n }
-            }
+        SettingRow(
+            title: "LAQs written per lecture hour",
+            detail: "When a lecture is prepared, and each time you press Write new LAQs — a 2-hour lecture gets \(store.settings.laqsPerHour * 2)."
+        ) {
+            NumberStepper(
+                value: Binding(
+                    get: { store.settings.laqsPerHour },
+                    set: { n in store.updateSettings { $0.laqsPerHour = n } }
+                ),
+                range: 1...maxPerHour
+            )
+        }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Question style")
-                    .font(.callout.weight(.semibold))
-                Text(styleExample(store.settings.laqStyle))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text("Applies to LAQs written from now on.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Picker("Question style", selection: Binding(
+        SettingRow(
+            title: "LAQs per sitting, per lecture hour",
+            detail: "How many a sitting asks, closed book — your weakest concepts first, so more written means more variety from one sitting to the next."
+        ) {
+            NumberStepper(
+                value: Binding(
+                    get: { store.settings.sittingPerHour },
+                    set: { n in store.updateSettings { $0.sittingPerHour = n } }
+                ),
+                range: 1...maxPerHour
+            )
+        }
+
+        SettingRow(
+            title: "Question style",
+            detail: styleExample(store.settings.laqStyle) + "  Applies to LAQs written from now on."
+        ) {
+            SegButtons(
+                selection: Binding(
                     get: { store.settings.laqStyle },
                     set: { style in store.updateSettings { $0.laqStyle = style } }
-                )) {
-                    Text("Mixed").tag(LaqStyle.mixed)
-                    Text("Story").tag(LaqStyle.story)
-                    Text("Facts").tag(LaqStyle.facts)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 260)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func stepperRow(title: String, detail: String, value: Int, onChange: @escaping (Int) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                Spacer()
-                Stepper("\(value)", value: Binding(
-                    get: { value },
-                    set: { onChange($0) }
-                ), in: 1...maxPerHour)
-                .fixedSize()
-            }
-            Text(detail)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                ),
+                options: [(.mixed, "Mixed"), (.story, "Story"), (.facts, "Facts")]
+            )
         }
     }
 
@@ -524,25 +710,22 @@ private struct RemindersSection: View {
     @State private var note: String?
 
     var body: some View {
-        Toggle(isOn: Binding(
-            get: { store.settings.notify },
-            set: { on in setNotify(on) }
-        )) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Remind me when LAQs are due")
-                Text("One notification a day per due lecture, between 8am and 10pm — even with Lockin's window closed.")
-                    .font(.callout.weight(.regular))
-                    .foregroundStyle(.secondary)
-                if let note {
-                    Text(note)
-                        .font(.callout.weight(.regular))
-                        .foregroundStyle(.red)
+        SettingRow(
+            title: "Remind me when LAQs are due",
+            detail: note ?? "One notification a day per due lecture, between 8am and 10pm — even with Lockin's window closed."
+        ) {
+            HStack(spacing: 8) {
+                if store.settings.notify {
+                    Button("Test") { sendTest() }
+                        .buttonStyle(.lockin(size: .small))
                 }
-            }
-        }
-        if store.settings.notify {
-            Button("Send a test reminder") {
-                sendTest()
+                Toggle("", isOn: Binding(
+                    get: { store.settings.notify },
+                    set: { on in setNotify(on) }
+                ))
+                .toggleStyle(.switch)
+                .tint(L.accent)
+                .labelsHidden()
             }
         }
     }
@@ -551,6 +734,10 @@ private struct RemindersSection: View {
         note = nil
         guard on else {
             store.updateSettings { $0.notify = false }
+            return
+        }
+        guard ReminderDaemon.notificationsAvailable else {
+            store.updateSettings { next in next.notify = true }
             return
         }
         let center = UNUserNotificationCenter.current()
@@ -568,6 +755,7 @@ private struct RemindersSection: View {
     }
 
     private func sendTest() {
+        guard ReminderDaemon.notificationsAvailable else { return }
         let content = UNMutableNotificationContent()
         content.title = "Time to redo your LAQs"
         content.body = "This is what a Lockin reminder looks like."

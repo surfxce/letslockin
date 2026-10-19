@@ -80,7 +80,7 @@ struct OnboardingSheet: View {
                 HStack(spacing: 6) {
                     ForEach(keys.indices, id: \.self) { index in
                         Capsule()
-                            .fill(index == step ? Color.accentColor : Color.primary.opacity(0.15))
+                            .fill(index == step ? L.accent : L.ruleStrong)
                             .frame(width: 18, height: 4)
                     }
                 }
@@ -155,7 +155,7 @@ struct OnboardingSheet: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.yellow.opacity(0.12))
+            .background(L.tagPalettes[.yellow]!.bg)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
@@ -227,7 +227,7 @@ struct OnboardingSheet: View {
                     let days = [1, 3, 7, 14, 30][index]
                     VStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.accentColor.opacity(0.5))
+                            .fill(L.accent.opacity(0.5))
                             .frame(width: 18, height: CGFloat(12 + index * 12))
                         Text("\(days)d")
                             .font(.caption2)
@@ -262,7 +262,7 @@ struct OnboardingSheet: View {
         Label(label, systemImage: icon)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.primary.opacity(0.05))
+            .background(L.hover)
             .clipShape(Capsule())
     }
 
@@ -273,7 +273,7 @@ struct OnboardingSheet: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: mode == choice ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(mode == choice ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(mode == choice ? L.accent : L.textFaint)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(title)
@@ -291,7 +291,7 @@ struct OnboardingSheet: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(mode == choice ? Color.accentColor.opacity(0.07) : Color.primary.opacity(0.03))
+            .background(mode == choice ? L.accentSoft : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
