@@ -83,6 +83,17 @@ jobs:
           fi
           du -sh "$app"
 
+      # The engine went in after xcodebuild signed the bundle, which breaks the code
+      # seal — Gatekeeper then calls the app "damaged". Sign again, ad hoc, and check:
+      # a build whose seal doesn't verify must not ship.
+      - name: Re-seal the bundle
+        working-directory: swift/Lockin
+        run: |
+          app=.build-xcode/Build/Products/Release/Lockin.app
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          echo "seal valid"
+
       - name: Make the .dmg
         working-directory: swift/Lockin
         run: |
