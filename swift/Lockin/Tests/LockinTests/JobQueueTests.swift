@@ -164,7 +164,7 @@ final class JobQueueTests: XCTestCase {
             let prepare = try enqueue(db: conn, kind: .prepare, payload: ["lectureId": .string(lecture.id), "redo": false], lectureId: lecture.id, now: base)
             let generate = try enqueue(db: conn, kind: .generate, payload: ["lectureId": .string(lecture.id)], lectureId: lecture.id, now: base.addingTimeInterval(1))
             let mark = try enqueue(db: conn, kind: .mark, payload: ["responseId": "r1"], lectureId: lecture.id, now: base.addingTimeInterval(2))
-            // Only ever the Electron worker's.
+            // A model download, with a payload that names no real model.
             let download = try enqueue(db: conn, kind: .download, payload: ["modelId": "m"], lectureId: nil, now: base)
             return ([prepare.id, generate.id, mark.id], download.id)
         }
@@ -188,7 +188,9 @@ final class JobQueueTests: XCTestCase {
         XCTAssertNil(mark?.error)
         XCTAssertNotNil(mark?.durationMs)
         XCTAssertNotNil(mark?.finishedAt)
-        XCTAssertEqual(try fetchJob(db, downloadId)?.status, .pending)
+        // The download lane takes it and fails it — its payload names no model.
+        let downloadFinished = try await eventually { try fetchJob(db, downloadId)?.status == .failed }
+        XCTAssertTrue(downloadFinished)
         let stopped = await queue.status
         XCTAssertFalse(stopped.started)
         XCTAssertFalse(stopped.ownsQueue)
@@ -309,8 +311,10 @@ final class JobQueueTests: XCTestCase {
         XCTAssertTrue(taken.ownsQueue)
         XCTAssertTrue(ran)
         XCTAssertEqual(seen.all, ["\(leftoverId) attempt 2"])
-        // A download is the Electron worker's own; an old sort's answer is no longer wanted.
-        XCTAssertEqual(try fetchJob(db, downloadId)?.status, .running)
+        // A download left RUNNING is requeued on the takeover and its lane then fails it
+        // (its payload names no model); an old sort's answer is no longer wanted.
+        let downloadRetried = try await eventually { try fetchJob(db, downloadId)?.status == .failed }
+        XCTAssertTrue(downloadRetried)
         XCTAssertNil(try fetchJob(db, oldSortId))
     }
 

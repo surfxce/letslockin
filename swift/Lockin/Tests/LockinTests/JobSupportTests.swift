@@ -165,11 +165,12 @@ final class JobSupportTests: XCTestCase {
         }
 
         let first = try acquireQueue(database: db, pid: 42, provider: "Claude Code", alreadyOwner: false, now: t0)
-        XCTAssertEqual(first, .tookOver(requeued: 1))
+        // The prepare and the download were both left RUNNING: both go back in the queue.
+        XCTAssertEqual(first, .tookOver(requeued: 2))
         try db.reader.read { conn in
             XCTAssertEqual(try Job.fetchOne(conn, key: running.id)?.status, .pending)
             XCTAssertNil(try Job.fetchOne(conn, key: running.id)?.stage)
-            XCTAssertEqual(try Job.fetchOne(conn, key: download.id)?.status, .running)
+            XCTAssertEqual(try Job.fetchOne(conn, key: download.id)?.status, .pending, "the download lane of whoever takes over carries it on from its .part files")
             XCTAssertEqual(try Job.filter(Column("kind") == "SORT").fetchCount(conn), 0)
             XCTAssertEqual(try Job.filter(Column("kind") == "ASK").fetchCount(conn), 1)
             let beat = try readHeartbeat(db: conn, now: t0)

@@ -558,12 +558,17 @@ async function heartbeat() {
 }
 
 async function main() {
-  // Always requeue interrupted DOWNLOAD jobs (only the Electron worker runs downloads).
-  const { count: downloadCount } = await prisma.job.updateMany({
-    where: { status: "RUNNING", kind: "DOWNLOAD" },
-    data: { status: "PENDING", stage: null },
-  });
-  if (downloadCount) console.log(`requeued ${downloadCount} download(s) interrupted by the last shutdown`);
+  // Requeue interrupted DOWNLOAD jobs (the Swift app runs downloads too, so it is not
+  // always the last owner that left them) — but not one the Swift app is downloading
+  // right now: a live swift heartbeat means it owns the queue, and its lane will finish.
+  const swiftBeat = await readHeartbeat();
+  if (!swiftBeat || !swiftBeat.alive || !swiftBeat.app) {
+    const { count: downloadCount } = await prisma.job.updateMany({
+      where: { status: "RUNNING", kind: "DOWNLOAD" },
+      data: { status: "PENDING", stage: null },
+    });
+    if (downloadCount) console.log(`requeued ${downloadCount} download(s) interrupted by the last shutdown`);
+  }
   // Non-download RUNNING jobs are requeued by heartbeat() when this worker acquires the queue.
   // A sort's answer is only wanted while its import screen is open.
   await prisma.job.deleteMany({ where: { kind: "SORT", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });

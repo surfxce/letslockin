@@ -9,10 +9,20 @@ import SwiftUI
 struct LockinApp: App {
     @State private var store = AppStore.openDefault()
 
+    init() {
+        // The notification click handler must be in place before launch finishes.
+        ReminderClickHandler.store = store
+        // Updates are checked in the background from here on (Settings can ask again).
+        LockinUpdater.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup("Lockin") {
             RootView(store: store)
                 .frame(minWidth: 960, minHeight: 620)
+        }
+        Settings {
+            SettingsScreen(store: store)
         }
         .commands {
             CommandGroup(after: .newItem) {
@@ -26,35 +36,6 @@ struct LockinApp: App {
 }
 
 // MARK: - Tone Color Helper
-
-private func toneSwiftUIColor(_ tone: Tone) -> Color {
-    switch tone {
-    case .gray: return .secondary
-    case .brown: return .brown
-    case .orange: return .orange
-    case .yellow: return Color(red: 0.78, green: 0.58, blue: 0.05)
-    case .green: return .green
-    case .blue: return .blue
-    case .purple: return .purple
-    case .pink: return .pink
-    case .red: return .red
-    }
-}
-
-private struct TagBadge: View {
-    let text: String
-    var tone: Tone = .gray
-
-    var body: some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(toneSwiftUIColor(tone).opacity(0.15))
-            .foregroundStyle(toneSwiftUIColor(tone))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
-}
 
 private struct ScoreTagView: View {
     let score: Double?
@@ -121,6 +102,8 @@ struct RootView: View {
     @Bindable var store: AppStore
     @State private var showingNewCourse = false
     @State private var newLectureCourseId: String? = nil
+    @State private var reminders: ReminderDaemon?
+    @State private var showingOnboarding = false
 
     var body: some View {
         Group {
@@ -159,6 +142,30 @@ struct RootView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            let daemon = ReminderDaemon(store: store)
+            daemon.start()
+            reminders = daemon
+        }
+        // Any change in the database may move the due set: the badge follows it at once,
+        // and the notification check does not wait out its five minutes.
+        .onChange(of: store.dbRevision) {
+            reminders?.check()
+        }
+        .onChange(of: store.settingsLoaded) {
+            // The tour opens by itself once (`firstRun` in Onboarding.tsx).
+            if store.settingsLoaded && !store.settings.onboarded {
+                showingOnboarding = true
+            }
+        }
+        .sheet(isPresented: $showingOnboarding) {
+            OnboardingSheet(
+                store: store,
+                hasCourses: !store.courses.isEmpty,
+                detection: nil,
+                onAddFirstCourse: { showingNewCourse = true }
+            )
         }
         .sheet(isPresented: $showingNewCourse) {
             NewCourseSheet { code, title, examDate in
@@ -283,12 +290,21 @@ struct SidebarView: View {
                 QueuePanelButton(store: store)
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
-                Text(URL(fileURLWithPath: store.databasePath).lastPathComponent)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .help(store.databasePath)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                HStack {
+                    SettingsLink {
+                        Image(systemName: "gearshape")
+                            .foregroundStyle(.secondary)
+                            .help("Settings")
+                    }
+                    .buttonStyle(.plain)
+                    Text(URL(fileURLWithPath: store.databasePath).lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .help(store.databasePath)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
         }
     }

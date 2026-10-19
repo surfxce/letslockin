@@ -7,10 +7,9 @@ import os
 // marking jumps the queue. Every job records its raw result, duration, prompt version,
 // model and a timeline of the stages it went through.
 //
-// The main lane runs PREPARE, GENERATE and MARK. Sorting a folder (SORT) and quick
-// questions (ASK) run in lanes of their own beside it, looked at more often: someone is
-// waiting on the screen that started them. DOWNLOAD jobs are only ever run by the
-// Electron worker.
+// The main lane runs PREPARE, GENERATE and MARK. Sorting a folder (SORT), quick questions
+// (ASK) and model downloads (DOWNLOAD) run in lanes of their own beside it, looked at
+// more often: someone is waiting on the screen that started them.
 //
 // Both apps share lockin.db, and only one runs the queue at a time: whichever owns the
 // `worker.heartbeat` row. This queue claims work only while it does, refreshes the row
@@ -230,7 +229,9 @@ public actor JobQueue {
     /// The × in the AI panel: a waiting job leaves the queue; one running here is stopped
     /// at once (the other app's watcher notices within a couple of seconds).
     public func cancel(jobId: String) throws {
-        let stopped = try queueWrite(database) { db in try cancelJob(db: db, jobId: jobId) }
+        let stopped = try queueWrite(database) { db in
+            try (cancelJob(db: db, jobId: jobId) || cancelDownloadJob(db: db, jobId: jobId))
+        }
         if stopped {
             cancelLocally(jobId)
         }
@@ -294,13 +295,14 @@ public actor JobQueue {
         let poll: TimeInterval
         switch lane {
         case .main: poll = timing.poll
-        case .sort: poll = timing.sortPoll
+        case .download, .sort: poll = timing.sortPoll
         case .ask: poll = timing.askPoll
         }
         while !Task.isCancelled && !stopping {
             let didWork: Bool
             switch lane {
             case .main: didWork = await runOne()
+            case .download: didWork = await downloadOne()
             case .sort: didWork = await sortOne()
             case .ask: didWork = await askOne()
             }
@@ -321,6 +323,13 @@ public actor JobQueue {
         } catch {
             queueError("couldn't take the next \(lane.rawValue) job: \(messageOf(error))")
             return nil
+        }
+    }
+
+    /// Starts a stage on a job's timeline, from the actor.
+    private func enterStageOnActor(_ jobId: String, stage: Stage) throws {
+        try queueWrite(database) { db in
+            try LockinCore.enterStage(db: db, jobId: jobId, stage: stage)
         }
     }
 
@@ -476,6 +485,40 @@ public actor JobQueue {
 
     // MARK: - The side lanes
 
+    /// `downloadOne()`: a model being fetched for the Models pane of Settings
+    /// (`downloadOne` in worker/index.ts). Progress is written into the job's result as
+    /// it goes, and a finished download links itself up: it becomes the model local mode
+    /// uses, so there is nothing else to set.
+    private func downloadOne() async -> Bool {
+        guard let job = claimNext(.download) else { return false }
+        running[.download] = job.id
+        let startedAt = Date()
+        do {
+            try enterStageOnActor(job.id, stage: .download)
+            let database = self.database, services = self.services
+            let done = try await sideWork(jobId: job.id) {
+                try await runDownloadJob(job, database: database, environment: services.environment)
+            }
+            let durationMs = elapsedMs(since: startedAt)
+            try queueWrite(database) { db in
+                try completeJob(
+                    db: db,
+                    jobId: job.id,
+                    result: done.result,
+                    promptVersion: nil,
+                    model: "download",
+                    durationMs: durationMs,
+                    closeTimeline: false
+                )
+            }
+            queueInfo("✓ DOWNLOAD \(job.id): \(done.name)")
+        } catch {
+            sideJobFailed(job, startedAt: startedAt, error: error)
+        }
+        running[.download] = nil
+        return true
+    }
+
     /// `sortOne()`: a folder sorted into lectures while its import screen waits.
     private func sortOne() async -> Bool {
         guard let job = claimNext(.sort) else { return false }
@@ -625,6 +668,95 @@ private func answerAsk(
         onFallback: nil
     )
     return AskDone(result: outcome.result, used: outcome.used)
+}
+
+// MARK: - The download lane's work, off the actor
+
+private struct DownloadDone: Sendable {
+    var result: JSONValue
+    var name: String
+}
+
+/// `downloadOne`'s body (worker/index.ts): the payload decides what is fetched, the
+/// download reports into the job's row as it goes, the model is registered, a llama.cpp
+/// copy it replaces is removed, and `link` makes it the model local mode uses.
+private func runDownloadJob(
+    _ job: Job,
+    database: LockinDatabase,
+    environment: [String: String]
+) async throws -> DownloadDone {
+    let payload = try JSONValue.parse(job.payload)
+    guard let modelId = payload["modelId"]?.stringValue else {
+        throw LockinError("the download names no model")
+    }
+    guard let model = findModel(modelId) else {
+        throw LockinError("unknown model \(modelId)")
+    }
+    if payload["visionOnly"]?.isTruthy == true {
+        throw LockinError("a model's vision part is fetched by the Electron app, which runs llama.cpp")
+    }
+    let mlx = payload["mlx"]?.isTruthy == true
+    if !mlx {
+        throw LockinError("\(model.name) comes as a llama.cpp download, which only the Electron app fetches")
+    }
+
+    // Progress lands in the job's result at most once a second, as the worker writes it.
+    let jobId = job.id
+    let progressBox = ProgressBox()
+    let report: @Sendable (Int, Int) -> Void = { downloaded, total in
+        progressBox.report(jobId: jobId, database: database, downloaded: downloaded, total: total)
+    }
+    let previous = (try? installedModels(database: database, environment: environment))?
+        .first(where: { $0.id == model.id })
+    let dir = modelsDirectory(environment: environment)
+    let (path, bytes) = try await downloadMlxModel(model, dir: dir, onProgress: report)
+    let now = Date()
+    try queueWrite(database) { db in
+        try registerModel(db: db, id: model.id, path: path, bytes: bytes, format: "mlx", now: now)
+        // It replaces the llama.cpp copy, which would only take up space.
+        if let previous, previous.path != path {
+            try? FileManager.default.removeItem(atPath: previous.path)
+        }
+        if payload["link"]?.isTruthy != false {
+            try linkModel(db: db, model: model, reader: readerFromPayload(payload), now: now)
+        }
+    }
+    return DownloadDone(
+        result: .object(["downloaded": .int(bytes), "total": .int(bytes)]),
+        name: model.name
+    )
+}
+
+/// `linkModel`'s reader argument, from the job's payload: absent is `.keep`, a string or
+/// null is `.value`.
+func readerFromPayload(_ payload: JSONValue) -> LinkReader {
+    guard case .object(let fields) = payload, fields.keys.contains("reader") else { return .keep }
+    switch fields["reader"] {
+    case .string(let named):
+        return .value(named)
+    default:
+        return .value(nil)
+    }
+}
+
+/// Writes download progress at most once a second (`lastWrite` in downloadOne).
+private final class ProgressBox: @unchecked Sendable {
+    private var lastWrite = Date.distantPast
+    private let lock = NSLock()
+
+    func report(jobId: String, database: LockinDatabase, downloaded: Int, total: Int) {
+        lock.lock()
+        let now = Date()
+        guard now.timeIntervalSince(lastWrite) >= 1 else {
+            lock.unlock()
+            return
+        }
+        lastWrite = now
+        lock.unlock()
+        try? database.writer.write { db in
+            try setDownloadProgress(db: db, jobId: jobId, downloaded: downloaded, total: total, part: "mlx")
+        }
+    }
 }
 
 // MARK: - Helpers

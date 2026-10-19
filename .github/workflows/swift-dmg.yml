@@ -1,0 +1,137 @@
+# Builds the Swift app's Lockin.dmg on a Mac and publishes it as the "Lockin (Swift)"
+# release, with the Sparkle appcast beside it — that is what Settings → Updates checks
+# (SUFeedURL points at swift-latest/appcast.xml).
+#
+# The parity checklist (docs/parity-checklist.md) gates switching the public download
+# link over to this build; until every box is ticked, this release is for testing.
+name: Swift app dmg
+
+on:
+  push:
+    branches: [main, claude/blissful-carson-5hdqo3]
+    paths:
+      - "swift/**"
+      - "prisma/**"
+      - "prompts/**"
+      - "build/**"
+      - "scripts/sparkle-appcast.mjs"
+      - ".github/workflows/swift-dmg.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: swift-dmg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install the project tools
+        run: brew install xcodegen create-dmg
+
+      # The engine goes into the app's Resources, where LockinPaths.engineBinary looks.
+      # If it fails to build, the app still ships and runs cloud and copy-and-paste modes.
+      - name: Build the MLX engine
+        id: engine
+        continue-on-error: true
+        working-directory: swift/LockinEngine
+        run: |
+          xcodebuild build -scheme LockinEngine -destination 'platform=macOS,arch=arm64' \
+            -configuration Release -derivedDataPath .build-xcode \
+            -skipMacroValidation -skipPackagePluginValidation
+          out=.build-xcode/Build/Products/Release
+          ls -la "$out"
+          mkdir -p ../../engine
+          bin=$(ls "$out"/lockin-engine "$out"/LockinEngine 2>/dev/null | head -1)
+          cp "$bin" ../../engine/lockin-engine
+          cp -R "$out"/*.bundle ../../engine/ 2>/dev/null || true
+          ls -la ../../engine
+
+      - name: Generate the Xcode project
+        working-directory: swift/Lockin
+        run: xcodegen generate
+
+      - name: Build Lockin.app
+        working-directory: swift/Lockin
+        run: |
+          xcodebuild build -project Lockin.xcodeproj -scheme Lockin \
+            -destination 'platform=macOS,arch=arm64' -configuration Release \
+            -derivedDataPath .build-xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            -skipMacroValidation -skipPackagePluginValidation
+          app=.build-xcode/Build/Products/Release/Lockin.app
+          ls -la "$app/Contents/Resources"
+
+      - name: Put the engine and icons in the bundle
+        working-directory: swift/Lockin
+        run: |
+          app=.build-xcode/Build/Products/Release/Lockin.app
+          if [ -d ../../engine ]; then
+            mkdir -p "$app/Contents/Resources/engine"
+            cp ../../engine/lockin-engine "$app/Contents/Resources/engine/"
+            cp -R ../../engine/*.bundle "$app/Contents/Resources/engine/" 2>/dev/null || true
+          fi
+          du -sh "$app"
+
+      - name: Make the .dmg
+        working-directory: swift/Lockin
+        run: |
+          mkdir -p ../../release stage
+          cp -R .build-xcode/Build/Products/Release/Lockin.app ../../stage/
+          cd ../..
+          # The same designed window the Electron .dmg uses (build/background@2x.png).
+          create-dmg --volname "Lockin" --background build/background@2x.png \
+            --window-size 660 400 --icon-size 112 \
+            --icon "Lockin.app" 180 205 --app-drop-link 480 205 \
+            --skip-jenkins release/Lockin.dmg stage || \
+          hdiutil create -volname Lockin -srcfolder stage -ov -format UDZO release/Lockin.dmg
+          rm -rf stage
+          ls -la release
+
+      - name: Sign the update and write the appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY is not set — publishing the .dmg without an appcast."
+            echo "Settings → Updates can't verify updates until the key is added as a repository secret (docs/parity-checklist.md has the steps)."
+            exit 0
+          fi
+          mkdir -p bin
+          curl -sL https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-for-Swift-Package-Manager.zip -o /tmp/sparkle.zip
+          unzip -jo /tmp/sparkle.zip 'bin/sign_update' -d bin
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" > bin/sparkle-key.pem
+          sig=$(bin/sign_update release/Lockin.dmg --ed-key-file bin/sparkle-key.pem)
+          rm bin/sparkle-key.pem
+          node scripts/sparkle-appcast.mjs \
+            --dmg release/Lockin.dmg --signature "$sig" \
+            --version 0.1.0 --build "${{ github.run_number }}" --min-system 14.0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lockin-swift
+          path: |
+            release/Lockin.dmg
+            release/appcast.xml
+
+      - name: Publish as the latest Swift build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=(release/Lockin.dmg)
+          [ -f release/appcast.xml ] && files+=(release/appcast.xml)
+          gh release delete swift-latest --yes --cleanup-tag || true
+          gh release create swift-latest "${files[@]}" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Lockin for Mac (Swift, latest build)" \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so macOS says it can't verify it the first time: either System Settings → Privacy & Security → Open Anyway, or once in Terminal: xattr -dr com.apple.quarantine /Applications/Lockin.app"

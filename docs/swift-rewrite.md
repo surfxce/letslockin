@@ -106,23 +106,33 @@ from the same WebKit-rendered Markdown and slide pictures. Copy-and-paste prompt
 cover summaries, LAQs, sitting marks, and externally completed scores. Pasted data is
 validated before it is stored in the shared database.
 
-### 12. Settings, onboarding, reminders
-Settings (engines, models and downloads, LAQs, cloud), the onboarding tour,
-UserNotifications reminders and the dock badge.
+### 12. Settings, onboarding, reminders — built
+The `Settings` scene (⌘, and a gear in the sidebar) ports the Electron settings page:
+the mode and cloud engines with their tool detection and "Test it", API keys, LAQ counts
+and style, the model picker with downloads on the queue's own DOWNLOAD lane, reminders,
+and the course list. The first-run tour opens by itself and again from Settings, with a
+model step when local mode is chosen. Reminders run in the app: the dock badge always
+shows the due count, and UserNotifications announce each due lecture once a day between
+8am and 10pm, opening its page when clicked.
 
-### 13. Updates and release
-Sparkle for updates (signed with its own key; no Apple developer account needed),
-the .dmg from CI, a parity checklist against the Electron app, then switching the
-download link over.
+### 13. Updates and release — built
+Sparkle checks the `swift-latest` release's appcast in the background and from
+Settings → Updates. The `.dmg` is built by CI (`.github/workflows/swift-dmg.yml`) with
+the engine in its Resources, signed with the project's own EdDSA key (the public one is
+in the Info.plist; the private one is a repository secret, never committed). The parity
+checklist against the Electron app is `docs/parity-checklist.md`; the download link
+moves once every box on it is ticked.
 
 ## Verification still to do on a Mac
-Chunks 6–11 compile and their automated suites pass. The WebKit reader/editor and PDF
+Chunks 6–13 compile and their automated suites pass. The WebKit reader/editor and PDF
 pagination are covered by integration tests, and the sitting screen was exercised with
-synthetic data. Before closing hardware validation, compare dark and light appearance
-on the supported macOS release, drag crop handles on a real trackpad, and run an end-to-end
-sitting on a real lecture with both automatic marking and pasted marking. A throughput
-comparison still needs a matching llama.cpp text model: this Mac has an MLX Gemma 4
-model and its multimodal projector, but no llama.cpp text model to make a fair comparison.
+synthetic data. The hand checks that remain live in `docs/parity-checklist.md`: dark and
+light appearance on the supported macOS release, dragging crop handles on a real
+trackpad, an end-to-end sitting on a real lecture with both automatic marking and pasted
+marking, reminders with the window closed, and an update installing through Settings →
+Updates. A throughput comparison still needs a matching llama.cpp text model: this Mac
+has an MLX Gemma 4 model and its multimodal projector, but no llama.cpp text model to
+make a fair comparison.
 
 ## Not ported
 The browser version and the dev server, `node-llama-cpp` (MLX replaces it on the

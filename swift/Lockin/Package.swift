@@ -11,6 +11,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
+        // Updates: the appcast is signed with the project's own EdDSA key (no Apple
+        // developer account needed).
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .target(
@@ -22,7 +25,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Lockin",
-            dependencies: ["LockinCore"],
+            dependencies: [
+                "LockinCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/Lockin"
         ),
         .testTarget(

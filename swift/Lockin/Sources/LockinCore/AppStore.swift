@@ -51,6 +51,9 @@ public final class AppStore {
     public var queueActivity: QueueActivity? = nil
     public var settings: LockinSettings = .defaults
     public var mode: String = "local"
+    /// Whether the settings have been read once — before that, defaults are on show, so
+    /// the first-run tour must not open for someone who has already been round it.
+    public var settingsLoaded: Bool = false
     /// Incremented whenever database observation fires, so detail views re-read smoothly.
     public var dbRevision: Int = 0
 
@@ -148,6 +151,7 @@ public final class AppStore {
                     self.queueActivity = activity
                     self.settings = settings
                     self.mode = settings.mode.rawValue
+                    self.settingsLoaded = true
                     self.dbRevision &+= 1
                     if self.selection == nil {
                         if courses.count == 1, let only = courses.first {

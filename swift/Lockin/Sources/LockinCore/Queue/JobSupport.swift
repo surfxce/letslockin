@@ -32,8 +32,8 @@ public func jobPriority(_ kind: JobKind) -> Int {
     kind == .mark ? 10 : 0
 }
 
-/// The job kinds this app runs in its main lane. DOWNLOAD is only ever run by the
-/// Electron worker; an unknown kind is left for whichever app knows it.
+/// The job kinds this app runs in its main lane. An unknown kind is left for whichever
+/// app knows it.
 public let mainLaneKinds: [JobKind] = [.prepare, .generate, .mark]
 
 /// The queue's lanes. Each runs one job at a time; the side lanes run beside the main one
@@ -41,6 +41,8 @@ public let mainLaneKinds: [JobKind] = [.prepare, .generate, .mark]
 public enum QueueLane: String, CaseIterable, Sendable {
     /// PREPARE, GENERATE, MARK: priority first, then oldest first.
     case main
+    /// DOWNLOAD: a model being fetched for the Models pane of Settings.
+    case download
     /// SORT: a folder being sorted while the import screen waits.
     case sort
     /// ASK: a question asked on a lecture page.
@@ -49,6 +51,7 @@ public enum QueueLane: String, CaseIterable, Sendable {
     public var kinds: [JobKind] {
         switch self {
         case .main: return mainLaneKinds
+        case .download: return [.download]
         case .sort: return [.sort]
         case .ask: return [.ask]
         }
@@ -254,6 +257,11 @@ public func nextPendingJob(db: Database, lane: QueueLane) throws -> Job? {
             db,
             sql: #"SELECT * FROM "Job" WHERE "status" = 'PENDING' AND "kind" = 'SORT' ORDER BY "createdAt" ASC LIMIT 1"#
         )
+    case .download:
+        return try Job.fetchOne(
+            db,
+            sql: #"SELECT * FROM "Job" WHERE "status" = 'PENDING' AND "kind" = 'DOWNLOAD' ORDER BY "createdAt" ASC LIMIT 1"#
+        )
     case .ask:
         return try Job.fetchOne(
             db,
@@ -388,10 +396,12 @@ public func immediateWrite<T>(_ database: LockinDatabase, _ body: (Database) thr
 // MARK: - Which app runs the queue
 
 /// A job left RUNNING means the last owner stopped mid-job: put it back in the queue
-/// (`main()` in worker/index.ts). DOWNLOAD jobs are the Electron worker's own and are left alone.
+/// (`main()` in worker/index.ts). Downloads too: the last owner's lane is gone, and its
+/// `.part` files carry on where they stopped. Whoever still runs the queue never reaches
+/// this — it is only called on taking it over.
 @discardableResult
 public func requeueInterruptedJobs(db: Database) throws -> Int {
-    try db.execute(sql: #"UPDATE "Job" SET "status" = 'PENDING', "stage" = NULL WHERE "status" = 'RUNNING' AND "kind" <> 'DOWNLOAD'"#)
+    try db.execute(sql: #"UPDATE "Job" SET "status" = 'PENDING', "stage" = NULL WHERE "status" = 'RUNNING'"#)
     return db.changesCount
 }
 
