@@ -3,13 +3,13 @@ import { readHeartbeat } from "@/lib/settings";
 import { STAGES, type JobKind, type Stage } from "@/lib/types";
 
 /** Marking jumps the queue: someone is sitting there waiting for their score. */
-export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10, DOWNLOAD: 0, SORT: 0, ASK: 0 } as const satisfies Record<
+export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10, DOWNLOAD: 0, SORT: 0, ASK: 0, FLASHCARDS: 0 } as const satisfies Record<
   JobKind,
   number
 >;
 
 /** Jobs that run in lanes of their own beside the queue, and stay out of the top bar's list. */
-export const SIDE_LANES: JobKind[] = ["DOWNLOAD", "SORT", "ASK"];
+export const SIDE_LANES: JobKind[] = ["DOWNLOAD", "SORT", "ASK", "FLASHCARDS"];
 
 export interface Step {
   stage: Stage;
@@ -76,7 +76,7 @@ export async function clearQueue(lectureId?: string) {
  */
 export async function cancelJob(jobId: string) {
   await prisma.job.updateMany({
-    where: { id: jobId, status: { in: ["PENDING", "RUNNING"] }, kind: { in: ["PREPARE", "GENERATE", "MARK"] } },
+    where: { id: jobId, status: { in: ["PENDING", "RUNNING"] }, kind: { in: ["PREPARE", "GENERATE", "MARK", "FLASHCARDS"] } },
     data: { status: "FAILED", error: "Cancelled", finishedAt: new Date() },
   });
 }

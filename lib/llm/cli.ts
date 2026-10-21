@@ -1,3 +1,4 @@
+import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -287,6 +288,10 @@ export class ClaudeCliProvider implements LlmProvider {
       readDirs: [...new Set(pdfs.map((d) => path.dirname(d.file)))],
       append,
     });
+  }
+
+  generateFlashcards(input: FlashcardsInput) {
+    return this.call("generate-flashcards", flashcardVars(input), FlashcardSetSchema);
   }
 
   generateQuestions(input: GenerateQuestionsInput) {

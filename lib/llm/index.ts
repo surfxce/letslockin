@@ -57,8 +57,8 @@ export function getProvider(model?: string): LlmProvider {
  * Antigravity, or a service reached with an API key. Read at the start of each job, so
  * a change in Settings applies to the next one.
  */
-export async function cloudProvider(): Promise<LlmProvider> {
-  if (isFake()) return getProvider();
+export async function cloudProvider(fresh = false): Promise<LlmProvider> {
+  if (isFake()) return fresh ? new FakeProvider() : getProvider();
   const s = await getSettings();
   switch (s.cloudEngine) {
     case "codex":
@@ -83,7 +83,7 @@ export async function cloudProvider(): Promise<LlmProvider> {
       return new OpenAiCompatibleProvider(name, base, key ?? "", s.apiModel.trim(), s.apiVision);
     }
     default:
-      return getProvider(s.cloudModel);
+      return fresh ? new ClaudeCliProvider({ ...cliConfigFromEnv(), model: s.cloudModel }) : getProvider(s.cloudModel);
   }
 }
 
@@ -96,8 +96,9 @@ function hostOf(url: string): string {
 }
 
 /** A provider for a downloaded model. Kept while the same model stays selected, so it loads once. */
-export function getLocalProvider(modelPath: string, modelName: string, modelId: string): LlmProvider {
-  if (isFake()) return getProvider();
+export function getLocalProvider(modelPath: string, modelName: string, modelId: string, fresh = false): LlmProvider {
+  if (isFake()) return fresh ? new FakeProvider() : getProvider();
+  if (fresh) return new LocalProvider(modelPath, modelName, modelId);
   if (!local || local.modelPath !== modelPath) local = new LocalProvider(modelPath, modelName, modelId);
   return local;
 }

@@ -76,6 +76,7 @@ model Lecture {
   attempts  Attempt[]
   jobs      Job[]
   glossary  GlossaryTerm[]
+  flashcards Flashcard[]
 
   @@index([courseId])
   @@index([moduleId])
@@ -276,7 +277,7 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK
+  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK | FLASHCARDS
   payload       String // JSON
   /// The lecture this work is for, so "what is it doing right now" is a lookup
   /// rather than a search through payloads. Deleting the lecture drops its jobs.
@@ -310,4 +311,43 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// AK scheduling is independent of concept/LAQ reviews. Content is never regenerated
+// over existing cards, so a retry cannot erase someone's review history.
+model Flashcard {
+  id           String   @id @default(cuid())
+  lectureId    String
+  front        String
+  back         String
+  sourceKey    String
+  model        String?
+  promptVersion String?
+  state        String   @default("new")
+  dueAt        DateTime @default(now())
+  intervalDays Float    @default(0)
+  ease         Float    @default(2.5)
+  repetitions  Int      @default(0)
+  lapses       Int      @default(0)
+  version      Int      @default(0)
+  createdAt    DateTime @default(now())
+  lecture      Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  reviews      FlashcardReview[]
+
+  @@unique([lectureId, sourceKey])
+  @@index([lectureId, dueAt])
+  @@index([state, dueAt])
+}
+
+model FlashcardReview {
+  id         String   @id @default(cuid())
+  cardId     String
+  version    Int
+  rating     Int
+  reviewedAt DateTime @default(now())
+  dueAt      DateTime
+  card       Flashcard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, version])
+  @@index([reviewedAt])
 }

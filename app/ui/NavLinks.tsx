@@ -13,8 +13,8 @@ export function NavLinks() {
       <Link href="/" className={on("/") ? "on" : undefined}>
         <Icon name="list" size={15} /> Lectures
       </Link>
-      <Link href="/settings" className={on("/settings") ? "on" : undefined}>
-        <Icon name="gear" size={15} /> Settings
+      <Link href="/ak" title="Anki Killer" className={on("/ak") ? "on" : undefined}>
+        <Icon name="layers" size={15} /> AK
       </Link>
     </nav>
   );

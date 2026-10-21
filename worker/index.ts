@@ -11,6 +11,7 @@
  * Run with `npm run worker` (the desktop app starts it for you).
  */
 import "dotenv/config";
+import { generateFlashcards, queueFlashcards } from "@/lib/flashcards/service";
 import { rm } from "node:fs/promises";
 
 import { runAsk, type AskPayload } from "@/lib/ask";
@@ -86,6 +87,7 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       await enterStage(jobId, "questions");
       result.questions = await writeQuestions(lectureId, provider);
     }
+    if ((await getSettings()).autoFlashcards) await queueFlashcards(lectureId);
     return result;
   },
 
@@ -99,6 +101,11 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
     }
     await enterStage(jobId, "questions");
     return writeQuestions(lectureId, provider);
+  },
+
+  FLASHCARDS: async (payload, jobId, provider) => {
+    await enterStage(jobId, "flashcards");
+    return generateFlashcards(String(payload.lectureId), jobId, provider);
   },
 
   MARK: async (payload, jobId, provider) => {
@@ -167,14 +174,14 @@ async function lookLocally(
  * nothing can run: copy-and-paste mode, or local mode with no model downloaded yet.
  * Jobs then wait in the queue rather than failing.
  */
-async function currentProvider(): Promise<LlmProvider | null> {
+async function currentProvider(fresh = false): Promise<LlmProvider | null> {
   const { mode } = await getSettings();
   if (mode === "manual") return null;
   if (mode === "local") {
     const active = await activeLocalModel();
-    return active ? getLocalProvider(active.path, active.model.name, active.model.id) : null;
+    return active ? getLocalProvider(active.path, active.model.name, active.model.id, fresh) : null;
   }
-  return cloudProvider();
+  return cloudProvider(fresh);
 }
 
 /**
@@ -200,18 +207,18 @@ async function withFallback<T>(
     const model = await fallbackLocalModel();
     if (!model) throw err;
     const why = err instanceof Error ? err.message : String(err);
-    const local = getLocalProvider(model.path, model.model.name, model.model.id);
+    const local = getLocalProvider(model.path, model.model.name, model.model.id, true);
     console.warn(`${primary.lastModel} failed (${why}); doing it on ${model.model.name} instead`);
     onFallback?.(why, local);
     return { result: await work(local), used: local, fellBack: why };
   }
 }
 
-async function claimNext() {
+async function claimNext(flashcards = false) {
   if (!(await canClaimQueue())) return null;
   // Single-writer worker, so a read-then-update claim is sufficient here.
   const job = await prisma.job.findFirst({
-    where: { status: "PENDING", kind: { notIn: SIDE_LANES } },
+    where: { status: "PENDING", kind: flashcards ? "FLASHCARDS" : { notIn: SIDE_LANES } },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   if (!job) return null;
@@ -223,10 +230,10 @@ async function claimNext() {
   });
 }
 
-async function runOne(): Promise<boolean> {
-  const provider = await currentProvider();
+async function runOne(flashcards = false): Promise<boolean> {
+  const provider = await currentProvider(flashcards);
   if (!provider) return false;
-  const job = await claimNext();
+  const job = await claimNext(flashcards);
   if (!job) return false;
 
   const started = Date.now();
@@ -609,11 +616,19 @@ async function main() {
   // Someone is waiting on the lecture page for an answer: look often.
   const asks = lane(askOne, Math.min(POLL_MS, 500));
 
+  // Cloud decks have their own calls and lane. Offline decks run between main jobs
+  // to avoid loading competing contexts on a small laptop.
+  const flashcards = lane(async () => {
+    if ((await getSettings()).mode !== "auto") return false;
+    return runOne(true);
+  }, POLL_MS);
+
   while (running) {
-    const didWork = await runOne();
+    let didWork = await runOne();
+    if (!didWork && (await getSettings()).mode === "local") didWork = await runOne(true);
     if (!didWork) await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  await Promise.all([downloads, sorts, asks]);
+  await Promise.all([downloads, sorts, asks, flashcards]);
   clearInterval(beat);
   await releaseHeartbeatIfOurs();
   await prisma.$disconnect();

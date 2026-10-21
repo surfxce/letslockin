@@ -1,3 +1,4 @@
+import { AutoFlashcardsToggle } from "@/app/ak/DeckControls";
 import Link from "next/link";
 
 import { AppUpdate } from "@/app/settings/AppUpdate";
@@ -103,6 +104,9 @@ export default async function SettingsPage() {
         sittingPerHour={settings.sittingPerHour}
         laqStyle={settings.laqStyle}
       />
+
+      <h2 id="ak">AK · Anki Killer</h2>
+      <AutoFlashcardsToggle enabled={settings.autoFlashcards} />
 
       <h2 id="local">Offline AI on this computer</h2>
       <p className="muted small" style={{ marginTop: -4 }}>

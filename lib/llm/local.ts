@@ -1,3 +1,4 @@
+import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -313,6 +314,33 @@ export class LocalProvider implements LlmProvider {
       zod: DigestSchema,
       // A summary plus 8-20 concepts an hour.
       maxTokens: Math.round(2500 + 1200 * input.durationHours),
+      temperature: 0.3,
+    });
+  }
+
+  async generateFlashcards(input: FlashcardsInput) {
+    const side: GbnfJsonSchema = {
+      type: "object",
+      properties: {
+        text: text(4000),
+        slide: input.slideNumbers.length ? nullable({ enum: input.slideNumbers }) : { type: "null" },
+      },
+    };
+    return this.run({
+      prompt: "generate-flashcards",
+      vars: (source) => flashcardVars({ ...input, source }),
+      transcript: input.source,
+      schema: {
+        type: "object",
+        properties: {
+          cards: {
+            type: "array", minItems: 1, maxItems: 30,
+            items: { type: "object", properties: { front: side, back: side } },
+          },
+        },
+      },
+      zod: FlashcardSetSchema,
+      maxTokens: 6000,
       temperature: 0.3,
     });
   }

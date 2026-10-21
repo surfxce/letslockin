@@ -16,9 +16,10 @@ export type GapType = (typeof GAP_TYPES)[number];
  * DOWNLOAD fetches a local model, and SORT groups a folder's files into lectures while
  * someone waits on the import screen. ASK answers a question about a lecture, breaks a
  * passage down, or says what a left-out part contained, while someone waits on the
- * lecture page. All three run alongside the others, not in their queue.
+ * lecture page. These run alongside the main queue. FLASHCARDS writes independent
+ * AK decks in a cloud side lane, or between main jobs when running locally.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -31,6 +32,7 @@ export const STAGES = {
   digest: "Reading & summarising",
   questions: "Writing LAQs",
   marking: "Marking",
+  flashcards: "Writing flashcards",
   download: "Downloading model",
 } as const;
 export type Stage = keyof typeof STAGES;

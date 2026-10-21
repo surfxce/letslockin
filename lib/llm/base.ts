@@ -1,3 +1,4 @@
+import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -41,7 +42,7 @@ export class CloudError extends Error {
   }
 }
 
-export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask";
+export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask" | "flashcards";
 
 /** What a call needs beyond its prompt text. */
 export interface CallOptions {
@@ -101,6 +102,10 @@ export abstract class PromptProvider implements LlmProvider {
       task: "digest",
       slides: pictured ? input.slides : undefined,
     });
+  }
+
+  generateFlashcards(input: FlashcardsInput) {
+    return this.call("generate-flashcards", flashcardVars(input), FlashcardSetSchema, { task: "flashcards" });
   }
 
   generateQuestions(input: GenerateQuestionsInput) {

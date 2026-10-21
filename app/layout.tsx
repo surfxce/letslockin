@@ -44,6 +44,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <NavLinks />
           <span className="spacer" />
           <StatusBar initial={status} />
+          <Link href="/settings" className="icon-btn" title="Settings" aria-label="Settings">
+            <Icon name="gear" size={18} />
+          </Link>
           <a href="#intro" className="icon-btn" title="How Lockin works">
             <Icon name="help" size={17} />
           </a>

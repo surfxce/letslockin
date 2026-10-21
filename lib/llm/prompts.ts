@@ -54,6 +54,7 @@ export async function renderPrompt(name: PromptName, vars: Record<string, string
 }
 
 export type PromptName =
+  | "generate-flashcards"
   | "digest-lecture"
   | "generate-questions"
   | "mark"

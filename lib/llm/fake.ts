@@ -1,3 +1,4 @@
+import type { FlashcardsInput, FlashcardSet } from "@/lib/flashcards/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -73,6 +74,16 @@ export class FakeProvider implements LlmProvider {
         };
       }),
     };
+  }
+
+  async generateFlashcards(input: FlashcardsInput): Promise<FlashcardSet> {
+    await this.wait();
+    this.lastPromptVersion = "generate-flashcards@fake";
+    const facts = input.source.split(/\n|(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 25).slice(0, 6);
+    return { cards: (facts.length ? facts : [input.source]).map((text, i) => ({
+      front: { text: `Recall point ${i + 1} from ${input.lectureTitle}.`, slide: null },
+      back: { text, slide: i === 0 ? input.slideNumbers[0] ?? null : null },
+    })) };
   }
 
   async generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet> {

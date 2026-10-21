@@ -15,6 +15,8 @@ import {
 export type { ApiService, CloudEngine, CloudModel, LaqStyle, Mode } from "@/lib/modes";
 
 export interface Settings {
+  /** Independently queue an AK deck when preparing a lecture. Opt-in. */
+  autoFlashcards: boolean;
   mode: Mode;
   /** Desktop notifications when a lecture's LAQs are due. */
   notify: boolean;
@@ -51,6 +53,7 @@ export interface Settings {
 }
 
 const DEFAULTS: Settings = {
+  autoFlashcards: false,
   mode: "auto",
   notify: false,
   onboarded: false,
@@ -92,6 +95,7 @@ export async function getSettings(): Promise<Settings> {
   for (const k of ["codexModel", "agyModel", "apiBaseUrl", "apiModel"] as const) {
     if (typeof out[k] !== "string") out[k] = "";
   }
+  out.autoFlashcards = out.autoFlashcards === true;
   out.apiVision = out.apiVision !== false;
   if (typeof out.slideReader !== "string") out.slideReader = null;
   return out;
