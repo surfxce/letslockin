@@ -1,7 +1,9 @@
 export interface ConceptMastery {
   conceptId: string;
-  /** Geometric mean of every mark this concept has ever earned, 0-10. 0 = untested. */
+  /** Latest mark for this concept, 0-10. 0 can also mean untested. */
   mastery: number;
+  /** Whether a marked answer has tested this concept. */
+  seen?: boolean;
   /** Exam likelihood, 0-1. Without past papers everything sits at the 0.5 default. */
   yield: number;
 }
@@ -18,7 +20,9 @@ export interface Allocation {
  * low-yield weakness still clears the 0.5 floor and gets asked once.
  */
 export function priority(c: ConceptMastery): number {
-  return (10 - c.mastery) * (0.5 + c.yield);
+  // A demonstrated weakness takes precedence over an untouched concept while
+  // drilling, but a mastered concept still drops out.
+  return (10 - c.mastery) * (0.5 + c.yield) * (c.seen && c.mastery < 7 ? 1.25 : 1);
 }
 
 /**

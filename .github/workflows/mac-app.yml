@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: mac-app-${{ github.ref }}
-  cancel-in-progress: true
+  group: mac-latest
+  cancel-in-progress: false
 
 jobs:
   dmg:
@@ -65,7 +65,16 @@ jobs:
             release/update.json
           if-no-files-found: error
 
-      # No longer published: the native Swift app is the Mac download now
-      # (.github/workflows/swift-dmg.yml publishes mac-latest). This build stays as a
-      # compile check and its artifact, until the Electron app retires to Windows only
-      # (docs/parity-checklist.md).
+      - name: Publish Electron as the Mac download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view mac-latest >/dev/null 2>&1; then
+            gh release upload mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json --clobber
+            gh release edit mac-latest --title "Lockin for Mac (Electron)" --notes "Electron build from ${GITHUB_SHA::7}. Open Lockin.dmg and drag Lockin into Applications. Settings → Updates installs later code updates."
+            gh release delete-asset mac-latest appcast.xml --yes || true
+          else
+            gh release create mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json \
+              --prerelease --target "$GITHUB_SHA" --title "Lockin for Mac (Electron)" \
+              --notes "Electron build from ${GITHUB_SHA::7}. Open Lockin.dmg and drag Lockin into Applications. Settings → Updates installs later code updates."
+          fi

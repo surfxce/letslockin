@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { allocate } from "@/lib/engines/allocation";
+import { allocate, priority } from "@/lib/engines/allocation";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import { getSettings } from "@/lib/settings";
 
@@ -28,8 +28,14 @@ export async function pickQuestions(lectureId: string): Promise<string[]> {
   const mastery = await conceptMastery(lecture.concepts.map((c) => c.id));
   const ranked = allocate(mastery, budget);
 
+  const weight = new Map(mastery.map((m) => [m.conceptId, priority(m)]));
   const leastUsedFirst = [...questions].sort(
     (a, b) => a._count.responses - b._count.responses || a.id.localeCompare(b.id),
+  );
+  const weakFirst = [...questions].sort((a, b) =>
+    Math.max(0, ...b.concepts.map((c) => weight.get(c.conceptId) ?? 0)) -
+      Math.max(0, ...a.concepts.map((c) => weight.get(c.conceptId) ?? 0)) ||
+    a._count.responses - b._count.responses || a.id.localeCompare(b.id),
   );
 
   const picked: string[] = [];
@@ -42,7 +48,7 @@ export async function pickQuestions(lectureId: string): Promise<string[]> {
     for (const q of covering.slice(0, count)) take(q.id);
   }
   // Short on coverage — a concept with no question yet, say. Fill the sitting anyway.
-  for (const q of leastUsedFirst) take(q.id);
+  for (const q of weakFirst) take(q.id);
 
   return picked;
 }

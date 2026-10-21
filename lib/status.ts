@@ -36,6 +36,8 @@ export interface LectureRow {
   laqCount: number;
   fileCount: number;
   sittings: number;
+  /** Completed sittings after the first; shown as a superscript on the drill score. */
+  drillCount: number;
   lastScore: number | null;
   prevScore: number | null;
   bestScore: number | null;

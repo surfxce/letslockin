@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "lib/generated/**",
     "dist/**",
     "release/**",
+    "swift/**/.build*/**",
   ]),
 ]);
 

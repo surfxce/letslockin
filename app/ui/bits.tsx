@@ -11,12 +11,14 @@ export function Tag({ tone = "gray", children, title }: { tone?: Tone; children:
   );
 }
 
-export function ScoreTag({ score, prev }: { score: number | null; prev?: number | null }) {
+export function ScoreTag({ score, prev, drillCount = 0 }: { score: number | null; prev?: number | null; drillCount?: number }) {
   if (score === null) return <span className="faint">—</span>;
   const delta = prev == null ? 0 : score - prev;
   return (
     <span className="nowrap">
-      <span className={`tag score t-${scoreTone(score)}`}>{formatScore(score)}</span>
+      <span className={`tag score t-${scoreTone(score)}`} title="Geometric mean of the latest mark for each concept">
+        {formatScore(score)}{drillCount > 0 && <sup title={`${drillCount} drill${drillCount === 1 ? "" : "s"} after the first sitting`}>{drillCount}</sup>}
+      </span>
       {Math.abs(delta) >= 0.05 && (
         <span className={`trend ${delta > 0 ? "up" : "down"}`} title={`was ${formatScore(prev!)}`}>
           {delta > 0 ? "▲" : "▼"}

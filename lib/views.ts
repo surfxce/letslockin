@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { nextReview } from "@/lib/engines/schedule";
+import { drillScores } from "@/lib/engines/drill-progress";
 import { SIDE_LANES } from "@/lib/jobs";
 import type { LectureRow, LectureStatus } from "@/lib/status";
 import { STAGES, type Stage } from "@/lib/types";
@@ -26,7 +27,12 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
       _count: { select: { questions: true, materials: true } },
       attempts: {
         where: { geometricMean: { not: null } },
-        select: { sittingDate: true, completedAt: true, geometricMean: true },
+        select: {
+          sittingDate: true,
+          completedAt: true,
+          geometricMean: true,
+          responses: { select: { questionId: true, mark: true, question: { select: { concepts: { select: { conceptId: true } } } } } },
+        },
         orderBy: { sittingDate: "asc" },
       },
       questions: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
@@ -63,8 +69,12 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
   }
 
   return lectures.map((l) => {
-    const scores = l.attempts.map((a) => a.geometricMean as number);
-    const sittings = l.attempts.map((a) => ({ at: a.completedAt ?? a.sittingDate, score: a.geometricMean as number }));
+    const completed = [...l.attempts].sort(
+      (a, b) => (a.completedAt ?? a.sittingDate).getTime() - (b.completedAt ?? b.sittingDate).getTime(),
+    );
+    const scores = completed.map((a) => a.geometricMean as number);
+    const progress = drillScores(completed);
+    const sittings = completed.map((a) => ({ at: a.completedAt ?? a.sittingDate, score: a.geometricMean as number }));
     const review = nextReview({
       sittings,
       readySince: l.questions[0]?.createdAt ?? null,
@@ -96,9 +106,10 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
       laqCount: l._count.questions,
       fileCount: l._count.materials,
       sittings: scores.length,
-      lastScore: scores.at(-1) ?? null,
-      prevScore: scores.at(-2) ?? null,
-      bestScore: scores.length ? Math.max(...scores) : null,
+      drillCount: Math.max(0, scores.length - 1),
+      lastScore: progress.at(-1) ?? null,
+      prevScore: progress.at(-2) ?? null,
+      bestScore: progress.length ? Math.max(...progress) : null,
       lastSatOn: sittings.at(-1)?.at.toISOString() ?? null,
       // Nothing is due while there is nothing to sit.
       dueAt: l._count.questions > 0 ? (review.dueAt?.toISOString() ?? null) : null,

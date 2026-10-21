@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { saveAttemptScores } from "@/app/actions";
+import { saveAttemptScores, startAttempt } from "@/app/actions";
 import { AnswerForm } from "@/app/attempts/[id]/AnswerForm";
 import { NotesSheet } from "@/app/attempts/[id]/NotesSheet";
-import { DueTag } from "@/app/ui/bits";
+import { DueTag, ScoreTag } from "@/app/ui/bits";
 import { CopyButton } from "@/app/ui/CopyButton";
 import { Icon } from "@/app/ui/Icon";
 import { PasteBox } from "@/app/ui/PasteBox";
@@ -112,7 +112,9 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
           {row && (
-            <div className="row small muted" style={{ marginTop: 12 }}>
+            <div className="row small muted" style={{ marginTop: 12, gap: 8 }}>
+              <span>Drill score:</span>
+              <ScoreTag score={row.lastScore} prev={row.prevScore} drillCount={row.drillCount} />
               <Icon name="bell" size={14} /> Next sitting: <DueTag dueAt={row.dueAt} />
             </div>
           )}
@@ -168,6 +170,11 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
               feedback={fb.items}
               pending={r.mark === null && usesAi(settings.mode)}
             />
+            {r.mark !== null && (
+              <Link href={`/attempts/${attempt.id}/notes/${r.id}`} className="btn sm" style={{ marginTop: 10 }}>
+                Notes to copy down →
+              </Link>
+            )}
             <details style={{ marginTop: 10 }}>
               <summary className="small muted" style={{ cursor: "pointer" }}>
                 Question, your answer{rubric.criteria.length ? " and the marking guide" : ""}
@@ -190,6 +197,20 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
           </div>
         ))}
       </div>
+
+      {attempt.geometricMean !== null && (
+        <div className="soft-card" style={{ marginTop: 22 }}>
+          <h2 style={{ marginTop: 0 }}>Keep drilling</h2>
+          <p className="small muted">The next sitting favours concepts your latest answers show are still weak. The drill score updates as you improve them.</p>
+          <div className="row">
+            <form action={startAttempt}>
+              <input type="hidden" name="lectureId" value={attempt.lectureId} />
+              <button type="submit" className="btn primary">Drill weak areas again</button>
+            </form>
+            {usesAi(settings.mode) && <Link href={`/lectures/${attempt.lectureId}?tab=laqs`} className="btn">Write new weak-area LAQs</Link>}
+          </div>
+        </div>
+      )}
 
       <p style={{ marginTop: 24 }}>
         <Link href={`/lectures/${attempt.lectureId}?tab=scores`} className="link">

@@ -279,7 +279,7 @@ export function LectureTable({
                     </td>
                     <td className="c-num">{r.laqCount || <span className="faint">—</span>}</td>
                     <td>
-                      <ScoreTag score={r.lastScore} prev={r.prevScore} />
+                      <ScoreTag score={r.lastScore} prev={r.prevScore} drillCount={r.drillCount} />
                     </td>
                     <td>
                       <DueTag dueAt={r.dueAt} />

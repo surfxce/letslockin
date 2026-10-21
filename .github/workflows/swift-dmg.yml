@@ -1,26 +1,12 @@
-# Builds the Swift app's Lockin.dmg on a Mac and publishes it as the "Lockin for Mac"
-# release (mac-latest) — this is the Mac download. Settings → Updates reads the appcast
-# published beside it (SUFeedURL points at mac-latest/appcast.xml).
-#
-# The Electron mac build no longer publishes: mac-app.yml still builds it as a compile
-# check and uploads the artifact. docs/parity-checklist.md records the switch and the
-# hand checks that remain open.
+# Shelved Swift prototype: a manual build remains available as a workflow artifact.
+# mac-app.yml alone publishes the Electron Mac download and update manifest.
 name: Swift app dmg
 
 on:
-  push:
-    branches: [main, claude/blissful-carson-5hdqo3]
-    paths:
-      - "swift/**"
-      - "prisma/**"
-      - "prompts/**"
-      - "build/**"
-      - "scripts/sparkle-appcast.mjs"
-      - ".github/workflows/swift-dmg.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: swift-dmg-${{ github.ref }}
@@ -138,19 +124,3 @@ jobs:
           path: |
             release/Lockin.dmg
             release/appcast.xml
-
-      - name: Publish as the Mac download
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          files=(release/Lockin.dmg)
-          [ -f release/appcast.xml ] && files+=(release/appcast.xml)
-          # The old testing tag goes away with the switch; this workflow is the only
-          # publisher of mac-latest now.
-          gh release delete swift-latest --yes --cleanup-tag || true
-          gh release delete mac-latest --yes --cleanup-tag || true
-          gh release create mac-latest "${files[@]}" \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "Lockin for Mac (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open Lockin.dmg and drag Lockin into Applications. It isn't signed by Apple, so macOS says it can't verify it the first time: either System Settings → Privacy & Security → Open Anyway, or once in Terminal: xattr -dr com.apple.quarantine /Applications/Lockin.app — updates from Settings → Updates never ask again."

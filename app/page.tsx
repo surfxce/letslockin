@@ -93,7 +93,7 @@ export default async function Home({
                   <span>L{d.ordinal}</span>
                   {d.lastScore !== null && (
                     <span className="row" style={{ gap: 4 }}>
-                      last <ScoreTag score={d.lastScore} />
+                      drill <ScoreTag score={d.lastScore} drillCount={d.drillCount} />
                     </span>
                   )}
                 </span>
@@ -155,7 +155,7 @@ export default async function Home({
         {weakest && practised.length > 1 && (
           <span className="small muted row" style={{ gap: 6 }}>
             Weakest: <Link href={`/lectures/${weakest.id}`} className="link">L{weakest.ordinal}</Link>
-            <ScoreTag score={weakest.lastScore} />
+            <ScoreTag score={weakest.lastScore} drillCount={weakest.drillCount} />
           </span>
         )}
         {active && (

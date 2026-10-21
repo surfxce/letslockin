@@ -118,19 +118,19 @@ cd swift/Lockin && xcodegen generate && open Lockin.xcodeproj   # Run in Xcode
 - [ ] A download started in the Swift app finishes while the Electron app starts up
       (the Electron worker must not requeue it out from under the Swift lane).
 
-## When every box is ticked — switching the link over
+## Swift rewrite paused
 
-**Switched on 2026-10-19 by owner decision**, ahead of the hand checks: the Swift build
-is now what `mac-latest` publishes and what the README's download link serves
-(`.github/workflows/swift-dmg.yml` is the only publisher of `mac-latest`; the Electron
-mac build no longer publishes, and mac-app.yml keeps building it as a compile check).
+The owner shelved the Swift rewrite on 2026-10-21. Electron is again the intended
+`mac-latest` download and `.github/workflows/mac-app.yml` is its sole publisher.
+The Swift workflow is manual and uploads an artifact only. These hand checks remain
+for when Swift development resumes.
 The first `mac-latest` DMG from the Swift pipeline was broken — the app's contents sat
 at the volume root instead of `Lockin.app`, from a BSD `cp` that renamed the bundle
 when the stage folder didn't exist — which is the kind of thing the boxes below exist
 to catch. The QA list stays open until it is worked through on a real Mac:
 
-1. ~~Point the download link at the Swift release~~ done (same link, new publisher).
-2. [x] The Electron workflow no longer publishes `mac-latest`.
+1. [ ] Complete the Swift hand checks before any future default switch.
+2. [x] The Electron workflow publishes `mac-latest` again.
 3. [ ] Windows keeps the Electron app on llama.cpp, in maintenance mode, as the plan
        says — that port is still to do (see the conversation of 2026-10-19: wire
        `lib/command.ts` into the spawn sites, an nsis target, and a Windows QA pass).

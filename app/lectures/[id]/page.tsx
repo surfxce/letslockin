@@ -183,8 +183,8 @@ export default async function LecturePage({
         <Prop icon="status" label="Status">
           <StatusTag status={row.status} stageLabel={row.stageLabel} queuePosition={row.queuePosition} error={row.error} />
         </Prop>
-        <Prop icon="target" label="Last score">
-          <ScoreTag score={row.lastScore} prev={row.prevScore} />
+        <Prop icon="target" label="Drill score">
+          <ScoreTag score={row.lastScore} prev={row.prevScore} drillCount={row.drillCount} />
           {scored.length > 0 && (
             <span className="faint">
               · best {formatScore(row.bestScore!)} · {plural(scored.length, "sitting")}
@@ -209,7 +209,7 @@ export default async function LecturePage({
           <form action={startAttempt}>
             <input type="hidden" name="lectureId" value={lecture.id} />
             <Submit className="btn primary lg" pending="Picking questions…">
-              <Icon name="play" /> Start LAQs
+              <Icon name="play" /> {row.sittings > 0 ? "Drill weak areas" : "Start LAQs"}
             </Submit>
           </form>
         )}
@@ -586,7 +586,7 @@ function LaqsTab({
           <form action={writeMoreLaqs}>
             <input type="hidden" name="lectureId" value={lecture.id} />
             <Submit className="btn" pending="Queueing…" disabled={busy}>
-              <Icon name="sparkles" /> Write new LAQs
+              <Icon name="sparkles" /> Write LAQs for weak areas
             </Submit>
           </form>
           <span className="small muted">
@@ -694,15 +694,21 @@ function ScoresTab({ lecture, numbers }: { lecture: LecturePageData; numbers: Ma
                       .map((r) => {
                         const fb = feedbackFor(r);
                         return (
-                          <QuestionScore
-                            key={r.id}
-                            label={`LAQ ${numbers.get(r.questionId) ?? "?"}`}
-                            mark={r.mark}
-                            raw={fb.raw ?? undefined}
-                            stem={r.question.stem.replace(/\*\*/g, "").slice(0, 160) + (r.question.stem.length > 160 ? "…" : "")}
-                            feedback={fb.items}
-                            pending={r.mark === null && !!r.answerText.trim()}
-                          />
+                          <div key={r.id}>
+                            <QuestionScore
+                              label={`LAQ ${numbers.get(r.questionId) ?? "?"}`}
+                              mark={r.mark}
+                              raw={fb.raw ?? undefined}
+                              stem={r.question.stem.replace(/\*\*/g, "").slice(0, 160) + (r.question.stem.length > 160 ? "…" : "")}
+                              feedback={fb.items}
+                              pending={r.mark === null && !!r.answerText.trim()}
+                            />
+                            {r.mark !== null && (
+                              <Link href={`/attempts/${a.id}/notes/${r.id}`} className="btn sm" style={{ margin: "8px 0 14px" }}>
+                                Notes to copy down →
+                              </Link>
+                            )}
+                          </div>
                         );
                       })}
                   </div>

@@ -60,8 +60,10 @@ is due again.
    straight to the point), weakest concepts first. Answers save as you type, and a sitting
    left unsubmitted is picked up again. They are marked against the guide frozen when the
    question was written. A sitting's score is the geometric mean of its marks, so one weak
-   answer drags it down — and the result comes with a sheet of notes to copy down: what was
-   wrong (✗), partly right (~) and missed (+).
+   answer drags it down. Each marked LAQ links to a Markdown sheet of notes to copy down:
+   what was wrong (✗), partly right (~) and missed (+). Follow-up sittings focus weak
+   concepts; the lecture's drill score uses the latest mark for each concept, with a
+   superscript showing how many times you have drilled after the first sitting.
 5. **Come back when due.** Score 7+ and the gap grows (1 → 3 → 7 → 14 → 30 days); 5–7 holds;
    under 5 it is back tomorrow; everything lands before the exam date. Due lectures show at
    the top of the home page and as a badge, and as notifications if they are turned on.
@@ -87,8 +89,8 @@ group by module (with each module's average) or status, and search.
 
 ## Running it
 
-**Download it for Mac:** [Lockin.dmg](https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg)
-(Apple Silicon), built by GitHub from the latest code. Open it, drag Lockin into
+**Download the Electron app for Mac:** [Lockin.dmg](https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg)
+(Apple Silicon), built by GitHub from the latest code. The Swift rewrite is shelved. Open it, drag Lockin into
 Applications. It isn't signed by Apple, so the first time macOS says it can't verify it:
 choose System Settings → Privacy & Security → *Open Anyway*, or run once in Terminal
 `xattr -dr com.apple.quarantine /Applications/Lockin.app`. After that, **Settings → Updates** keeps it current: each build also publishes
