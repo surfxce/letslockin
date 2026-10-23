@@ -705,7 +705,7 @@ function ScoresTab({ lecture, numbers }: { lecture: LecturePageData; numbers: Ma
                             />
                             {r.mark !== null && (
                               <Link href={`/attempts/${a.id}/notes/${r.id}`} className="btn sm" style={{ margin: "8px 0 14px" }}>
-                                Notes to copy down →
+                                {r.notesCopiedAt ? "✓ Notes copied down" : "Notes to copy down →"}
                               </Link>
                             )}
                           </div>

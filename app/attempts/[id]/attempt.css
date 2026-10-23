@@ -42,3 +42,8 @@
 .af-status::before { content: "·"; color: var(--text-faint); margin-right: 4px; }
 .af-saved { color: var(--text-faint); }
 .af-local { color: var(--s-orange); }
+
+/* "Yes, I've copied this down": once it is, the sheet steps back. */
+.ns-copied { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.ns-copied-yes { display: inline-flex; align-items: center; gap: 6px; color: var(--t-green); font-weight: 500; font-size: 14px; }
+.ns-done .ns-sections { opacity: 0.55; }

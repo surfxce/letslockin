@@ -128,6 +128,9 @@ async function main() {
     assert.ok(phoneLecture.summaryHtml?.includes(`lockin-slide://${lecture.id}/2?crop=0.1,0.2,0.5,0.4`));
     assert.deepEqual(phoneLecture.images.sort(), ["2?crop=0.1,0.2,0.5,0.4", "3"]);
     assert.deepEqual(phoneLecture.nextSitting, [question.id]);
+    // As the lecture table counts them: a sitting counts, and scores, once every answer is marked.
+    assert.equal(phoneLecture.sittingCount, 0);
+    assert.equal(phoneLecture.drillScore, null);
     assert.match(phoneLecture.questions[0].markVars.concepts, new RegExp(concept.id));
     const sitting = snapshot.sittings.find((s) => s.id === sittingId)!;
     assert.equal(sitting.responses.find((r) => r.id === "phone-response-0003")?.pending, true);

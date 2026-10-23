@@ -56,6 +56,7 @@ export default async function LaqNotesPage({
       <NotesSheet
         sheet={sheet}
         fileName={notesFileName(`${response.attempt.lecture.title} LAQ ${number}`, response.attempt.sittingDate)}
+        copy={{ responseIds: [response.id], at: response.notesCopiedAt?.toISOString() ?? null }}
       />
       {sheet.markdown && (
         <section style={{ marginTop: 22 }}>

@@ -196,6 +196,9 @@ model Response {
   rubricVersion  String?
   rawMarkingJson String?
   markedAt       DateTime?
+  /// When the student said they'd copied this answer's notes sheet (what was wrong and
+  /// missed) into their own notes. Null until then.
+  notesCopiedAt  DateTime?
 
   attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)

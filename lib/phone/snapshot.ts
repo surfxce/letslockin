@@ -9,6 +9,7 @@ import { computerName } from "@/lib/phone/pairing";
 import type { PhoneSnapshot } from "@/lib/phone/schema";
 import { getSettings } from "@/lib/settings";
 import { lectureDecks, pictured } from "@/lib/slides";
+import { lectureRows } from "@/lib/views";
 
 /** Pictures in the phone's copy point here; the app serves them from its own cache. */
 export const SLIDE_SCHEME = "lockin-slide";
@@ -33,7 +34,7 @@ function iso(d: Date | null | undefined): string | null {
 /** Everything the phone shows, rendered the way the computer renders it. */
 export async function buildSnapshot(): Promise<PhoneSnapshot> {
   const settings = await getSettings();
-  const [courses, lectures, attempts, cards, markJobs, marking] = await Promise.all([
+  const [courses, lectures, attempts, cards, markJobs, marking, rows] = await Promise.all([
     prisma.course.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, code: true, title: true, examDate: true } }),
     prisma.lecture.findMany({
       orderBy: [{ deliveredOn: "asc" }, { createdAt: "asc" }],
@@ -80,7 +81,9 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
     prisma.flashcard.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     prisma.job.findMany({ where: { kind: "MARK", status: { in: ["PENDING", "RUNNING"] } }, select: { payload: true } }),
     phoneMarkingTemplate(),
+    lectureRows(),
   ]);
+  const rowOf = new Map(rows.map((r) => [r.id, r]));
 
   const waiting = new Set<string>();
   for (const job of markJobs) {
@@ -176,6 +179,9 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
         };
       }),
       nextSitting,
+      drillScore: rowOf.get(l.id)?.lastScore ?? null,
+      sittingCount: rowOf.get(l.id)?.sittings ?? 0,
+      dueAt: rowOf.get(l.id)?.dueAt ?? null,
     });
   }
 

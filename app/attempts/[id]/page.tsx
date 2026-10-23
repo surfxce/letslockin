@@ -157,6 +157,11 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
         pending={unmarked.length}
         manual={!usesAi(settings.mode)}
         fileName={notesFileName(attempt.lecture.title, attempt.sittingDate)}
+        copy={{
+          responseIds: responses.filter((r) => r.mark !== null).map((r) => r.id),
+          // Copied once every marked answer's notes are; a newly marked one asks again.
+          at: copiedAt(responses),
+        }}
       />
 
       <FeedbackLegend />
@@ -172,7 +177,7 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
             />
             {r.mark !== null && (
               <Link href={`/attempts/${attempt.id}/notes/${r.id}`} className="btn sm" style={{ marginTop: 10 }}>
-                Notes to copy down →
+                {r.notesCopiedAt ? "✓ Notes copied down" : "Notes to copy down →"}
               </Link>
             )}
             <details style={{ marginTop: 10 }}>
@@ -219,4 +224,11 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
       </p>
     </main>
   );
+}
+
+/** When a sitting's notes were copied down: the latest, once every marked answer's are. */
+function copiedAt(responses: Array<{ mark: number | null; notesCopiedAt: Date | null }>): string | null {
+  const marked = responses.filter((r) => r.mark !== null);
+  if (!marked.length || marked.some((r) => !r.notesCopiedAt)) return null;
+  return new Date(Math.max(...marked.map((r) => r.notesCopiedAt!.getTime()))).toISOString();
 }

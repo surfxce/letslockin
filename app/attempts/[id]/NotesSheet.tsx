@@ -2,8 +2,9 @@
 
 import "./attempt.css";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
+import { setNotesCopied } from "@/app/attempts/notes-actions";
 import { Icon } from "@/app/ui/Icon";
 import { MISSED_MARK, PARTIAL_MARK, WRONG_MARK, type NotesSheet as Sheet } from "@/lib/notes-sheet";
 import { plainInline } from "@/lib/summary-edit";
@@ -18,6 +19,7 @@ export function NotesSheet({
   pending = 0,
   manual = false,
   fileName,
+  copy,
 }: {
   /** buildNotesSheet(…) from lib/notes-sheet.ts, built on the server. */
   sheet: Sheet;
@@ -27,10 +29,22 @@ export function NotesSheet({
   manual?: boolean;
   /** For "Download .md": notesFileName(…) from lib/notes-sheet.ts. */
   fileName: string;
+  /** The marked answers this sheet covers, and when it was last said to be copied down (null: not yet). */
+  copy?: { responseIds: string[]; at: string | null };
 }) {
   const [fallback, setFallback] = useState<string | null>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
   const has = sheet.count > 0;
+  const [copiedAt, setCopiedAt] = useState<string | null>(copy?.at ?? null);
+  const [saving, startSaving] = useTransition();
+  const done = !!copiedAt;
+
+  function markCopied(copied: boolean) {
+    if (!copy) return;
+    // Shown at once; the server's time replaces it.
+    setCopiedAt(copied ? new Date().toISOString() : null);
+    startSaving(async () => setCopiedAt(await setNotesCopied(copy.responseIds, copied)));
+  }
 
   const later = manual ? "once the rest of the marking is pasted in" : "as marking finishes";
 
@@ -46,7 +60,7 @@ export function NotesSheet({
   }
 
   return (
-    <section className="ns" aria-labelledby="ns-title">
+    <section className={`ns${done && has ? " ns-done" : ""}`} aria-labelledby="ns-title">
       <div className="ns-head">
         <div className="ns-titles">
           <h2 id="ns-title" className="ns-title">
@@ -139,6 +153,27 @@ export function NotesSheet({
             ))}
           </div>
           {pending > 0 && <p className="ns-note">More will appear {later}.</p>}
+          {copy && copy.responseIds.length > 0 && (
+            <div className="ns-copied">
+              {done ? (
+                <>
+                  <span className="ns-copied-yes">
+                    <Icon name="check" size={15} />
+                    Copied into your notes
+                    {copiedAt && ` · ${new Date(copiedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`}
+                  </span>
+                  <button type="button" className="btn sm quiet" disabled={saving} onClick={() => markCopied(false)}>
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn primary" disabled={saving} onClick={() => markCopied(true)}>
+                  <Icon name="check" size={14} />
+                  Yes, I&apos;ve copied this down
+                </button>
+              )}
+            </div>
+          )}
         </>
       ) : pending > 0 ? (
         <p className="ns-note">What you missed and got wrong will appear here {later}.</p>

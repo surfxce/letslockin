@@ -58,6 +58,10 @@ export const PhoneSnapshotSchema = z.object({
       ),
       /** The questions a sitting would ask now, as the computer picks them. */
       nextSitting: z.array(Id),
+      /** As the lecture table shows them: the drill score, sittings done, next one due. */
+      drillScore: z.number().nullable(),
+      sittingCount: z.number().int(),
+      dueAt: When.nullable(),
     }),
   ),
   sittings: z.array(
