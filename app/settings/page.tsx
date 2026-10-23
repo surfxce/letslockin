@@ -2,6 +2,8 @@ import { AutoFlashcardsToggle } from "@/app/ak/DeckControls";
 import Link from "next/link";
 
 import { AppUpdate } from "@/app/settings/AppUpdate";
+import { PhoneLink } from "@/app/settings/PhoneLink";
+import { phoneStatus } from "@/app/settings/phone-actions";
 import { CloudSettings } from "@/app/settings/CloudSettings";
 import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
@@ -107,6 +109,9 @@ export default async function SettingsPage() {
 
       <h2 id="ak">AK · Anki Killer</h2>
       <AutoFlashcardsToggle enabled={settings.autoFlashcards} />
+
+      <h2 id="phone">iPhone</h2>
+      <PhoneLink initial={await phoneStatus()} />
 
       <h2 id="local">Offline AI on this computer</h2>
       <p className="muted small" style={{ marginTop: -4 }}>

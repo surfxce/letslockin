@@ -661,3 +661,12 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
   background: var(--danger); box-shadow: 0 0 0 2px var(--bg);
 }
 .update-building { color: var(--text-soft); }
+
+/* Settings → iPhone: the pairing code beside what to do with it. */
+.phone-pair { display: flex; gap: 20px; align-items: flex-start; padding: 16px; margin: 8px 0; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg-soft); }
+.phone-qr { flex: none; width: 196px; height: 196px; border-radius: 8px; overflow: hidden; background: #fff; }
+.phone-qr svg { display: block; width: 100%; height: 100%; }
+.phone-pair-text { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.phone-pair-text p { margin: 0; }
+.phone-paired { display: flex; gap: 6px; align-items: center; font-weight: 500; color: var(--t-green); }
+@media (max-width: 640px) { .phone-pair { flex-direction: column; } }

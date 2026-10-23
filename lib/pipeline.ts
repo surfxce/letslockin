@@ -3,6 +3,7 @@ import { allocate } from "@/lib/engines/allocation";
 import { geometricMean } from "@/lib/engines/geomean";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import type { LlmProvider } from "@/lib/llm/provider";
+import type { Marking } from "@/lib/llm/schemas";
 import { mergeSkipped } from "@/lib/parse/aims";
 import { getSettings } from "@/lib/settings";
 import { lectureDecks, sharingTitles } from "@/lib/slides";
@@ -192,8 +193,20 @@ export async function markResponse(responseId: string, provider: LlmProvider) {
     answerText: response.answerText,
     concepts,
   });
+  return applyMarking(responseId, marking);
+}
 
-  const allowed = new Set(concepts.map((c) => c.id));
+/**
+ * Saves a marking: the mark, the reply kept for tracing, and the gaps — then scores the
+ * sitting if it was the last answer waiting. Shared by the worker and by marks made on
+ * the phone (lib/phone/ingest.ts), which are validated against MarkingSchema first.
+ */
+export async function applyMarking(responseId: string, marking: Marking) {
+  const response = await prisma.response.findUniqueOrThrow({
+    where: { id: responseId },
+    include: { question: { include: { concepts: { select: { conceptId: true } } } } },
+  });
+  const allowed = new Set(response.question.concepts.map((qc) => qc.conceptId));
   await prisma.$transaction([
     prisma.response.update({
       where: { id: responseId },

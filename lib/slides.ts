@@ -173,3 +173,22 @@ export async function cropPng(png: Buffer, crop: { x: number; y: number; w: numb
   out.getContext("2d").drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
   return out.toBuffer("image/png");
 }
+
+/**
+ * A slide picture for the phone: no wider than a phone screen needs, as a JPEG, so a
+ * whole library's pictures fit comfortably on it for studying offline.
+ */
+export async function phoneJpeg(png: Buffer, maxWidth = 1400): Promise<Buffer> {
+  const { createCanvas, loadImage } = await canvas();
+  const image = await loadImage(png);
+  const scale = Math.min(1, maxWidth / image.width);
+  const w = Math.max(1, Math.round(image.width * scale));
+  const h = Math.max(1, Math.round(image.height * scale));
+  const out = createCanvas(w, h);
+  const ctx = out.getContext("2d");
+  // JPEG has no transparency: what was see-through is the page's white.
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(image, 0, 0, w, h);
+  return out.toBuffer("image/jpeg", 82);
+}

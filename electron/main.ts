@@ -20,10 +20,14 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from "electron";
 
 import { isExportPath, safeFileName } from "../lib/export";
+import { startPhoneGateway, type PhoneGateway } from "./phone-gateway";
 import { checkForUpdate, installUpdate, type Manifest } from "./updates";
 
 const DEV = process.env.LOCKIN_DEV === "1";
 const PORT = Number(process.env.LOCKIN_PORT ?? 3579);
+/** Where a paired iPhone reaches this computer on the local network (electron/phone-gateway.ts). */
+const PHONE_PORT = Number(process.env.LOCKIN_PHONE_PORT ?? 47821);
+let phoneGateway: PhoneGateway | null = null;
 
 const PACKAGED = app.isPackaged;
 
@@ -80,6 +84,7 @@ function childEnv(): NodeJS.ProcessEnv {
     ...(PACKAGED ? { DATABASE_URL: `file:${path.join(DATA, "lockin.db")}` } : {}),
     PORT: String(PORT),
     HOSTNAME: "127.0.0.1",
+    LOCKIN_PHONE_PORT: String(PHONE_PORT),
   };
 }
 
@@ -399,6 +404,9 @@ app.whenReady().then(async () => {
       );
     }
 
+    // Listens on the network only while a phone is paired; it asks the server.
+    phoneGateway = startPhoneGateway({ serverPort: PORT, phonePort: PHONE_PORT });
+
     await waitForPort(PORT);
     await createWindow();
     setTimeout(() => void checkReminders(), 15_000);
@@ -461,6 +469,8 @@ app.whenReady().then(async () => {
 });
 
 function shutdown() {
+  phoneGateway?.stop();
+  phoneGateway = null;
   for (const child of children) child.kill("SIGTERM");
 }
 app.on("window-all-closed", () => {
