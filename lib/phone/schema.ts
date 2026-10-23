@@ -42,6 +42,18 @@ export const PhoneSnapshotSchema = z.object({
     })
     .nullable()
     .optional(),
+  /** How the phone may have a handwritten answer typed out itself, as `marking`, by a
+   *  model that sees pictures; null to ask the computer (the "handwriting" request). */
+  handwriting: z
+    .object({
+      kind: z.enum(["anthropic", "openai"]),
+      label: z.string(),
+      promptVersion: z.string(),
+      prompt: z.string(),
+      request: z.object({ url: z.string(), headers: z.record(z.string(), z.string()), body: z.unknown() }),
+    })
+    .nullable()
+    .optional(),
   courses: z.array(z.object({ id: Id, code: z.string(), title: z.string(), examDate: When.nullable() })),
   lectures: z.array(
     z.object({
@@ -212,6 +224,12 @@ export const SyncRequestSchema = z.object({
   reviews: z.array(PhoneReviewSchema).max(20_000).default([]),
   exams: z.array(PhoneExamSchema).max(200).default([]),
   vivas: z.array(PhoneVivaSchema).max(200).default([]),
+});
+
+/** Photos of a handwritten answer (base64 JPEGs, in page order), for this computer's AI to type out. */
+export const HandwritingRequestSchema = z.object({
+  questionId: Id,
+  photos: z.array(z.string().min(100).max(12_000_000)).min(1).max(8),
 });
 
 /** The viva examiner's next line, asked of this computer by a phone holding a viva. */

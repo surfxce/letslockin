@@ -5,6 +5,8 @@ import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/p
 import { mixedLectures, mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
+import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
+import type { HandwritingRead } from "@/lib/handwriting/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -505,6 +507,30 @@ export class LocalProvider implements LlmProvider {
       maxTokens: 300,
       temperature: 0.3,
     });
+  }
+
+  async writeLesson(input: LessonInput) {
+    return this.run({
+      prompt: "write-lesson",
+      vars: (summary) => lessonVars(input, summary),
+      transcript: input.summary,
+      schema: {
+        type: "object",
+        properties: {
+          explanation: text(3000),
+          checks: { type: "array", minItems: 3, maxItems: 3, items: { type: "object", properties: { question: text(400), answer: text(600) } } },
+        },
+      },
+      zod: LessonSchema,
+      maxTokens: 1800,
+      temperature: 0.4,
+    });
+  }
+
+  /** Handwriting is beyond the small models that run here: the student is told to use
+   *  a cloud AI for it rather than given a poor reading to mark. */
+  async readHandwriting(): Promise<HandwritingRead> {
+    throw new Error("The offline model can't read handwriting well enough to mark it. Choose a cloud AI in Settings for this — Claude, Gemini or ChatGPT.");
   }
 
   async mark(input: MarkInput) {

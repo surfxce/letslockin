@@ -29,12 +29,15 @@ export class AntigravityCliProvider extends PromptProvider {
 
   protected async complete(prompt: string, opts: CallOptions): Promise<Reply> {
     const pdfs = opts.slides?.decks.filter((d) => d.pdf && d.pages > 0) ?? [];
-    const dirs = [...new Set(pdfs.map((d) => path.dirname(d.file)))];
+    const photos = opts.images ?? [];
+    const dirs = [...new Set([...pdfs.map((d) => path.dirname(d.file)), ...photos.map((f) => path.dirname(f))])];
     // The long prompt goes in on stdin; the short instruction on -p is where "@file"
     // attachments are read, and stdin comes before it.
     const instruction = pdfs.length
       ? `The slide decks: ${pdfs.map((d) => `@${d.file}`).join(" ")} — read every page, then follow the instructions above.`
-      : "Follow the instructions above.";
+      : photos.length
+        ? `The photos, in order: ${photos.map((f) => `@${f}`).join(" ")} — look at every one, then follow the instructions above.`
+        : "Follow the instructions above.";
     const args = [
       "--output-format",
       "json",

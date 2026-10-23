@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/app/ui/Icon";
 import type { PlanItem, PlanKind } from "@/lib/today";
 
-const ICON: Record<PlanKind, IconName> = { cards: "layers", laq: "pen", weak: "target", "new-cards": "sparkles", exam: "clock" };
+const ICON: Record<PlanKind, IconName> = { cards: "layers", laq: "pen", weak: "target", lesson: "lightbulb", "new-cards": "sparkles", exam: "clock" };
 
 export function minutesLabel(m: number): string {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;

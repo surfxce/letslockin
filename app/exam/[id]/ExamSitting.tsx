@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { handInExam, saveExamChoice, saveExamDraft } from "@/app/exam/actions";
 import "@/app/ui/desktop";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
+import { HandwritingButton, HandwritingNote, selectIn, withHandwriting, type HandwritingResult } from "@/app/ui/Handwriting";
 import { Markdown } from "@/app/ui/render";
 import { LETTERS } from "@/lib/exam/pick";
 
@@ -15,6 +16,8 @@ const SAVE_AFTER_MS = 1000;
 export interface SittingItem {
   id: string;
   kind: "MCQ" | "LAQ";
+  /** The LAQ asked, for reading a handwritten answer to it. */
+  questionId: string | null;
   number: number;
   stem: string;
   options: string[];
@@ -85,6 +88,8 @@ export function ExamSitting({
   const latest = useRef(texts);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const done = useRef(false);
+  const [reads, setReads] = useState<Record<string, HandwritingResult>>({});
+  const boxes = useRef(new Map<string, HTMLTextAreaElement>());
 
   const saveText = useCallback(async (id: string) => {
     clearTimeout(timers.current.get(id));
@@ -203,6 +208,10 @@ export function ExamSitting({
               </div>
               <Markdown md={q.stem} className="laq-stem" />
               <textarea
+                ref={(el) => {
+                  if (el) boxes.current.set(q.id, el);
+                  else boxes.current.delete(q.id);
+                }}
                 name={`answer.${q.id}`}
                 value={texts[q.id] ?? ""}
                 onChange={(e) => type(q.id, e.target.value)}
@@ -212,7 +221,23 @@ export function ExamSitting({
               />
               <div className="af-meta small faint">
                 {words(texts[q.id] ?? "")} words
+                {q.questionId && (
+                  <HandwritingButton
+                    questionId={q.questionId}
+                    onRead={(read) => {
+                      type(q.id, withHandwriting(latest.current[q.id] ?? "", read.text));
+                      setReads((all) => ({ ...all, [q.id]: read }));
+                    }}
+                  />
+                )}
               </div>
+              {reads[q.id] && (
+                <HandwritingNote
+                  read={reads[q.id]}
+                  onFind={(word) => selectIn(boxes.current.get(q.id) ?? null, word)}
+                  onClose={() => setReads(({ [q.id]: _gone, ...rest }) => rest)}
+                />
+              )}
             </div>
           ))}
         </section>

@@ -5,6 +5,7 @@ import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import type { LlmProvider } from "@/lib/llm/provider";
 import type { Marking } from "@/lib/llm/schemas";
 import { mergeSkipped } from "@/lib/parse/aims";
+import { queueLessons } from "@/lib/lessons/service";
 import { getSettings } from "@/lib/settings";
 import { lectureDecks, sharingTitles } from "@/lib/slides";
 import { lectureSources, readSlideNotes, slideNotesText, withSlideNotes, type SlideNote } from "@/lib/sources";
@@ -227,6 +228,10 @@ export async function applyMarking(responseId: string, marking: Marking) {
   ]);
 
   await scoreAttemptIfMarked(response.attemptId);
+  // A concept missed again may now earn a mini-lesson. Never at the cost of the mark.
+  if (marking.gaps.length) {
+    await queueLessons().catch((err) => console.warn(`couldn't queue lessons: ${err instanceof Error ? err.message : err}`));
+  }
   return { mark: marking.mark, gaps: marking.gaps.length };
 }
 

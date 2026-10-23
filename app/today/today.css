@@ -17,6 +17,7 @@
 .today-icon.k-laq { background: var(--t-purple-bg, var(--bg-soft)); color: var(--t-purple, var(--text-soft)); }
 .today-icon.k-weak { background: var(--t-orange-bg); color: var(--t-orange); }
 .today-icon.k-exam { background: var(--t-green-bg); color: var(--t-green); }
+.today-icon.k-lesson { background: var(--t-yellow-bg); color: var(--t-yellow); }
 .today-text { display: flex; flex-direction: column; min-width: 0; }
 .today-title { font-weight: 550; }
 .today-detail { font-size: 13px; color: var(--text-soft); }

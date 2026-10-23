@@ -32,7 +32,7 @@ targets:
         NSLocalNetworkUsageDescription: Lockin syncs your lectures with Lockin on your computer over your Wi-Fi.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSCameraUsageDescription: Scan the pairing code shown in Lockin's Settings on your computer.
+        NSCameraUsageDescription: Scan the pairing code shown in Lockin's Settings on your computer, and the pages of answers you write on paper.
         # Summaries keep reading aloud with the screen locked.
         UIBackgroundModes: [audio]
         # A viva is answered out loud.

@@ -64,6 +64,8 @@ export type PromptName =
   | "transcribe-audio"
   | "fix-transcript"
   | "viva-turn"
+  | "write-lesson"
+  | "read-handwriting"
   | "mark"
   | "parse-past-paper"
   | "sort-files"

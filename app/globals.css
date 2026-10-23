@@ -492,6 +492,7 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .answer { padding: 20px 22px; border-radius: 8px; background: var(--bg); box-shadow: var(--shadow); }
 .answer + .answer { margin-top: 16px; }
 .answer textarea { width: 100%; min-height: 220px; margin-top: 12px; font-size: 15px; background: var(--bg); }
+.answer .af-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; min-height: 18px; flex-wrap: wrap; }
 .sticky-foot { position: sticky; bottom: 0; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(6px); padding: 14px 0; margin-top: 18px; border-top: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------ slide pictures */

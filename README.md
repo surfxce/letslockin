@@ -121,7 +121,22 @@ aloud), listens to your answer, follows up — at most twice — on anything it 
 moves on. Answer out loud or type; a spoken answer is turned into text you can correct
 before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac. Each
 question's exchange is marked like a sitting answer and counts towards its lecture's drill
-score. The iPhone app holds vivas too, with Apple's on-device speech recognition.
+score. The iPhone app holds vivas too, with Apple's on-device speech recognition. The
+examiner speaks in the best voice installed (Premium and Enhanced first, never the Mac's
+novelty voices), or pick one in Settings → Viva voice — where a natural neural voice can
+also be downloaded once (about 1 GB, macOS 15 or later, in the Mac app).
+
+**Handwritten answers.** Exams on paper? Write the answer by hand, then *Add photos of a
+handwritten answer* under its box (in a sitting or an exam). Your AI — Claude, Gemini,
+ChatGPT, not the computer's text recognition — types it out as written, without fixing
+anything, and the words it wasn't sure of are listed to check before you submit. On the
+iPhone, *Wrote it on paper?* scans the pages with the camera. Photos are deleted once read.
+
+**Mini-lessons.** When the marker says you've missed or got the same concept wrong in two
+or more answers, Lockin writes a short lesson on just that — a few paragraphs from the
+lecture aimed at what went wrong, and three quick questions to check yourself — and puts it
+in Today. *Keep these as AK cards* adds the questions to the lecture's deck. Progress lists
+your weak spots.
 
 **Lecture recordings.** Add a lecture's audio or video (*.mp4 .m4a .mp3 .mov*…) on its page,
 with a new lecture, or in a folder import, and it's transcribed before the lecture is
@@ -201,9 +216,10 @@ calls, run the worker with `LOCKIN_PROVIDER=fake`.
 `ios/` is a companion iPhone app for studying on the go: summaries with their slides, LAQ
 sittings and AK reviews, synced straight with this computer over Wi-Fi. Pair it in
 Settings → iPhone with a QR code; there's no account and no cloud. With an API key, the
-phone marks answers itself and asks the viva examiner itself; with Claude Code, Codex,
+phone marks answers, asks the viva examiner and reads handwriting itself; with Claude Code, Codex,
 Antigravity or an offline model, the computer marks them at the next sync, and a viva's
-examiner is asked on the computer over Wi-Fi. See [ios/README.md](ios/README.md) for pairing, and
+examiner and handwriting go to the computer over Wi-Fi. *Listen* reads a summary aloud, a
+section at a time, with the screen locked. See [ios/README.md](ios/README.md) for pairing, and
 for installing it on your own phone from Xcode with a free Apple ID.
 
 ## Offline AI

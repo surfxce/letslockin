@@ -144,6 +144,7 @@ model Concept {
   gaps       Gap[]
   reviews    Review[]
   paperItems PaperItemConcept[]
+  lessons    Lesson[]
 
   @@index([courseId])
   @@index([lectureId])
@@ -466,4 +467,26 @@ model Viva {
   finishedAt DateTime?
 
   @@index([createdAt])
+}
+
+/// A mini-lesson on a concept that keeps coming up in marked answers as missed or wrong:
+/// a short explanation aimed at exactly that, and a few questions to check it stuck.
+model Lesson {
+  id            String    @id @default(cuid())
+  conceptId     String
+  lectureId     String?
+  /// Markdown.
+  explanation   String
+  /// JSON [{ question, answer }].
+  checks        String
+  /// Answers with a gap on the concept when it was written: another waits for more.
+  gapCount      Int
+  promptVersion String
+  model         String?
+  createdAt     DateTime  @default(now())
+  doneAt        DateTime?
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
 }

@@ -6,7 +6,7 @@ import { fromBase64Url, open, replyAad, requestAad, seal } from "@/lib/phone/cry
  * body, sealed JSON { t: sent at (ms), r: request id, body }. The reply is sealed to
  * that request id, so it can't be swapped for another.
  */
-export const PHONE_OPS = ["hello", "sync", "slide", "viva"] as const;
+export const PHONE_OPS = ["hello", "sync", "slide", "viva", "handwriting"] as const;
 export type PhoneOp = (typeof PHONE_OPS)[number];
 
 export function isPhoneOp(op: string): op is PhoneOp {

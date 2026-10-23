@@ -5,6 +5,8 @@ import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/p
 import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
+import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
+import { HandwritingSchema, handwritingVars, type HandwritingInput } from "@/lib/handwriting/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -326,6 +328,22 @@ export class ClaudeCliProvider implements LlmProvider {
 
   vivaTurn(input: VivaTurnInput) {
     return this.call("viva-turn", vivaVars(input), VivaMoveSchema);
+  }
+
+  writeLesson(input: LessonInput) {
+    return this.call("write-lesson", lessonVars(input), LessonSchema);
+  }
+
+  /** Claude opens the photos itself, with Read, from their folder and nowhere else. */
+  readHandwriting(input: HandwritingInput) {
+    const list = input.pages.map((f, i) => `- Page ${i + 1}: ${f}`).join("\n");
+    const append =
+      `\n\n---\n\nThe photos are image files you can open with the Read tool, in page order:\n\n${list}\n\n` +
+      `Look at every one. Read nothing else. Then reply with the JSON described above.`;
+    return this.call("read-handwriting", handwritingVars(input), HandwritingSchema, {
+      readDirs: [...new Set(input.pages.map((f) => path.dirname(f)))],
+      append,
+    });
   }
 
   mark(input: MarkInput) {

@@ -46,7 +46,18 @@ export function phoneVivaTemplate(): Promise<PhoneMarkingTemplate | null> {
   return phonePromptTemplate("viva-turn");
 }
 
-async function phonePromptTemplate(promptName: "mark" | "viva-turn"): Promise<PhoneMarkingTemplate | null> {
+/**
+ * The same, for typing out a handwritten answer — only with a model that sees pictures.
+ * The phone puts each photo in the message itself, before the prompt: as an "image"
+ * block for Anthropic, an "image_url" part for the others.
+ */
+export async function phoneHandwritingTemplate(): Promise<PhoneMarkingTemplate | null> {
+  const s = await getSettings();
+  if (s.apiService !== "anthropic" && !s.apiVision) return null;
+  return phonePromptTemplate("read-handwriting");
+}
+
+async function phonePromptTemplate(promptName: "mark" | "viva-turn" | "read-handwriting"): Promise<PhoneMarkingTemplate | null> {
   const s = await getSettings();
   if (s.mode !== "auto" || s.cloudEngine !== "api" || !(await phoneMayMarkWithKey())) return null;
   const key = await getApiKey();

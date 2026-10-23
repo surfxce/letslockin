@@ -225,6 +225,18 @@ final class AppModel {
         return Device(name: UIDevice.current.name, app: version)
     }
 
+    /// Types out a handwritten answer from photos of it: with the API key here when the
+    /// computer shares one whose model sees pictures, else by the computer's own AI.
+    func typeOutHandwriting(questionId: String, question: String, photos: [Data]) async throws -> HandwritingRead {
+        if let template = snapshot?.handwriting {
+            return try await readHandwriting(photos: photos, question: question, template: template)
+        }
+        guard let client = makeClient() else {
+            throw MarkingError.service("Pair this phone with Lockin on your computer to have handwriting read.")
+        }
+        return try await client.handwriting(questionId: questionId, photos: photos)
+    }
+
     private func makeClient() -> SyncClient? {
         if let client { return client }
         guard let pairing, let made = SyncClient(pairing: pairing, device: device) else { return nil }

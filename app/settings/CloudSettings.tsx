@@ -225,7 +225,7 @@ export function CloudSettings(props: {
                   />
                   <span>
                     This model can read images
-                    <span className="small muted"> — so it sees your slides</span>
+                    <span className="small muted"> — so it sees your slides, and can read handwritten answers</span>
                   </span>
                 </label>
               </>

@@ -5,6 +5,8 @@ import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import type { MixedInput } from "@/lib/mixed/schema";
 import type { FixInput, Fixes } from "@/lib/recordings/schema";
 import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
+import type { LessonDraft, LessonInput } from "@/lib/lessons/schema";
+import type { HandwritingInput, HandwritingRead } from "@/lib/handwriting/schema";
 import type { Answer, Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 import type { LaqStyle } from "@/lib/modes";
 
@@ -155,6 +157,11 @@ export interface LlmProvider {
   fixTranscript(input: FixInput): Promise<Fixes>;
   /** The viva examiner's next line after an answer: a follow-up, or moving on. Quick. */
   vivaTurn(input: VivaTurnInput): Promise<VivaMove>;
+  /** A mini-lesson on a concept that keeps being missed or got wrong. */
+  writeLesson(input: LessonInput): Promise<LessonDraft>;
+  /** Types out a handwritten answer from photos of it, as written. Needs an AI that
+   *  sees pictures; one that can't says so. */
+  readHandwriting(input: HandwritingInput): Promise<HandwritingRead>;
   mark(input: MarkInput): Promise<Marking>;
   parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems>;
   /** Groups a folder's files into lectures. Quick and cheap: it reads only openings. */

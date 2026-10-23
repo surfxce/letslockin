@@ -35,6 +35,10 @@ struct SittingView: View {
                                 .focused($focused, equals: question.id)
                                 .padding(10)
                                 .background(RoundedRectangle(cornerRadius: 10).fill(Color(.secondarySystemBackground)))
+                            HandwritingControl(questionId: question.id, question: question.stem) { read in
+                                let answer = binding(draftId, question.id)
+                                answer.wrappedValue = withHandwriting(answer.wrappedValue, read.text)
+                            }
                         }
                     }
                     Button {

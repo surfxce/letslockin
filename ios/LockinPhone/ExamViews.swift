@@ -236,6 +236,11 @@ struct ExamSittingView: View {
                                     .focused($focused, equals: item.id)
                                     .padding(10)
                                     .background(RoundedRectangle(cornerRadius: 10).fill(Color(.secondarySystemBackground)))
+                                if let question {
+                                    HandwritingControl(questionId: question.id, question: question.stem) { read in
+                                        model.setExamAnswer(item.id, withHandwriting(model.examAnswer(item.id), read.text))
+                                    }
+                                }
                             }
                         }
                     }

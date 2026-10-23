@@ -3,7 +3,8 @@ import { readCardImage } from "@/lib/flashcards/images";
 import { parseCrop } from "@/lib/markdown";
 import { ingestExam, ingestReviews, ingestSitting, ingestViva, type SittingOutcome } from "@/lib/phone/ingest";
 import { computerName, touchPairing, type Pairing } from "@/lib/phone/pairing";
-import { HelloRequestSchema, SlideRequestSchema, SyncRequestSchema, VivaTurnRequestSchema } from "@/lib/phone/schema";
+import { HandwritingRequestSchema, HelloRequestSchema, SlideRequestSchema, SyncRequestSchema, VivaTurnRequestSchema } from "@/lib/phone/schema";
+import { relayHandwriting } from "@/lib/handwriting/service";
 import { buildSnapshot } from "@/lib/phone/snapshot";
 import { cropPng, phoneJpeg, slidePng } from "@/lib/slides";
 import { relayVivaTurn } from "@/lib/viva/service";
@@ -106,6 +107,19 @@ export async function handleViva(_pairing: Pairing, body: unknown): Promise<Phon
   if (!parsed.success) return fail("That viva request couldn't be read. Update both apps.");
   try {
     return { kind: "json", value: { ok: true, ...(await relayVivaTurn(parsed.data)) } };
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** A handwritten answer typed out by this computer's AI, for a phone that can't ask one itself. */
+export async function handleHandwriting(_pairing: Pairing, body: unknown): Promise<PhoneReply> {
+  const parsed = HandwritingRequestSchema.safeParse(body);
+  if (!parsed.success) return fail("Those photos couldn't be read. Update both apps.");
+  try {
+    const photos = parsed.data.photos.map((p) => new Uint8Array(Buffer.from(p, "base64")));
+    // Under the gateway's three minutes, so the phone hears why rather than a timeout.
+    return { kind: "json", value: { ok: true, ...(await relayHandwriting(parsed.data.questionId, photos, 150_000)) } };
   } catch (err) {
     return fail(err instanceof Error ? err.message : String(err));
   }

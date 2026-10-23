@@ -12,8 +12,10 @@ export const SECONDS_PER_REVIEW = 10;
 export const SECONDS_PER_NEW_CARD = 25;
 /** New cards suggested a day, across every deck. */
 export const NEW_CARDS_PER_DAY = 20;
+/** Minutes a mini-lesson takes: a read and three questions. */
+export const MINUTES_PER_LESSON = 5;
 
-export type PlanKind = "cards" | "laq" | "weak" | "new-cards" | "exam";
+export type PlanKind = "cards" | "laq" | "weak" | "lesson" | "new-cards" | "exam";
 
 export interface PlanItem {
   id: string;
@@ -61,6 +63,16 @@ export interface PlanInput {
   cardsNew: number;
   /** When an exam was last sat, if ever. */
   lastExamAt: Date | null;
+  /** Mini-lessons written for concepts that keep being missed, not yet done. */
+  lessons?: PlanLesson[];
+}
+
+export interface PlanLesson {
+  id: string;
+  concept: string;
+  courseId: string | null;
+  /** Marked answers that missed it. */
+  gapCount: number;
 }
 
 const DAY = 86_400_000;
@@ -127,6 +139,21 @@ export function buildPlan(input: PlanInput): Plan {
       href: `/lectures/${l.id}?tab=laqs`,
       urgent: false,
       rank: 600 + examWeight(examDays.get(l.courseId)) * 20 - l.lastScore!,
+    });
+  }
+
+  // Short, and aimed at exactly what keeps going wrong: before a weak lecture's whole sitting.
+  for (const lesson of input.lessons ?? []) {
+    const weight = examWeight(lesson.courseId ? examDays.get(lesson.courseId) : undefined);
+    candidates.push({
+      id: `lesson:${lesson.id}`,
+      kind: "lesson",
+      title: `Mini-lesson: ${lesson.concept}`,
+      detail: `Missed in ${lesson.gapCount} answers — a short explanation and three quick questions`,
+      minutes: MINUTES_PER_LESSON,
+      href: `/lessons/${lesson.id}`,
+      urgent: false,
+      rank: 650 + weight * 20 + Math.min(lesson.gapCount, 10),
     });
   }
 
@@ -199,13 +226,19 @@ export async function todayPlan(now = new Date()): Promise<Plan> {
     import("@/lib/settings"),
     import("@/lib/engines/mastery"),
   ]);
-  const [settings, rows, courses, cardsDue, cardsNew, lastExam] = await Promise.all([
+  const [settings, rows, courses, cardsDue, cardsNew, lastExam, lessons] = await Promise.all([
     getSettings(),
     lectureRows(),
     prisma.course.findMany({ select: { id: true, code: true, examDate: true } }),
     prisma.flashcard.count({ where: { suspended: false, state: { not: "new" }, dueAt: { lte: now } } }),
     prisma.flashcard.count({ where: { suspended: false, state: "new" } }),
     prisma.exam.findFirst({ where: { submittedAt: { not: null } }, orderBy: { submittedAt: "desc" }, select: { submittedAt: true } }),
+    prisma.lesson.findMany({
+      where: { doneAt: null },
+      orderBy: { createdAt: "asc" },
+      take: 5,
+      select: { id: true, gapCount: true, concept: { select: { name: true, lecture: { select: { courseId: true } } } } },
+    }),
   ]);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const examDays = new Map<string, number>();
@@ -233,5 +266,6 @@ export async function todayPlan(now = new Date()): Promise<Plan> {
     cardsDue,
     cardsNew,
     lastExamAt: lastExam?.submittedAt ?? null,
+    lessons: lessons.map((l) => ({ id: l.id, concept: l.concept.name, courseId: l.concept.lecture?.courseId ?? null, gapCount: l.gapCount })),
   });
 }

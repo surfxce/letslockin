@@ -6,6 +6,8 @@ import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import type { MixedInput } from "@/lib/mixed/schema";
 import type { FixInput, Fixes } from "@/lib/recordings/schema";
 import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
+import type { LessonDraft, LessonInput } from "@/lib/lessons/schema";
+import type { HandwritingInput, HandwritingRead } from "@/lib/handwriting/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -210,6 +212,30 @@ export class FakeProvider implements LlmProvider {
       return { move: "probe", say: `Can you say more about this: ${input.criteria[0].point.toLowerCase()}?` };
     }
     return { move: "next", say: "Okay, thank you." };
+  }
+
+  async writeLesson(input: LessonInput): Promise<LessonDraft> {
+    await this.wait();
+    this.lastPromptVersion = "write-lesson@fake";
+    const first = input.gaps[0]?.text ?? input.conceptDefinition;
+    return {
+      explanation: `You keep missing this about **${input.conceptName}**: ${first}\n\n${input.conceptDefinition}. In ${input.lectureTitle}, it matters because it explains the rest of the mechanism.`,
+      checks: [
+        { question: `What is ${input.conceptName}?`, answer: input.conceptDefinition },
+        { question: `Why does ${input.conceptName} matter in ${input.lectureTitle}?`, answer: "It explains the mechanism." },
+        { question: `What did you keep missing about ${input.conceptName}?`, answer: first },
+      ],
+    };
+  }
+
+  async readHandwriting(input: HandwritingInput): Promise<HandwritingRead> {
+    await this.wait();
+    this.lastPromptVersion = "read-handwriting@fake";
+    const n = input.pages.length;
+    return {
+      text: `IgA nephropathy: IgA1 immune complexes deposit in the mesangium → mesangial proliferation.\n- Visible haematuria 1–2 days after a sore throat\n- [illegible] on biopsy\n\n(Read from ${n} photo${n === 1 ? "" : "s"}.)`,
+      unclear: ["IgA1"],
+    };
   }
 
   async mark(input: MarkInput): Promise<Marking> {

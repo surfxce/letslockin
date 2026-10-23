@@ -7,6 +7,7 @@ import { LectureMap } from "@/app/progress/LectureMap";
 import { ScoreChart } from "@/app/progress/ScoreChart";
 import { Icon } from "@/app/ui/Icon";
 import { prisma } from "@/lib/db";
+import { weakSpots } from "@/lib/lessons/service";
 import { progressData } from "@/lib/progress/data";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,13 @@ export default async function ProgressPage({ searchParams }: { searchParams: Pro
   const { course: courseParam } = await searchParams;
   const courses = await prisma.course.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, code: true, title: true } });
   const course = courses.find((c) => c.id === courseParam);
-  const data = await progressData(course?.id);
+  const [data, allSpots, lessons] = await Promise.all([
+    progressData(course?.id),
+    weakSpots(),
+    prisma.lesson.findMany({ where: { doneAt: null }, select: { id: true, conceptId: true } }),
+  ]);
+  const spots = allSpots.filter((w) => !course || w.courseId === course.id).slice(0, 8);
+  const lessonFor = new Map(lessons.map((l) => [l.conceptId, l.id]));
   const s = data.stats;
   const tiles: Array<[string | number, string]> = [
     [`${s.prepared}/${s.lectures}`, "Lectures prepared"],
@@ -122,6 +129,37 @@ export default async function ProgressPage({ searchParams }: { searchParams: Pro
         </p>
         <Heatmap rows={data.heat} multiCourse={!course && courses.length > 1} />
       </section>
+
+      {spots.length > 0 && (
+        <section className="pg-section">
+          <h2>Weak spots</h2>
+          <p className="pg-sub">
+            What the marker keeps saying you missed or got wrong, across different answers. Each gets a mini-lesson aimed at just that.{" "}
+            <Link href="/lessons" className="link">
+              All mini-lessons
+            </Link>
+          </p>
+          <ol className="pg-weak">
+            {spots.map((w) => {
+              const lesson = lessonFor.get(w.conceptId);
+              return (
+                <li key={w.conceptId}>
+                  <b>{w.name}</b>
+                  <span className="muted">
+                    {w.lectureTitle ?? ""} · in {w.answers} answers
+                  </span>
+                  {w.gaps[0] && <span className="why">“{w.gaps[0].text}”</span>}
+                  {lesson && (
+                    <Link href={`/lessons/${lesson}`} className="btn sm">
+                      <Icon name="lightbulb" size={13} /> Mini-lesson
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       <section className="pg-section">
         <h2>How your lectures relate</h2>

@@ -63,6 +63,7 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
           attemptId={attempt.id}
           questions={responses.map((r) => ({
             responseId: r.id,
+            questionId: r.questionId,
             number: numbers.get(r.questionId) ?? 0,
             stem: r.question.stem,
             draft: r.draftText,

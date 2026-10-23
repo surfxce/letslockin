@@ -93,6 +93,13 @@ public final class SyncClient: @unchecked Sendable {
         return try LockinJSON.decoder().decode(VivaMove.self, from: try await call("viva", body, timeout: 100))
     }
 
+    /// A handwritten answer typed out by the computer's AI, from photos of it (JPEGs, in
+    /// page order). Reading takes a while; the computer gives up before the phone does.
+    public func handwriting(questionId: String, photos: [Data]) async throws -> HandwritingRead {
+        let body = HandwritingRequest(questionId: questionId, photos: photos.map { $0.base64EncodedString() })
+        return try LockinJSON.decoder().decode(HandwritingRead.self, from: try await call("handwriting", body, timeout: 175))
+    }
+
     /// One slide picture (JPEG), by the reference the snapshot lists it under.
     public func slide(lectureId: String, ref: String) async throws -> Data {
         try await call("slide", ["lectureId": lectureId, "ref": ref], timeout: 60, image: true)
@@ -162,6 +169,12 @@ public final class SyncClient: @unchecked Sendable {
         if image && type == "json" { throw SyncError.computer("No picture came back.") }
         return plain
     }
+}
+
+/// Photos of a handwritten answer, for the computer's AI (HandwritingRequestSchema).
+struct HandwritingRequest: Encodable {
+    var questionId: String
+    var photos: [String]
 }
 
 /// What the computer needs to say the viva examiner's next line (VivaTurnRequestSchema).

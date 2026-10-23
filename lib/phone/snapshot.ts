@@ -5,7 +5,7 @@ import { feedbackFor, readRubric } from "@/lib/feedback";
 import { markVars } from "@/lib/llm/prompts";
 import { renderMarkdown, type SlideImages } from "@/lib/markdown";
 import { CLOUD_ENGINE_LABEL } from "@/lib/modes";
-import { phoneMarkingTemplate, phoneVivaTemplate } from "@/lib/phone/marking";
+import { phoneHandwritingTemplate, phoneMarkingTemplate, phoneVivaTemplate } from "@/lib/phone/marking";
 import { computerName } from "@/lib/phone/pairing";
 import type { PhoneSnapshot } from "@/lib/phone/schema";
 import { getSettings } from "@/lib/settings";
@@ -96,6 +96,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
   ]);
   const rowOf = new Map(rows.map((r) => [r.id, r]));
   const viva = await phoneVivaTemplate();
+  const handwriting = await phoneHandwritingTemplate();
 
   const waiting = new Set<string>();
   for (const job of markJobs) {
@@ -234,6 +235,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
     marking,
     computerMarker,
     viva,
+    handwriting,
     courses: courses.map((c) => ({ ...c, examDate: iso(c.examDate) })),
     lectures: phoneLectures,
     sittings,

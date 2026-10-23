@@ -18,9 +18,9 @@ async function main() {
   const { createPairing, findPairing, removePairing, setPhoneMayMarkWithKey, pairingLink } = await import("../lib/phone/pairing");
   const { seal, open, requestAad, replyAad, fromBase64Url } = await import("../lib/phone/crypto");
   const { openRequest } = await import("../lib/phone/protocol");
-  const { handleHello, handleSync, handleSlide } = await import("../lib/phone/handlers");
+  const { handleHello, handleSync, handleSlide, handleHandwriting } = await import("../lib/phone/handlers");
   const { PhoneSnapshotSchema } = await import("../lib/phone/schema");
-  const { phoneMarkingTemplate } = await import("../lib/phone/marking");
+  const { phoneHandwritingTemplate, phoneMarkingTemplate } = await import("../lib/phone/marking");
   const { setSetting, setApiKey } = await import("../lib/settings");
   try {
     await applyMigrations();
@@ -219,6 +219,18 @@ async function main() {
     assert.equal(await phoneMarkingTemplate(), null, "a service on this computer can't be reached from the phone");
     await setSetting("apiBaseUrl", "https://llm.example.com/v1/");
     assert.equal((await phoneMarkingTemplate())?.request.url, "https://llm.example.com/v1/chat/completions");
+    // Handwriting on the phone: only with a model that sees pictures.
+    await setSetting("apiVision", false);
+    assert.equal(await phoneHandwritingTemplate(), null, "a text-only model can't read handwriting");
+    await setSetting("apiVision", true);
+    const reading = await phoneHandwritingTemplate();
+    assert.ok(reading?.prompt.includes("{{question}}"));
+    assert.match(reading?.promptVersion ?? "", /^read-handwriting@/);
+    await setSetting("apiService", "anthropic");
+    await setSetting("apiVision", false);
+    assert.equal((await phoneHandwritingTemplate())?.kind, "anthropic", "Claude always sees pictures");
+    const unreadable = (await handleHandwriting(pairing, { questionId: question.id, photos: [] })) as { kind: "json"; value: Json };
+    assert.equal(unreadable.value.ok, false);
 
     // A reply sealed for one request can't be read as another's.
     const sealedReply = seal(key, Buffer.from("{}"), replyAad("sync", "request-a"));

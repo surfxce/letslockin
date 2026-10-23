@@ -61,6 +61,16 @@ describe("buildPlan", () => {
     expect(plan.unprepared).toBe(1);
   });
 
+  it("puts a waiting mini-lesson before a weak lecture's whole sitting", () => {
+    const plan = buildPlan({
+      ...base,
+      lectures: [lecture("weak", { lastScore: 3.2 })],
+      lessons: [{ id: "l1", concept: "Mesangial IgA", courseId: "c1", gapCount: 3 }],
+    });
+    expect(plan.items.map((i) => i.id)).toEqual(["lesson:l1", "weak:weak"]);
+    expect(plan.items[0]).toMatchObject({ kind: "lesson", href: "/lessons/l1", minutes: 5, title: "Mini-lesson: Mesangial IgA" });
+  });
+
   it("is empty when nothing is due", () => {
     expect(buildPlan({ ...base, lectures: [lecture("x")] }).items).toEqual([]);
   });

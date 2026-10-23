@@ -13,6 +13,7 @@ import {
   type CallOptions,
   type Reply,
 } from "@/lib/llm/base";
+import { photosNote } from "@/lib/handwriting/schema";
 import type { CloudModel } from "@/lib/modes";
 
 const TIMEOUT_MS = Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000);
@@ -62,6 +63,10 @@ export class AnthropicApiProvider extends PromptProvider {
         note = decksNote(opts.slides);
       }
     }
+    for (const file of opts.images ?? []) {
+      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: (await readFile(file)).toString("base64") } });
+    }
+    if (opts.images?.length) note += photosNote(opts.images.length);
     content.push({ type: "text", text: prompt + note });
 
     // Haiku has no server-side refusal fallback; Sonnet and Opus fall back to another
@@ -130,17 +135,19 @@ export class OpenAiCompatibleProvider extends PromptProvider {
     if (!this.model) throw new CloudError(`Choose which ${this.service} model to use, in Settings`);
     const pictures = opts.slides && this.seesSlides ? await slidePictures(opts.slides) : [];
     const total = opts.slides?.decks.reduce((n, d) => n + (d.pdf ? d.pages : 0), 0) ?? 0;
-    const content = pictures.length
-      ? [
-          { type: "text", text: prompt + picturesNote(pictures, total) },
-          ...(await Promise.all(
-            pictures.map(async (p) => ({
-              type: "image_url",
-              image_url: { url: `data:image/png;base64,${(await readFile(p.file)).toString("base64")}` },
-            })),
-          )),
-        ]
-      : prompt;
+    const photos = opts.images ?? [];
+    const image = async (file: string, type: string) => ({
+      type: "image_url",
+      image_url: { url: `data:${type};base64,${(await readFile(file)).toString("base64")}` },
+    });
+    const content =
+      pictures.length || photos.length
+        ? [
+            { type: "text", text: prompt + picturesNote(pictures, total) + (photos.length ? photosNote(photos.length) : "") },
+            ...(await Promise.all(pictures.map((p) => image(p.file, "image/png")))),
+            ...(await Promise.all(photos.map((f) => image(f, "image/jpeg")))),
+          ]
+        : prompt;
 
     let res: Response;
     try {

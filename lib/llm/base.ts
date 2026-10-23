@@ -5,6 +5,8 @@ import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/p
 import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
+import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
+import { HandwritingSchema, handwritingVars, photosNote, type HandwritingInput } from "@/lib/handwriting/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -55,6 +57,8 @@ export interface CallOptions {
   task: Task;
   /** The lecture's slide decks, for an engine that looks at them; only on digests. */
   slides?: SlidesInfo;
+  /** Photos to look at (JPEG files), in order: a handwritten answer's pages. */
+  images?: string[];
 }
 
 export interface Reply {
@@ -143,6 +147,15 @@ export abstract class PromptProvider implements LlmProvider {
     return this.call("viva-turn", vivaVars(input), VivaMoveSchema, { task: "ask" });
   }
 
+  writeLesson(input: LessonInput) {
+    return this.call("write-lesson", lessonVars(input), LessonSchema, { task: "flashcards" });
+  }
+
+  readHandwriting(input: HandwritingInput) {
+    if (!this.seesSlides) throw new Error(cantSeePictures(this.lastModel));
+    return this.call("read-handwriting", handwritingVars(input), HandwritingSchema, { task: "mark", images: input.pages });
+  }
+
   mark(input: MarkInput) {
     return this.call("mark", markVars(input), MarkingSchema, { task: "mark" });
   }
@@ -159,6 +172,11 @@ export abstract class PromptProvider implements LlmProvider {
     const { prompt, vars } = askVars(input);
     return this.call(prompt, vars, AnswerSchema, { task: "ask" });
   }
+}
+
+/** Said when the AI in use can't look at a photo of a handwritten answer. */
+export function cantSeePictures(who: string): string {
+  return `${who || "This AI"} can't look at pictures, so it can't read handwriting. Choose an AI that can in Settings — Claude, Gemini or ChatGPT all do.`;
 }
 
 /** Quick work — sorting files, a question asked on a lecture page — needs little thought. */

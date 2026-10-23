@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { photosNote } from "@/lib/handwriting/schema";
 import { CloudError, isQuick, picturesNote, PromptProvider, slidePictures, type CallOptions, type Reply } from "@/lib/llm/base";
 import { lastLine, runTool } from "@/lib/llm/process";
 
@@ -68,12 +69,14 @@ export class CodexCliProvider extends PromptProvider {
         `model_reasoning_effort="${isQuick(opts.task) ? "low" : "medium"}"`,
         ...(this.model ? ["--model", this.model] : []),
         ...pictures.flatMap((p) => ["--image", p.file]),
+        ...(opts.images ?? []).flatMap((f) => ["--image", f]),
         "-",
       ];
       const instructions =
         "Answer from the text below alone: do not run any commands or open any files.\n\n" +
         prompt +
-        picturesNote(pictures, total);
+        picturesNote(pictures, total) +
+        (opts.images?.length ? photosNote(opts.images.length) : "");
       const run = await runTool(this.binary, args, instructions, {
         timeoutMs: this.timeoutMs,
         what: "Codex",

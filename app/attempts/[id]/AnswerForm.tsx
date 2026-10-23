@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { saveAnswerDraft, submitAttempt, type Result } from "@/app/actions";
 import "@/app/ui/desktop";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
+import { HandwritingButton, HandwritingNote, selectIn, withHandwriting, type HandwritingResult } from "@/app/ui/Handwriting";
 import { Markdown } from "@/app/ui/render";
 
 /** How long typing pauses before an answer is saved to Lockin. */
@@ -42,6 +43,7 @@ export function AnswerForm({
   attemptId: string;
   questions: Array<{
     responseId: string;
+    questionId: string;
     number: number;
     stem: string;
     /** What Lockin already has for this answer (Response.draftText). */
@@ -63,6 +65,9 @@ export function AnswerForm({
   const again = useRef(new Set<string>());
   /** Submitting or submitted: the answers themselves go in, so drafts stop. */
   const done = useRef(false);
+  /** Answers typed out from photos, until the student dismisses the note. */
+  const [reads, setReads] = useState<Record<string, HandwritingResult>>({});
+  const boxes = useRef(new Map<string, HTMLTextAreaElement>());
 
   const mark = useCallback((id: string, s: SaveState) => {
     if (!done.current) setStatus((all) => (all[id] === s ? all : { ...all, [id]: s }));
@@ -229,6 +234,10 @@ export function AnswerForm({
             </div>
             <Markdown md={q.stem} className="laq-stem" />
             <textarea
+              ref={(el) => {
+                if (el) boxes.current.set(q.responseId, el);
+                else boxes.current.delete(q.responseId);
+              }}
               name={`answer.${q.responseId}`}
               value={text}
               onChange={(e) => change(q.responseId, e.target.value)}
@@ -242,7 +251,21 @@ export function AnswerForm({
                 {words(text)} word{words(text) === 1 ? "" : "s"}
               </span>
               {s && (text || s !== "saved") && <SaveStatus state={s} />}
+              <HandwritingButton
+                questionId={q.questionId}
+                onRead={(read) => {
+                  change(q.responseId, withHandwriting(latest.current[q.responseId] ?? "", read.text));
+                  setReads((all) => ({ ...all, [q.responseId]: read }));
+                }}
+              />
             </div>
+            {reads[q.responseId] && (
+              <HandwritingNote
+                read={reads[q.responseId]}
+                onFind={(word) => selectIn(boxes.current.get(q.responseId) ?? null, word)}
+                onClose={() => setReads(({ [q.responseId]: _gone, ...rest }) => rest)}
+              />
+            )}
           </div>
         );
       })}

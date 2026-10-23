@@ -67,6 +67,7 @@ export default async function ExamSittingPage({ params }: { params: Promise<{ id
     const sitting: SittingItem[] = items.map((i) => ({
       id: i.id,
       kind: i.kind === "MCQ" ? "MCQ" : "LAQ",
+      questionId: i.kind === "MCQ" ? null : i.question!.id,
       number: i.number,
       stem: i.kind === "MCQ" ? i.mcq!.stem : i.question!.stem,
       options: i.kind === "MCQ" ? readOptions(i.mcq!.options) : [],
