@@ -8,6 +8,9 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/db";
 import { pickQuestions } from "@/lib/engines/attempt";
+import { isRecording } from "@/lib/recordings/media";
+import { queueTranscribe } from "@/lib/recordings/service";
+import { storeRecording } from "@/lib/recordings/store";
 import { geometricMean } from "@/lib/engines/geomean";
 import { fromDateInput } from "@/lib/format";
 import { groupFiles, titleFromFilename, type ProposedLecture } from "@/lib/group";
@@ -24,7 +27,7 @@ import { scanFolder } from "@/lib/scan";
 import { describeForSort } from "@/lib/sortfiles";
 import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
-import { usesAi } from "@/lib/modes";
+import { usesAi, type WhisperChoice } from "@/lib/modes";
 import { questionNumbers } from "@/lib/views";
 
 /** Who wrote a summary or LAQ that was pasted in, as shown on the lecture page. */
@@ -145,7 +148,7 @@ export async function scanFolderAction(_prev: ScanState, fd: FormData): Promise<
   try {
     const { files, skipped } = await scanFolder(root);
     if (files.length === 0) {
-      return { error: `Nothing readable in ${root}. Lockin reads .vtt .srt .txt .md .pdf and .pptx.`, root };
+      return { error: `Nothing readable in ${root}. Lockin reads .vtt .srt .txt .md .pdf .pptx and lecture recordings.`, root };
     }
     const held = new Map<string, Array<{ id: string; title: string }>>();
     const existing = await prisma.material.findMany({
@@ -258,6 +261,7 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
   const modules = new Map<string, string>();
   const created: string[] = [];
   const added: string[] = [];
+  const recorded = new Set<string>();
   for (const row of planned) {
     if (row.into) {
       const lecture = await prisma.lecture.findFirst({
@@ -268,6 +272,13 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
         const have = new Set(lecture.materials.map((m) => m.checksum));
         let fresh = 0;
         for (const rel of row.paths) {
+          if (isRecording(rel)) {
+            if ((await storeRecording({ lectureId: lecture.id, name: path.basename(rel), from: path.resolve(root, rel) })).added) {
+              fresh++;
+              recorded.add(lecture.id);
+            }
+            continue;
+          }
           const buffer = await readFile(path.resolve(root, rel));
           if (have.has(checksum(buffer))) continue;
           await ingestFile({ file: new File([new Uint8Array(buffer)], path.basename(rel)), lectureId: lecture.id });
@@ -294,6 +305,11 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
     try {
       for (const rel of row.paths) {
         const abs = path.resolve(root, rel);
+        if (isRecording(abs)) {
+          await storeRecording({ lectureId: lecture.id, name: path.basename(abs), from: abs });
+          recorded.add(lecture.id);
+          continue;
+        }
         const buffer = await readFile(abs);
         await ingestFile({ file: new File([new Uint8Array(buffer)], path.basename(abs)), lectureId: lecture.id });
       }
@@ -310,6 +326,9 @@ export async function importLectures(_prev: Result, fd: FormData): Promise<Resul
     await queuePrepare(created);
     // New slides change what a lecture's summary can show: write it again from all its files.
     await queuePrepare(added, { redo: true });
+  } else {
+    // Not being prepared: recordings are still transcribed, so there's a transcript to read.
+    for (const id of recorded) await queueTranscribe(id);
   }
   refreshAll();
   redirect(`/?course=${courseId}&imported=${created.length}${added.length ? `&updated=${added.length}` : ""}`);
@@ -340,8 +359,14 @@ export async function createLecture(_prev: Result, fd: FormData): Promise<Result
       durationHours: positiveHours(str(fd, "durationHours")),
     },
   });
+  let recordings = 0;
   try {
-    for (const file of files) await ingestFile({ file, lectureId: lecture.id });
+    for (const file of files) {
+      if (isRecording(file.name)) {
+        await storeRecording({ lectureId: lecture.id, name: file.name, from: file.stream() });
+        recordings++;
+      } else await ingestFile({ file, lectureId: lecture.id });
+    }
     if (pasted) {
       await ingestFile({
         file: new File([pasted], "pasted-transcript.txt"),
@@ -356,6 +381,8 @@ export async function createLecture(_prev: Result, fd: FormData): Promise<Result
 
   if ((files.length || pasted) && fd.get("prepare") === "on" && usesAi((await getSettings()).mode)) {
     await queuePrepare([lecture.id]);
+  } else if (recordings) {
+    await queueTranscribe(lecture.id);
   }
   refreshAll();
   redirect(`/lectures/${lecture.id}`);
@@ -395,10 +422,16 @@ export async function uploadMaterial(_prev: Result, fd: FormData): Promise<Resul
   const pasted = String(fd.get("transcriptText") ?? "").trim();
   if (files.length === 0 && !pasted) return { ok: false, message: "Choose a file or paste some text." };
   const warnings: string[] = [];
+  let recordings = 0;
   try {
     for (const file of files) {
+      if (isRecording(file.name)) {
+        if ((await storeRecording({ lectureId, name: file.name, from: file.stream() })).added) recordings++;
+        continue;
+      }
       warnings.push(...(await ingestFile({ file, lectureId, kind: kind || undefined })).warnings);
     }
+    if (recordings) await queueTranscribe(lectureId);
     if (pasted) {
       await ingestFile({ file: new File([pasted], "pasted-transcript.txt"), lectureId, kind: "TRANSCRIPT" });
     }
@@ -419,7 +452,15 @@ export async function correctText(_prev: Result, fd: FormData): Promise<Result> 
 }
 
 export async function deleteMaterial(fd: FormData) {
-  await prisma.material.delete({ where: { id: str(fd, "materialId") } });
+  const material = await prisma.material.delete({ where: { id: str(fd, "materialId") } });
+  // A recording is big and kept only for its lecture: it goes with it.
+  if (material.kind === "RECORDING") await rm(path.join(materialsDir(), material.path), { force: true });
+  refreshAll();
+}
+
+/** Transcribes a lecture's recordings now, without preparing it. */
+export async function transcribeNow(fd: FormData) {
+  await queueTranscribe(str(fd, "lectureId"));
   refreshAll();
 }
 
@@ -742,6 +783,11 @@ export async function choosePair(eyeId: string, writerId: string): Promise<Resul
 
 export async function deleteLocalModel(modelId: string) {
   await removeModel(modelId);
+  refreshAll();
+}
+
+export async function setWhisperModel(model: WhisperChoice) {
+  await setSetting("whisperModel", model === "fast" ? "fast" : "accurate");
   refreshAll();
 }
 

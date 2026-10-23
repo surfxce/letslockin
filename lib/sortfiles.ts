@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { SortFile } from "@/lib/llm/provider";
 import { guessKind, measureHours, parseMaterial } from "@/lib/parse";
+import { isRecording } from "@/lib/recordings/media";
 
 /**
  * What a model needs to put a file in the right lecture, and no more: the opening of
@@ -49,6 +50,10 @@ export async function describeForSort(root: string, relPaths: string[], budget: 
   const out: SortFile[] = [];
   for (const [i, rel] of relPaths.entries()) {
     const abs = path.resolve(root, rel);
+    if (isRecording(abs)) {
+      out.push({ number: i + 1, path: rel, detail: "lecture recording", excerpt: "(audio or video — its name is all there is to go by)" });
+      continue;
+    }
     const parsed = await parseMaterial(path.basename(abs), await readFile(abs));
     const kind = guessKind(abs, parsed.text);
     out.push({

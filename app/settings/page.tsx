@@ -5,6 +5,7 @@ import { AppUpdate } from "@/app/settings/AppUpdate";
 import { PhoneLink } from "@/app/settings/PhoneLink";
 import { phoneStatus } from "@/app/settings/phone-actions";
 import { CloudSettings } from "@/app/settings/CloudSettings";
+import { RecordingSettings } from "@/app/settings/Recordings";
 import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
 import { Icon } from "@/app/ui/Icon";
@@ -15,12 +16,14 @@ import { detectAntigravity, detectCli, detectCodex } from "@/lib/llm/detect";
 import { findModel } from "@/lib/llm/catalog";
 import { API_SERVICES, CLOUD_ENGINE_LABEL, CLOUD_MODEL_LABEL, usesAi } from "@/lib/modes";
 import { modelsPayload } from "@/lib/payloads";
+import { geminiListener, listenerLabel } from "@/lib/recordings/gemini";
+import { whisperHelper } from "@/lib/recordings/helper";
 import { getApiKey, getSettings, readHeartbeat } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [settings, cli, codex, agy, apiKey, beat, models, courses] = await Promise.all([
+  const [settings, cli, codex, agy, apiKey, beat, models, courses, gemini] = await Promise.all([
     getSettings(),
     detectCli(),
     detectCodex(),
@@ -29,6 +32,7 @@ export default async function SettingsPage() {
     readHeartbeat(),
     modelsPayload(),
     prisma.course.findMany({ orderBy: { createdAt: "asc" }, include: { _count: { select: { lectures: true } } } }),
+    geminiListener().catch(() => null),
   ]);
   const linked = findModel(models.active);
   // The fallback is the model chosen for local mode, else any that is downloaded.
@@ -102,6 +106,9 @@ export default async function SettingsPage() {
         sittingPerHour={settings.sittingPerHour}
         laqStyle={settings.laqStyle}
       />
+
+      <h2 id="recordings">Lecture recordings</h2>
+      <RecordingSettings model={settings.whisperModel} gemini={gemini ? listenerLabel(gemini) : null} helper={!!whisperHelper()} />
 
       <h2 id="ak">AK · Anki Killer</h2>
       <AutoFlashcardsToggle enabled={settings.autoFlashcards} />

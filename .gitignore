@@ -66,6 +66,7 @@ materials/
 # the MLX engine: built by xcodebuild, copied into the app
 /engine
 /swift/LockinEngine/.build*
+/swift/LockinWhisper/.build*
 /swift/LockinEngine/.swiftpm
 /swift/Lockin/.build*
 /swift/Lockin/.swiftpm

@@ -4,6 +4,7 @@ import type { McqInput, McqSet } from "@/lib/mcq/schema";
 import type { MistakeCards, MistakeInput } from "@/lib/flashcards/mistakes";
 import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import type { MixedInput } from "@/lib/mixed/schema";
+import type { FixInput, Fixes } from "@/lib/recordings/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -185,6 +186,17 @@ export class FakeProvider implements LlmProvider {
           totalMarks: 10 as const,
         },
       })),
+    };
+  }
+
+  /** Corrects any slide word heard with its letters spaced out ("I G A" for "IgA"). */
+  async fixTranscript(input: FixInput): Promise<Fixes> {
+    await this.wait();
+    this.lastPromptVersion = "fix-transcript@fake";
+    return {
+      fixes: input.vocabulary
+        .map((word) => ({ heard: word.split("").join(" "), correct: word }))
+        .filter((f) => input.transcript.toLowerCase().includes(f.heard.toLowerCase())),
     };
   }
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createLecture } from "@/app/actions";
 import { ActionForm, FormResult, Submit } from "@/app/ui/forms";
 import { prisma } from "@/lib/db";
+import { RECORDING_ACCEPT } from "@/lib/recordings/media";
 import { dateInput } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { usesAi } from "@/lib/modes";
@@ -38,8 +39,11 @@ export default async function NewLecture({ searchParams }: { searchParams: Promi
       <ActionForm action={createLecture} className="form">
         <label className="field">
           <span>Files</span>
-          <input type="file" name="files" multiple accept=".txt,.md,.vtt,.srt,.pdf,.pptx" />
-          <span className="hint">Transcripts (.vtt .srt .txt) and slides (.pdf .pptx). Several at once is fine.</span>
+          <input type="file" name="files" multiple accept={`.txt,.md,.vtt,.srt,.pdf,.pptx,${RECORDING_ACCEPT}`} />
+          <span className="hint">
+            Transcripts (.vtt .srt .txt), slides (.pdf .pptx), or a recording of the lecture (.mp4 .m4a .mp3…), which Lockin
+            transcribes. Several at once is fine.
+          </span>
         </label>
         <label className="field">
           <span>Or paste the transcript</span>

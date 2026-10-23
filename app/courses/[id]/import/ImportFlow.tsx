@@ -369,7 +369,7 @@ function Review({
                         const there = existing && (inLectures[n] ?? []).some((e) => e.id === home?.id);
                         return (
                           <div key={n} className={`import-file${out ? " out" : ""}`}>
-                            <span className={`tag ${files[n].kind === "TRANSCRIPT" ? "t-blue" : "t-gray"}`}>
+                            <span className={`tag ${files[n].kind === "TRANSCRIPT" ? "t-blue" : files[n].kind === "RECORDING" ? "t-purple" : "t-gray"}`}>
                               {files[n].kind === "TRANSCRIPT" ? "transcript" : files[n].kind.toLowerCase()}
                             </span>
                             <span className="fname">{files[n].relativePath}</span>

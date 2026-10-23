@@ -10,6 +10,7 @@ import {
   type CloudModel,
   type LaqStyle,
   type Mode,
+  type WhisperChoice,
 } from "@/lib/modes";
 
 export type { ApiService, CloudEngine, CloudModel, LaqStyle, Mode } from "@/lib/modes";
@@ -52,6 +53,8 @@ export interface Settings {
   apiVision: boolean;
   /** How long the Today plan fills, in minutes. */
   dailyMinutes: number;
+  /** Which Whisper model transcribes recordings when Gemini isn't the AI. */
+  whisperModel: WhisperChoice;
 }
 
 const DEFAULTS: Settings = {
@@ -74,6 +77,7 @@ const DEFAULTS: Settings = {
   apiModel: "",
   apiVision: true,
   dailyMinutes: 60,
+  whisperModel: "accurate",
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -101,6 +105,7 @@ export async function getSettings(): Promise<Settings> {
   out.autoFlashcards = out.autoFlashcards === true;
   out.apiVision = out.apiVision !== false;
   if (typeof out.slideReader !== "string") out.slideReader = null;
+  if (out.whisperModel !== "fast") out.whisperModel = "accurate";
   out.dailyMinutes = Number.isFinite(out.dailyMinutes) ? Math.min(600, Math.max(10, Math.round(out.dailyMinutes))) : DEFAULTS.dailyMinutes;
   return out;
 }

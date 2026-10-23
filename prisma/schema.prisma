@@ -102,13 +102,20 @@ model Material {
   id            String   @id @default(cuid())
   courseId      String?
   lectureId     String?
-  kind          String // enum: TRANSCRIPT | SLIDES | FIGURE | PAST_PAPER
+  kind          String // enum: TRANSCRIPT | SLIDES | FIGURE | PAST_PAPER | RECORDING
   path          String // relative to materials/; the DB never stores blobs
   originalName  String
   extractedText String? // parsed once at ingest, hand-correctable
   /// Pages or slides in a deck, including those with no text; null for other files.
   pageCount     Int?
   checksum      String
+  /// A recording's length in seconds, once its sound has been read.
+  durationSec   Float?
+  /// Set on a transcript made from a recording: the recording's id.
+  sourceId      String?
+  /// How a transcript was made from a recording: "Gemini · gemini-2.5-flash",
+  /// "Whisper large-v3 turbo, checked by Claude Code · sonnet".
+  madeBy        String?
   createdAt     DateTime @default(now())
 
   course  Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)

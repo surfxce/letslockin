@@ -35,6 +35,7 @@ import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { writeMcqs } from "@/lib/mcq/service";
 import { writeMistakeCards } from "@/lib/flashcards/mistakes";
 import { writeMixedQuestions } from "@/lib/mixed/service";
+import { transcribeLecture, untranscribed } from "@/lib/recordings/service";
 import { splitPaper } from "@/lib/papers/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
@@ -55,7 +56,7 @@ async function canClaimQueue(): Promise<boolean> {
 
 type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
-const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> = {
+const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK" | "TRANSCRIBE">, Handler> = {
   /** Files → title, summary, concepts → first LAQs. Skips whatever is already done. */
   PREPARE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
@@ -69,6 +70,17 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
     });
 
     const result: Record<string, unknown> = {};
+    // A recording is turned into a transcript first, so there is something to read.
+    if ((await untranscribed(lectureId)).length) {
+      await enterStage(jobId, "transcribe");
+      try {
+        result.transcribed = await transcribeLecture(lectureId, provider, (detail) => provider.onProgress?.(detail));
+      } catch (err) {
+        // With slides to go on, the lecture is still prepared; the recording waits.
+        if (jobSignal()?.aborted || !(await prisma.material.count({ where: { lectureId, kind: "SLIDES" } }))) throw err;
+        result.transcribeError = err instanceof Error ? err.message : String(err);
+      }
+    }
     if (redo || !lecture.summaryMd || lecture._count.concepts === 0) {
       let visionNotes: SlideNote[] | undefined;
       if (!provider.seesSlides) {
@@ -458,6 +470,64 @@ async function downloadOne(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Transcribing a recording on its own, in its own lane: it runs with no AI set up too
+// (Whisper alone), and a long one shouldn't hold up the main queue.
+
+async function transcribeOne(): Promise<boolean> {
+  if (!(await canClaimQueue())) return false;
+  const pending = await prisma.job.findFirst({ where: { kind: "TRANSCRIBE", status: "PENDING" }, orderBy: { createdAt: "asc" } });
+  if (!pending) return false;
+  const job = await prisma.job.update({
+    where: { id: pending.id },
+    data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 }, stage: null, steps: null },
+  });
+  const started = Date.now();
+  const controller = new AbortController();
+  const watch = setInterval(async () => {
+    const now = await prisma.job.findUnique({ where: { id: job.id }, select: { status: true } }).catch(() => null);
+    if (!now || now.status !== "RUNNING") controller.abort();
+  }, 1500);
+  try {
+    const { lectureId } = JSON.parse(job.payload) as { lectureId: string };
+    // The AI checks Whisper's technical words when there is one; it isn't needed.
+    const provider = await currentProvider(true).catch(() => null);
+    await enterStage(job.id, "transcribe");
+    const result = await runCancellable(controller.signal, () =>
+      transcribeLecture(lectureId, provider, (detail) => void setStageDetail(job.id, detail).catch(() => undefined)),
+    );
+    if (controller.signal.aborted) throw new JobCancelled();
+    const current = await prisma.job.findUnique({ where: { id: job.id }, select: { steps: true } });
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "DONE",
+        stage: null,
+        steps: closeSteps(current?.steps ?? null),
+        result: JSON.stringify(result),
+        model: result.via.join("; ") || null,
+        durationMs: Date.now() - started,
+        finishedAt: new Date(),
+        error: null,
+      },
+    });
+    console.log(`✓ TRANSCRIBE ${job.id}: ${result.transcribed} recording(s) (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      await prisma.job.updateMany({ where: { id: job.id }, data: { stage: null, durationMs: Date.now() - started } }).catch(() => undefined);
+      return true;
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    await prisma.job
+      .update({ where: { id: job.id }, data: { status: "FAILED", stage: null, error: message, durationMs: Date.now() - started, finishedAt: new Date() } })
+      .catch(() => undefined);
+    console.error(`✗ TRANSCRIBE ${job.id}: ${message}`);
+  } finally {
+    clearInterval(watch);
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Sorting a folder into lectures, in its own lane: someone is waiting on the
 // import screen, so it must not queue behind a lecture being prepared.
 
@@ -658,6 +728,7 @@ async function main() {
   const sorts = lane(sortOne, Math.min(POLL_MS, 750));
   // Someone is waiting on the lecture page for an answer: look often.
   const asks = lane(askOne, Math.min(POLL_MS, 500));
+  const transcriptions = lane(transcribeOne, POLL_MS);
 
   // Cloud decks have their own calls and lane. Offline decks run between main jobs
   // to avoid loading competing contexts on a small laptop.
@@ -671,7 +742,7 @@ async function main() {
     if (!didWork && (await getSettings()).mode === "local") didWork = await runOne(true);
     if (!didWork) await new Promise((r) => setTimeout(r, POLL_MS));
   }
-  await Promise.all([downloads, sorts, asks, flashcards]);
+  await Promise.all([downloads, sorts, asks, flashcards, transcriptions]);
   clearInterval(beat);
   await releaseHeartbeatIfOurs();
   await prisma.$disconnect();

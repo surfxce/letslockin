@@ -2,8 +2,9 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { checksum, guessKind, measureHours, parseMaterial } from "@/lib/parse";
+import { isRecording, MAX_RECORDING_BYTES, RECORDING_EXTS } from "@/lib/recordings/media";
 
-const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx"]);
+const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx", ...RECORDING_EXTS]);
 const MAX_FILES = 120;
 const MAX_BYTES = 80 * 1024 * 1024;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "__pycache__", "materials"]);
@@ -68,6 +69,27 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   const files: ScannedFile[] = [];
   for (const absolutePath of found) {
     const st = await stat(absolutePath);
+    // A recording is transcribed once it's imported; it's never read in here.
+    if (isRecording(absolutePath)) {
+      if (st.size > MAX_RECORDING_BYTES) {
+        skipped.push({ path: path.relative(root, absolutePath), why: "a recording larger than 6GB" });
+        continue;
+      }
+      files.push({
+        absolutePath,
+        relativePath: path.relative(root, absolutePath),
+        filename: path.basename(absolutePath),
+        modifiedOn: st.mtime,
+        bytes: st.size,
+        kindGuess: "RECORDING",
+        text: "",
+        pages: null,
+        measuredHours: null,
+        warnings: [],
+        checksum: `recording-${st.size}`,
+      });
+      continue;
+    }
     if (st.size > MAX_BYTES) {
       skipped.push({ path: path.relative(root, absolutePath), why: "larger than 80MB" });
       continue;

@@ -3,6 +3,7 @@ import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { mixedLectures, mixedVars, type MixedInput } from "@/lib/mixed/schema";
+import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -474,6 +475,23 @@ export class LocalProvider implements LlmProvider {
       zod: QuestionSetSchema,
       maxTokens: 2000 * Math.max(1, input.count) + 300,
       temperature: 0.5,
+    });
+  }
+
+  async fixTranscript(input: FixInput) {
+    return this.run({
+      prompt: "fix-transcript",
+      vars: (transcript) => fixVars(input, transcript),
+      transcript: input.transcript,
+      schema: {
+        type: "object",
+        properties: {
+          fixes: { type: "array", maxItems: 60, items: { type: "object", properties: { heard: text(120), correct: text(200) } } },
+        },
+      },
+      zod: FixesSchema,
+      maxTokens: 2500,
+      temperature: 0,
     });
   }
 

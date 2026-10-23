@@ -223,7 +223,7 @@ function describe(file: GroupInput, index: number): Keyed {
   const { lecture, range } = lectureFrom(filename, dirs);
 
   // "Final exam revision.vtt" is a lecture: a real recording has timestamps.
-  const recorded = file.kind === "TRANSCRIPT" && file.measuredHours !== null;
+  const recorded = (file.kind === "TRANSCRIPT" && file.measuredHours !== null) || file.kind === "RECORDING";
   const setAside =
     !recorded && PAPER.test(filename)
       ? "looks like a past exam paper"

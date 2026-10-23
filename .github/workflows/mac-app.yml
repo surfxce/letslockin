@@ -49,6 +49,19 @@ jobs:
           cp "$bin" ../../engine/lockin-engine
           cp -R "$out"/*.bundle ../../engine/ 2>/dev/null || true
           ls -la ../../engine
+      # The transcription helper: Whisper on Apple Silicon (WhisperKit, Core ML), plain
+      # SwiftPM. Without it, recordings are transcribed only when Gemini is the AI.
+      - name: Build the transcription helper
+        id: whisper
+        continue-on-error: true
+        working-directory: swift/LockinWhisper
+        run: |
+          swift build -c release --arch arm64 --product lockin-whisper
+          bin=$(swift build -c release --arch arm64 --show-bin-path)/lockin-whisper
+          ls -la "$bin"
+          mkdir -p ../../engine
+          cp "$bin" ../../engine/lockin-whisper
+          ../../engine/lockin-whisper version
       - name: Build Lockin.dmg
         run: npm run dmg -- --publish never
         env:

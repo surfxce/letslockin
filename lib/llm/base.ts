@@ -3,6 +3,7 @@ import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
+import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -46,7 +47,7 @@ export class CloudError extends Error {
   }
 }
 
-export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask" | "flashcards" | "mcqs";
+export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask" | "flashcards" | "mcqs" | "transcript";
 
 /** What a call needs beyond its prompt text. */
 export interface CallOptions {
@@ -130,6 +131,10 @@ export abstract class PromptProvider implements LlmProvider {
 
   writeMixedQuestions(input: MixedInput) {
     return this.call("mixed-questions", mixedVars(input), QuestionSetSchema, { task: "questions" });
+  }
+
+  fixTranscript(input: FixInput) {
+    return this.call("fix-transcript", fixVars(input), FixesSchema, { task: "transcript" });
   }
 
   mark(input: MarkInput) {

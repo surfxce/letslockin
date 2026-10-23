@@ -76,6 +76,8 @@ function childEnv(): NodeJS.ProcessEnv {
     LOCKIN_PROMPTS_DIR: path.join(RESOURCES, "prompts"),
     // The MLX engine ships inside the bundle (never in an update): see lib/llm/mlx.ts.
     ...(PACKAGED ? { LOCKIN_ENGINE: path.join(process.resourcesPath, "engine", "lockin-engine") } : {}),
+    // So does the transcription helper (Whisper): see lib/recordings/helper.ts.
+    ...(PACKAGED ? { LOCKIN_WHISPER: path.join(process.resourcesPath, "engine", "lockin-whisper") } : {}),
     LOCKIN_MIGRATIONS_DIR: PACKAGED
       ? path.join(RESOURCES, "migrations")
       : path.join(ROOT, "prisma", "migrations"),

@@ -113,3 +113,11 @@ export const API_SERVICES: Record<
 };
 
 export const API_SERVICE_LIST = Object.keys(API_SERVICES) as ApiService[];
+
+/** The Whisper models that transcribe recordings on a Mac when Gemini isn't the AI. */
+export type WhisperChoice = "accurate" | "fast";
+
+export const WHISPER_MODELS: Record<WhisperChoice, { variant: string; label: string; size: string }> = {
+  accurate: { variant: "openai_whisper-large-v3-v20240930_turbo_632MB", label: "Accurate", size: "630 MB" },
+  fast: { variant: "openai_whisper-small.en_217MB", label: "Fast", size: "220 MB" },
+};

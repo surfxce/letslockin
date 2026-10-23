@@ -672,3 +672,8 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .phone-paired { display: flex; gap: 6px; align-items: center; font-weight: 500; color: var(--t-green); }
 @media (max-width: 640px) { .phone-pair { flex-direction: column; } }
 .occlude-done { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 60; align-items: center; box-shadow: var(--shadow-pop); margin: 0; }
+
+/* Adding a lecture recording */
+.recording-upload { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 14px; }
+.recording-upload p { flex-basis: 100%; margin: 0; }
+.error-text { color: var(--danger); }

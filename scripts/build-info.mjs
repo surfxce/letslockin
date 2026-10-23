@@ -15,7 +15,8 @@ const subject = (() => {
   }
 })();
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-// The MLX engine ships in the bundle, so a change to it also needs the full download.
+// The MLX engine and the transcription helper ship in the bundle, so a change to either
+// also needs the full download.
 const swiftFiles = (dir) =>
   readdirSync(dir).flatMap((name) => {
     const file = path.join(dir, name);
@@ -25,7 +26,9 @@ const swiftFiles = (dir) =>
 const hash = createHash("sha256")
   .update(readFileSync("package-lock.json"))
   .update(String(pkg.devDependencies?.electron ?? ""));
-for (const file of swiftFiles(path.join("swift", "LockinEngine")).sort()) hash.update(file).update(readFileSync(file));
+for (const dir of ["LockinEngine", "LockinWhisper"]) {
+  for (const file of swiftFiles(path.join("swift", dir)).sort()) hash.update(file).update(readFileSync(file));
+}
 const depsHash = hash.digest("hex").slice(0, 16);
 
 // electron-builder copies engine/ into the app; it is empty when the engine wasn't built.

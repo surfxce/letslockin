@@ -11,6 +11,7 @@ import {
   saveLaqs,
   saveSummary,
   startAttempt,
+  transcribeNow,
   updateLecture,
   uploadMaterial,
   writeMoreLaqs,
@@ -26,6 +27,7 @@ import { ModelInfo, type ModelInfoData } from "@/app/ui/ModelInfo";
 import { PasteBox } from "@/app/ui/PasteBox";
 import { FeedbackLegend, LaqCard, QuestionScore } from "@/app/ui/render";
 import { SummaryView } from "@/app/ui/SummaryView";
+import { RecordingUpload } from "@/app/lectures/[id]/RecordingUpload";
 import type { GlossaryEntry } from "@/app/study-actions";
 import type { AskResult } from "@/lib/ask";
 import { prisma } from "@/lib/db";
@@ -43,6 +45,7 @@ import { lectureDecks, pictured, sharedDecks, type Deck } from "@/lib/slides";
 import { readSkipped, readSlideNotes } from "@/lib/sources";
 import { summaryHeadings } from "@/lib/summary-edit";
 import { lectureRows, questionNumbers } from "@/lib/views";
+import { transcribeVia } from "@/lib/recordings/service";
 import { LAQ_STYLE_LABEL, usesAi } from "@/lib/modes";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +86,16 @@ export default async function LecturePage({
   const { tab: tabParam } = await searchParams;
   const lecture = await prisma.lecture.findUnique({ where: { id }, include: LECTURE_INCLUDE });
   if (!lecture) notFound();
+  const [transcribing, via] = await Promise.all([
+    lecture.materials.some((m) => m.kind === "RECORDING")
+      ? prisma.job.findFirst({
+          where: { lectureId: id, kind: { in: ["TRANSCRIBE", "PREPARE"] } },
+          orderBy: { createdAt: "desc" },
+          select: { status: true, error: true },
+        })
+      : null,
+    transcribeVia(),
+  ]);
 
   const [[row], settings, numbers, job, beat, localReady, decks, deckCopies, lastRun, glossary, asked] = await Promise.all([
     lectureRows({ ids: [id] }),
@@ -276,7 +289,14 @@ export default async function LecturePage({
       )}
       {tab === "scores" && <ScoresTab lecture={lecture} numbers={numbers} />}
       {tab === "details" && (
-        <DetailsTab lecture={lecture} decks={decks} shared={deckCopies} sittingPerHour={settings.sittingPerHour} />
+        <DetailsTab
+          lecture={lecture}
+          decks={decks}
+          shared={deckCopies}
+          sittingPerHour={settings.sittingPerHour}
+          transcribing={transcribing}
+          via={via}
+        />
       )}
 
       <AskButton
@@ -750,13 +770,21 @@ function DetailsTab({
   decks,
   shared,
   sittingPerHour,
+  transcribing,
+  via,
 }: {
   lecture: LecturePageData;
   decks: Deck[];
   shared: Map<string, Array<{ id: string; title: string }>>;
   sittingPerHour: number;
+  /** A job that will transcribe this lecture's recordings is waiting or running. */
+  transcribing: { status: string; error: string | null } | null;
+  /** How a recording added now would be transcribed. */
+  via: string;
 }) {
   const notes = readSlideNotes(lecture.slideNotes);
+  const transcriptOf = new Map(lecture.materials.filter((m) => m.sourceId).map((m) => [m.sourceId!, m]));
+  const minutes = (seconds: number | null) => (seconds ? `${Math.round(seconds / 60)} min · ` : "");
   return (
     <>
       <ActionForm action={updateLecture} className="form">
@@ -809,7 +837,7 @@ function DetailsTab({
                   <a className="fname link" href={`/api/materials/${m.id}`} download title="Download the original file">
                     {m.originalName}
                   </a>
-                  <Tag tone={m.kind === "TRANSCRIPT" ? "blue" : "gray"}>{m.kind.toLowerCase()}</Tag>
+                  <Tag tone={m.kind === "TRANSCRIPT" ? "blue" : m.kind === "RECORDING" ? "purple" : "gray"}>{m.kind.toLowerCase()}</Tag>
                   {others.length > 0 && (
                     <span className="small muted">
                       also in{" "}
@@ -824,6 +852,31 @@ function DetailsTab({
                     </span>
                   )}
                 </div>
+                {m.kind === "RECORDING" ? (
+                  <div className="small muted row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    {transcriptOf.has(m.id) ? (
+                      <span>
+                        {minutes(m.durationSec)}transcribed by {transcriptOf.get(m.id)!.madeBy ?? "Lockin"}
+                      </span>
+                    ) : transcribing && (transcribing.status === "PENDING" || transcribing.status === "RUNNING") ? (
+                      <span>{minutes(m.durationSec)}being transcribed — see the AI panel</span>
+                    ) : (
+                      <>
+                        <span>
+                          {minutes(m.durationSec)}not transcribed yet
+                          {transcribing?.status === "FAILED" && transcribing.error ? ` — last try: ${transcribing.error}` : ""}
+                        </span>
+                        <form action={transcribeNow}>
+                          <input type="hidden" name="lectureId" value={lecture.id} />
+                          <Submit className="btn sm" pending="Queuing…">
+                            Transcribe now
+                          </Submit>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                <>
                 <div className="small muted">
                   {deck && deck.pages > 0 && (
                     <>
@@ -832,6 +885,7 @@ function DetailsTab({
                     </>
                   )}
                   {(m.extractedText ?? "").length.toLocaleString("en")} characters of text
+                  {m.madeBy ? ` · made from the recording by ${m.madeBy}` : ""}
                 </div>
                 <details>
                   <summary>Check or correct the text Lockin reads</summary>
@@ -846,6 +900,8 @@ function DetailsTab({
                     </div>
                   </ActionForm>
                 </details>
+                </>
+                )}
               </div>
               <form action={deleteMaterial}>
                 <input type="hidden" name="materialId" value={m.id} />
@@ -876,6 +932,7 @@ function DetailsTab({
       )}
 
       <h3>Add files</h3>
+      <RecordingUpload lectureId={lecture.id} via={via} />
       <ActionForm action={uploadMaterial} className="form" resetOnSuccess>
         <input type="hidden" name="lectureId" value={lecture.id} />
         <input type="file" name="files" multiple accept=".txt,.md,.vtt,.srt,.pdf,.pptx" />

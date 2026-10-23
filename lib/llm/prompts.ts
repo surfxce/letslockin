@@ -61,6 +61,8 @@ export type PromptName =
   | "digest-lecture"
   | "generate-questions"
   | "mixed-questions"
+  | "transcribe-audio"
+  | "fix-transcript"
   | "mark"
   | "parse-past-paper"
   | "sort-files"
