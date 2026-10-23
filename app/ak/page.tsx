@@ -77,7 +77,7 @@ export default async function AKPage({ searchParams }: { searchParams: Promise<{
         </td><td><Tag tone={tagTone(r.course.code)}>{r.course.code}</Tag></td><td className="ak-new">{r.fresh || "—"}</td><td>{r.learning || "—"}</td>
         <td>{r.due || "—"}{r.overdue > 0 && <div className="small ak-overdue">{r.overdue} overdue</div>}</td>
         <td className="small muted">{r.fresh + r.due > 0 ? "Now" : r.next ? r.next.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—"}</td>
-        <td>{r._count.flashcards ? <Link className="btn sm" href={`/ak/${r.id}`}>{r.fresh + r.due > 0 ? "Review" : "Open deck"}</Link> : <DeckControls lectureId={r.id} job={job} />}</td></tr>;
+        <td>{r._count.flashcards ? <Link className="btn sm" href={`/ak/${r.id}`}>{r.fresh + r.due > 0 ? "Review" : "Open deck"}</Link> : <><DeckControls lectureId={r.id} job={job} /><Link href={`/ak/${r.id}/cards`} className="small muted link ak-own">or make your own</Link></>}</td></tr>;
       })}</tbody></table></div>
     {!visible.length && <div className="empty"><p>{lectures.length ? "No decks are ready to study. Try clearing the filter." : "No lectures found. Add lectures to start building your decks."}</p><Link href="/" className="btn">Go to lectures</Link></div>}
     <p className="small muted">Review due cards first, then learn new ones. Ratings schedule each card independently of your LAQ scores.</p>

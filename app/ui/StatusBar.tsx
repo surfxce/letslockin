@@ -19,7 +19,7 @@ const BUSY_POLL_MS = 2500;
 const IDLE_POLL_MS = 20_000;
 const HIDDEN_POLL_MS = 60_000;
 
-const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer" };
+const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer", MCQS: "Exam MCQs" };
 
 /**
  * The top-bar status: what the AI is doing right now and since when, what is

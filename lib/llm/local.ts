@@ -1,4 +1,5 @@
 import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
+import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -342,6 +343,39 @@ export class LocalProvider implements LlmProvider {
       zod: FlashcardSetSchema,
       maxTokens: 6000,
       temperature: 0.3,
+    });
+  }
+
+  async generateMcqs(input: McqInput) {
+    const ids = input.concepts.map((c) => c.id);
+    return this.run({
+      prompt: "generate-mcqs",
+      vars: (summary) => mcqVars({ ...input, summary }),
+      transcript: input.summary,
+      schema: {
+        type: "object",
+        properties: {
+          questions: {
+            type: "array",
+            minItems: Math.max(1, input.count),
+            maxItems: Math.max(1, input.count),
+            items: {
+              type: "object",
+              properties: {
+                stem: text(1500),
+                options: { type: "array", minItems: 5, maxItems: 5, items: text(300) },
+                answer: { enum: [0, 1, 2, 3, 4] },
+                explanation: text(800),
+                conceptId: ids.length ? nullable({ enum: ids }) : { type: "null" },
+              },
+            },
+          },
+        },
+      },
+      zod: McqSetSchema,
+      // A ceiling, not a target: five questions with options and explanations.
+      maxTokens: 900 * Math.max(1, input.count) + 300,
+      temperature: 0.5,
     });
   }
 

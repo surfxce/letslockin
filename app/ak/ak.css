@@ -23,6 +23,12 @@
 .ak-eyebrow { text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); font-size: 11px; font-weight: 600; }
 .ak-card-content { font-size: 18px; line-height: 1.7; margin: 20px 0 8px; }
 .ak-card-content .slide-fig img { max-height: 380px; width: auto; max-width: 100%; object-fit: contain; }
+/* Pictures added by hand: as big as the card allows. */
+.ak-card-content img { max-width: 100%; max-height: 460px; width: auto; }
+.ak-make { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--rule); width: 100%; max-width: 520px; }
+.ak-make-label { width: 100%; font-size: 13px; color: var(--text-soft); margin-bottom: 2px; }
+.ak-own { display: block; margin-top: 4px; }
+.ak-deck-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 14px; }
 .ak-answer { border-top: 1px solid var(--rule); padding-top: 25px; margin-top: 30px; }
 .ak-reveal { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 28px; }
 .ak-rating-hint { text-align: center; margin: 24px 0 12px; }

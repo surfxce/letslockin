@@ -1,0 +1,61 @@
+/* Making cards by hand: the workshop (ws-) and the picture editor (pe-). */
+.ws-tabs { margin: 18px 0 16px; }
+.ws-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 26px; }
+.ws-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ws-side-head { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.ws-side-head .spacer, .ws-list .spacer, .ws-csv .spacer { flex: 1; }
+.ws-format { display: flex; align-items: center; gap: 2px; }
+.ws-format .icon-btn { font-size: 14px; color: var(--text-soft); }
+.ws-side textarea { width: 100%; min-height: 110px; font-size: 15px; }
+.ws-preview { min-height: 110px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px; margin: 0; font-size: 16px; }
+.ws-actions { grid-column: 1 / -1; flex-wrap: wrap; }
+.ws-occlusion p, .ws-csv p { margin-top: 0; color: var(--text-soft); max-width: 720px; }
+.ws-occlusion, .ws-csv { margin-bottom: 26px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.ws-csv > * { max-width: 100%; }
+.ws-paste { width: 100%; font-family: var(--mono); font-size: 13px; }
+.ws-columns { gap: 18px; align-items: flex-end; flex-wrap: wrap; }
+.ws-preview-table { min-width: 0; }
+.ws-preview-table td { white-space: pre-wrap; vertical-align: top; max-width: 380px; }
+.ws-list { margin-top: 10px; }
+.ws-table { min-width: 720px; }
+.ws-table td { vertical-align: top; }
+.ws-cell { font-size: 14px; max-height: 160px; overflow: hidden; max-width: 380px; }
+.ws-cell p { margin: 0 0 4px; }
+.ws-cell img { max-height: 120px; max-width: 100%; width: auto; }
+.ws-cell .slide-fig { margin: 4px 0; }
+.ws-row-actions { white-space: nowrap; text-align: right; }
+
+.modal.pe { width: 1100px; height: calc(100vh - 32px); }
+.pe-head { display: flex; align-items: center; gap: 8px; padding: 14px 18px 10px; border-bottom: 1px solid var(--rule); }
+.pe-head .spacer { flex: 1; }
+.pe-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 8px 14px; border-bottom: 1px solid var(--rule); }
+.pe-tool { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-soft); font: inherit; font-size: 13px; cursor: pointer; }
+.pe-tool:hover { background: var(--hover); color: var(--text); }
+.pe-tool.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+.pe-sep { width: 1px; height: 20px; background: var(--rule-strong); margin: 0 6px; }
+.pe-swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--rule-strong); cursor: pointer; padding: 0; }
+.pe-swatch.on { box-shadow: 0 0 0 2px var(--text); }
+.pe-weight { height: 28px; padding: 2px 6px; font-size: 13px; margin-left: 4px; }
+.pe-stage { position: relative; flex: 1; min-height: 240px; background: var(--bg-sunk, var(--bg-soft)); }
+/* Shrinks to fit the stage whatever the picture's shape, keeping its proportions. */
+.pe-canvas { position: absolute; inset: 0; margin: auto; max-width: calc(100% - 28px); max-height: calc(100% - 28px); touch-action: none; box-shadow: var(--shadow); background: #fff; cursor: crosshair; }
+.pe-canvas.tool-eraser { cursor: pointer; }
+.pe-hint { padding: 6px 18px 0; margin: 0; }
+.pe-options { display: grid; grid-template-columns: auto 1fr 1fr; gap: 12px 18px; align-items: start; padding: 10px 18px 0; }
+.pe-hide { display: flex; flex-direction: column; gap: 4px; font-size: 14px; padding-top: 4px; }
+.pe-hide label { display: flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+.pe-options textarea { min-height: 38px; }
+.pe .modal-foot { padding: 12px 18px 16px; }
+.pe-choose { flex: 1; overflow: auto; padding: 18px; }
+.pe-drop { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 18px; border: 2px dashed var(--rule-strong); border-radius: 10px; color: var(--text-soft); text-align: center; }
+.pe-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.pe-drop .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; }
+.pe-slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.pe-slide { position: relative; padding: 0; border: 1px solid var(--rule-strong); border-radius: 6px; overflow: hidden; background: #fff; cursor: pointer; aspect-ratio: 4 / 3; }
+.pe-slide:hover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.pe-slide img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pe-slide span { position: absolute; left: 6px; bottom: 6px; font-size: 11px; font-weight: 600; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 1px 6px; border-radius: 4px; }
+@media (max-width: 760px) {
+  .ws-form { grid-template-columns: 1fr; }
+  .pe-options { grid-template-columns: 1fr; }
+}

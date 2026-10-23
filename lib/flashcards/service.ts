@@ -19,7 +19,7 @@ export async function queueFlashcards(lectureId: string) {
 
 export async function generateFlashcards(lectureId: string, jobId: string, provider: LlmProvider) {
   // A crash after saving but before marking the job DONE is safe to retry.
-  if (await prisma.flashcard.count({ where: { lectureId } })) return { generated: 0, note: "Deck already exists" };
+  if (await prisma.flashcard.count({ where: { lectureId, origin: "ai" } })) return { generated: 0, note: "Deck already exists" };
   const lecture = await prisma.lecture.findUniqueOrThrow({ where: { id: lectureId }, include: { materials: true } });
   const decks = await lectureDecks(lectureId);
   const slideNumbers = decks.filter(d => d.pdf).flatMap(d => Array.from({ length: d.pages }, (_, i) => d.first + i));
@@ -61,7 +61,7 @@ export async function generateFlashcards(lectureId: string, jobId: string, provi
     // A cancelled/deleted job cannot publish a late answer even before the poll notices.
     const job = await tx.job.findUnique({ where: { id: jobId } });
     if (job?.status !== "RUNNING") throw new Error("Flashcard generation was cancelled.");
-    if (await tx.flashcard.count({ where: { lectureId } })) return { generated: 0 };
+    if (await tx.flashcard.count({ where: { lectureId, origin: "ai" } })) return { generated: 0 };
     await tx.flashcard.createMany({ data: cards });
     return { generated: cards.length };
   });

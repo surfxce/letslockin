@@ -77,6 +77,7 @@ model Lecture {
   jobs      Job[]
   glossary  GlossaryTerm[]
   flashcards Flashcard[]
+  mcqs       Mcq[]
 
   @@index([courseId])
   @@index([moduleId])
@@ -155,6 +156,7 @@ model Question {
   lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   concepts  QuestionConcept[]
   responses Response[]
+  examItems ExamItem[]
 
   @@index([lectureId])
 }
@@ -177,7 +179,7 @@ model Attempt {
   closedBook    Boolean   @default(true)
   geometricMean Float? // null until every response is marked
   completedAt   DateTime?
-  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat)
+  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat) | EXAM (LAQs from an exam)
 
   lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   responses Response[]
@@ -200,9 +202,10 @@ model Response {
   /// missed) into their own notes. Null until then.
   notesCopiedAt  DateTime?
 
-  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  gaps     Gap[]
+  attempt   Attempt    @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question  Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  gaps      Gap[]
+  examItems ExamItem[]
 
   @@index([attemptId])
   @@index([questionId])
@@ -280,7 +283,7 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK | FLASHCARDS
+  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK | FLASHCARDS | MCQS
   payload       String // JSON
   /// The lecture this work is for, so "what is it doing right now" is a lookup
   /// rather than a search through payloads. Deleting the lecture drops its jobs.
@@ -334,6 +337,9 @@ model Flashcard {
   lapses       Int      @default(0)
   version      Int      @default(0)
   createdAt    DateTime @default(now())
+  /// Where the card came from: "ai" (a generated deck), "manual" (written by the
+  /// student), "csv" (imported) or "occlusion" (cover-up boxes on a picture).
+  origin       String   @default("ai")
   lecture      Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   reviews      FlashcardReview[]
 
@@ -353,4 +359,66 @@ model FlashcardReview {
 
   @@unique([cardId, version])
   @@index([reviewedAt])
+}
+
+/// Multiple-choice questions, written with a lecture's LAQs and kept out of sight until
+/// exam mode: one best answer among four or five.
+model Mcq {
+  id            String   @id @default(cuid())
+  lectureId     String
+  stem          String
+  /// JSON array of the options, in the order shown.
+  options       String
+  /// Index into options of the correct one.
+  answer        Int
+  explanation   String
+  /// The concept it tests, when it maps to one on the lecture's list.
+  conceptId     String?
+  promptVersion String
+  model         String?
+  createdAt     DateTime @default(now())
+
+  lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  examItems ExamItem[]
+
+  @@index([lectureId])
+}
+
+/// A practice exam across lectures: LAQs and MCQs from the lectures chosen.
+model Exam {
+  id           String    @id @default(cuid())
+  courseId     String?
+  title        String
+  /// JSON { courseId, lectureIds } — what it was drawn from.
+  scope        String
+  /// Minutes allowed; null for no limit.
+  timeLimitMin Int?
+  createdAt    DateTime  @default(now())
+  submittedAt  DateTime?
+
+  items ExamItem[]
+
+  @@index([createdAt])
+}
+
+model ExamItem {
+  id         String  @id @default(cuid())
+  examId     String
+  position   Int
+  kind       String // enum: MCQ | LAQ
+  mcqId      String?
+  /// The option chosen, for an MCQ.
+  choice     Int?
+  questionId String?
+  /// What has been typed for an LAQ, until the exam is handed in.
+  draftText  String?
+  /// The LAQ's answer once handed in: marked like any other.
+  responseId String?
+
+  exam     Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  mcq      Mcq?      @relation(fields: [mcqId], references: [id], onDelete: SetNull)
+  question Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  response Response? @relation(fields: [responseId], references: [id], onDelete: SetNull)
+
+  @@index([examId])
 }

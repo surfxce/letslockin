@@ -1,4 +1,5 @@
 import type { FlashcardsInput, FlashcardSet } from "@/lib/flashcards/schema";
+import type { McqInput, McqSet } from "@/lib/mcq/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -84,6 +85,24 @@ export class FakeProvider implements LlmProvider {
       front: { text: `Recall point ${i + 1} from ${input.lectureTitle}.`, slide: null },
       back: { text, slide: i === 0 ? input.slideNumbers[0] ?? null : null },
     })) };
+  }
+
+  async generateMcqs(input: McqInput): Promise<McqSet> {
+    await this.wait();
+    this.lastPromptVersion = "generate-mcqs@fake";
+    const topics = input.concepts.length ? input.concepts : [{ id: "", name: input.lectureTitle, definition: input.summary.slice(0, 200) }];
+    return {
+      questions: Array.from({ length: Math.min(input.count, 12) }, (_, i) => {
+        const c = topics[i % topics.length];
+        return {
+          stem: `Which statement about ${c.name} is correct? (${i + 1})`,
+          options: [c.definition || `${c.name} as taught`, `The opposite of ${c.name}`, `${c.name} in another organ`, "An unrelated mechanism", "None of these apply"],
+          answer: 0,
+          explanation: `${c.name}: ${c.definition}`,
+          conceptId: c.id || null,
+        };
+      }),
+    };
   }
 
   async generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet> {

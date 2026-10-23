@@ -1,4 +1,5 @@
 import type { FlashcardsInput, FlashcardSet } from "@/lib/flashcards/schema";
+import type { McqInput, McqSet } from "@/lib/mcq/schema";
 import type { Answer, Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 import type { LaqStyle } from "@/lib/modes";
 
@@ -136,6 +137,8 @@ export interface LlmProvider {
   digest(input: DigestInput): Promise<Digest>;
   /** Independent active-recall deck generation, without changing the lecture. */
   generateFlashcards(input: FlashcardsInput): Promise<FlashcardSet>;
+  /** Multiple-choice questions for exam mode, from the lecture's summary. */
+  generateMcqs(input: McqInput): Promise<McqSet>;
   generateQuestions(input: GenerateQuestionsInput): Promise<QuestionSet>;
   mark(input: MarkInput): Promise<Marking>;
   parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems>;

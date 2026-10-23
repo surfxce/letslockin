@@ -17,7 +17,12 @@ export const SLIDE_SCHEME = "lockin-slide";
 /** Sittings sent per lecture, newest first. */
 const SITTINGS_PER_LECTURE = 12;
 
-/** "<n>" and "<n>?crop=…" for every picture in some rendered HTML of one lecture. */
+/** Card pictures added by hand are fetched like slides, as "card/<name>". */
+export function phoneCardImages(html: string, lectureId: string): string {
+  return html.replace(/(<img src=")\/api\/ak\/images\/([a-f0-9]{24}\.(?:png|jpg|webp|gif))"/g, `$1${SLIDE_SCHEME}://${lectureId}/card/$2"`);
+}
+
+/** "<n>", "<n>?crop=…" and "card/<name>" for every picture in some rendered HTML of one lecture. */
 export function imageRefs(html: string, lectureId: string): string[] {
   const prefix = `${SLIDE_SCHEME}://${lectureId}/`;
   const refs: string[] = [];
@@ -117,8 +122,8 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
     const summaryHtml = l.summaryMd?.trim() ? renderMarkdown(l.summaryMd, slides) : null;
     const images = summaryHtml ? imageRefs(summaryHtml, l.id) : [];
     for (const c of deckCards) {
-      const frontHtml = renderMarkdown(c.front, slides);
-      const backHtml = renderMarkdown(c.back, slides);
+      const frontHtml = phoneCardImages(renderMarkdown(c.front, slides), l.id);
+      const backHtml = phoneCardImages(renderMarkdown(c.back, slides), l.id);
       images.push(...imageRefs(frontHtml, l.id), ...imageRefs(backHtml, l.id));
       phoneCards.push({
         id: c.id,

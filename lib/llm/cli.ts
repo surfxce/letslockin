@@ -1,4 +1,5 @@
 import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
+import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -292,6 +293,10 @@ export class ClaudeCliProvider implements LlmProvider {
 
   generateFlashcards(input: FlashcardsInput) {
     return this.call("generate-flashcards", flashcardVars(input), FlashcardSetSchema);
+  }
+
+  generateMcqs(input: McqInput) {
+    return this.call("generate-mcqs", mcqVars(input), McqSetSchema);
   }
 
   generateQuestions(input: GenerateQuestionsInput) {

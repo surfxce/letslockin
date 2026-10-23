@@ -50,6 +50,13 @@ async function main() {
         concepts: { create: [{ conceptId: concept.id }] },
       },
     });
+    const { saveCardImage } = await import("../lib/flashcards/images");
+    const picture = await saveCardImage(
+      Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"),
+    );
+    await prisma.flashcard.create({
+      data: { lectureId: lecture.id, front: `Name it\n\n![Covered](${picture.url})`, back: "Glomerulus", sourceKey: "manual:1", origin: "manual", dueAt: new Date(Date.now() + 86_400_000) },
+    });
     const card = await prisma.flashcard.create({
       data: { lectureId: lecture.id, front: "What is deficient?\n\n![Lecture diagram](slide:3)", back: "Galactose.", sourceKey: "k1", dueAt: new Date(Date.now() - 60_000) },
     });
@@ -126,7 +133,9 @@ async function main() {
     const snapshot = PhoneSnapshotSchema.parse(first.value.snapshot);
     const phoneLecture = snapshot.lectures.find((l) => l.id === lecture.id)!;
     assert.ok(phoneLecture.summaryHtml?.includes(`lockin-slide://${lecture.id}/2?crop=0.1,0.2,0.5,0.4`));
-    assert.deepEqual(phoneLecture.images.sort(), ["2?crop=0.1,0.2,0.5,0.4", "3"]);
+    assert.deepEqual(phoneLecture.images.sort(), ["2?crop=0.1,0.2,0.5,0.4", "3", `card/${picture.name}`].sort());
+    const ownCard = snapshot.cards.find((c) => c.frontHtml.includes("Name it"))!;
+    assert.ok(ownCard.frontHtml.includes(`lockin-slide://${lecture.id}/card/${picture.name}`), "a hand-made card's picture goes to the phone");
     assert.deepEqual(phoneLecture.nextSitting, [question.id]);
     // As the lecture table counts them: a sitting counts, and scores, once every answer is marked.
     assert.equal(phoneLecture.sittingCount, 0);
@@ -135,7 +144,7 @@ async function main() {
     const sitting = snapshot.sittings.find((s) => s.id === sittingId)!;
     assert.equal(sitting.responses.find((r) => r.id === "phone-response-0003")?.pending, true);
     assert.ok(sitting.responses.find((r) => r.id === "phone-response-0001")?.feedback.some((f) => f.kind === "missed"));
-    assert.equal(snapshot.cards[0].version, 1);
+    assert.equal(snapshot.cards.find((c) => c.id === card.id)?.version, 1);
     assert.equal(snapshot.marking, null, "Claude Code can't run on a phone");
 
     // The same sync again — a reply lost on the way — changes nothing.
@@ -149,6 +158,11 @@ async function main() {
     // Pictures: only refs that look like slides.
     const bad = (await handleSlide(pairing, { lectureId: lecture.id, ref: "../etc/passwd" })) as { kind: "json"; value: Json };
     assert.equal(bad.value.ok, false);
+    const cardPicture = await handleSlide(pairing, { lectureId: lecture.id, ref: `card/${picture.name}` });
+    assert.equal(cardPicture.kind, "image", "a card's picture is served as a JPEG");
+    const otherLecture = await prisma.lecture.create({ data: { courseId: course.id, title: "Other", deliveredOn: new Date() } });
+    const elsewhere = (await handleSlide(pairing, { lectureId: otherLecture.id, ref: `card/${picture.name}` })) as { kind: "json"; value: Json };
+    assert.equal(elsewhere.value.ok, false, "only pictures the lecture's own cards show");
 
     // Marking on the phone: with an API key only, and only while allowed.
     await setSetting("cloudEngine", "api");

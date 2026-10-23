@@ -31,6 +31,7 @@ import { readSlidePictures } from "@/lib/ocr";
 import { lectureDecks } from "@/lib/slides";
 import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
+import { writeMcqs } from "@/lib/mcq/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
@@ -59,7 +60,7 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       where: { id: lectureId },
       select: {
         summaryMd: true,
-        _count: { select: { questions: true, concepts: { where: { mergedIntoId: null } } } },
+        _count: { select: { questions: true, mcqs: true, concepts: { where: { mergedIntoId: null } } } },
       },
     });
 
@@ -87,6 +88,7 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       await enterStage(jobId, "questions");
       result.questions = await writeQuestions(lectureId, provider);
     }
+    if (lecture._count.mcqs === 0) await addMcqs(lectureId, jobId, provider, result);
     if ((await getSettings()).autoFlashcards) await queueFlashcards(lectureId);
     return result;
   },
@@ -100,7 +102,15 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       await digestLecture(lectureId, { keepSummary: true }, provider);
     }
     await enterStage(jobId, "questions");
-    return writeQuestions(lectureId, provider);
+    const result: Record<string, unknown> = { ...(await writeQuestions(lectureId, provider)) };
+    if ((await prisma.mcq.count({ where: { lectureId } })) === 0) await addMcqs(lectureId, jobId, provider, result);
+    return result;
+  },
+
+  /** The hidden exam MCQs on their own, for lectures prepared before exam mode. */
+  MCQS: async (payload, jobId, provider) => {
+    await enterStage(jobId, "mcqs");
+    return writeMcqs(String(payload.lectureId), provider);
   },
 
   FLASHCARDS: async (payload, jobId, provider) => {
@@ -113,6 +123,21 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
     return markResponse(String(payload.responseId), provider);
   },
 };
+
+/**
+ * Writes the exam MCQs alongside the LAQs. A failure is noted and the job still
+ * succeeds: the LAQs already saved matter more, and exam mode can ask again.
+ */
+async function addMcqs(lectureId: string, jobId: string, provider: LlmProvider, result: Record<string, unknown>) {
+  await enterStage(jobId, "mcqs");
+  try {
+    result.mcqs = await writeMcqs(lectureId, provider);
+  } catch (err) {
+    if (err instanceof JobCancelled || jobSignal()?.aborted) throw err;
+    result.mcqError = err instanceof Error ? err.message : String(err);
+    console.warn(`couldn't write exam MCQs for ${lectureId}: ${result.mcqError}`);
+  }
+}
 
 /**
  * Shows an offline model the lecture's slides, when it has its vision part. A failure

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { readCardImage } from "@/lib/flashcards/images";
 import { parseCrop } from "@/lib/markdown";
 import { ingestReviews, ingestSitting, type SittingOutcome } from "@/lib/phone/ingest";
 import { computerName, touchPairing, type Pairing } from "@/lib/phone/pairing";
@@ -60,6 +61,17 @@ export async function handleSlide(_pairing: Pairing, body: unknown): Promise<Pho
   const parsed = SlideRequestSchema.safeParse(body);
   if (!parsed.success) return fail("That picture request couldn't be read.");
   const { lectureId, ref } = parsed.data;
+  const card = /^card\/([a-f0-9]{24}\.(?:png|jpg|webp|gif))$/.exec(ref);
+  if (card) {
+    // Only a picture one of this lecture's cards shows.
+    const shown = await prisma.flashcard.findFirst({
+      where: { lectureId, OR: [{ front: { contains: card[1] } }, { back: { contains: card[1] } }] },
+      select: { id: true },
+    });
+    const image = shown ? await readCardImage(card[1]) : null;
+    if (!image) return fail("That card's picture is no longer on the computer.");
+    return { kind: "image", bytes: await phoneJpeg(image.bytes) };
+  }
   const m = ref.match(/^(\d{1,4})(?:\?crop=([0-9.,]+))?$/);
   if (!m) return fail("That picture request couldn't be read.");
   const lecture = await prisma.lecture.findUnique({ where: { id: lectureId }, select: { id: true } });

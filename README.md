@@ -68,6 +68,27 @@ is due again.
    under 5 it is back tomorrow; everything lands before the exam date. Due lectures show at
    the top of the home page and as a badge, and as notifications if they are turned on.
 
+**Exam mode.** The **Exam** tab sets a mixed paper from across your lectures: tick whole
+courses, modules or single lectures, choose how many multiple-choice and long-answer
+questions, and time it if you like. Questions are spread across the lectures chosen, ones you
+haven't seen first — or, with *Weak areas first*, the lectures with the lowest drill scores
+and the questions you did worst on. Multiple choice comes first and is marked at once, with
+an explanation for each; long answers are marked like any sitting and count towards each
+lecture's drill score. A timer counts down, and past the limit it counts on in red rather
+than taking the paper away. Answers save as you go, so an exam can be left and finished
+later. The multiple-choice questions — five a lecture — are written alongside its LAQs and
+stay hidden everywhere except exams; *Write MCQs for them* adds them to lectures prepared
+before this existed. In copy & paste mode exams are long answers only.
+
+**AK, the flashcards.** Each lecture can have a generated deck, cards you make yourself, or
+both: *Write cards* (Markdown, with bold, italics, lists and pictures — paste one straight
+in), *Cover-up cards from a picture* (draw a box over each label of a diagram or slide and
+each box becomes a card, Anki's image occlusion: hide all and guess one, or hide one), and
+*Import a CSV* (spreadsheets, or Anki's *Notes in Plain Text* export, HTML and cloze
+deletions included; re-importing a file adds nothing twice). Any picture can be drawn on
+first — circle it, box it, point at it, cover part of it up. Cards and their pictures sync to
+the iPhone app.
+
 **Reading a summary.** The round **?** in the corner asks a question answered from the
 summary, and adds the answer under a heading of your choice. Select any text to have it
 **broken down**, then *Add to glossary*: the words are underlined wherever they appear and

@@ -16,6 +16,9 @@ export function NavLinks() {
       <Link href="/ak" title="Anki Killer" className={on("/ak") ? "on" : undefined}>
         <Icon name="layers" size={15} /> AK
       </Link>
+      <Link href="/exam" className={on("/exam") ? "on" : undefined}>
+        <Icon name="target" size={15} /> Exam
+      </Link>
     </nav>
   );
 }

@@ -677,11 +677,16 @@ function ScoresTab({ lecture, numbers }: { lecture: LecturePageData; numbers: Ma
                       {shortDate(a.sittingDate)} · {clockTime(a.sittingDate)}
                     </div>
                     <div className="sub">
-                      {a.source === "PASTED" ? "Marked in an AI chat, pasted in" : "Answered closed book in Lockin"} ·{" "}
+                      {a.source === "PASTED"
+                        ? "Marked in an AI chat, pasted in"
+                        : a.source === "EXAM"
+                          ? "Answered in an exam"
+                          : "Answered closed book in Lockin"}{" "}
+                      ·{" "}
                       {plural(a.responses.length, "LAQ")}
                     </div>
                   </div>
-                  {a.source === "APP" && (
+                  {(a.source === "APP" || (a.source === "EXAM" && answered)) && (
                     <Link href={`/attempts/${a.id}`} className="btn sm">
                       {answered ? "Open" : "Continue"}
                     </Link>

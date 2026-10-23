@@ -1,4 +1,5 @@
 import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
+import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -42,7 +43,7 @@ export class CloudError extends Error {
   }
 }
 
-export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask" | "flashcards";
+export type Task = "digest" | "questions" | "mark" | "paper" | "sort" | "ask" | "flashcards" | "mcqs";
 
 /** What a call needs beyond its prompt text. */
 export interface CallOptions {
@@ -106,6 +107,10 @@ export abstract class PromptProvider implements LlmProvider {
 
   generateFlashcards(input: FlashcardsInput) {
     return this.call("generate-flashcards", flashcardVars(input), FlashcardSetSchema, { task: "flashcards" });
+  }
+
+  generateMcqs(input: McqInput) {
+    return this.call("generate-mcqs", mcqVars(input), McqSetSchema, { task: "mcqs" });
   }
 
   generateQuestions(input: GenerateQuestionsInput) {

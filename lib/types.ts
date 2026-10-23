@@ -17,9 +17,10 @@ export type GapType = (typeof GAP_TYPES)[number];
  * someone waits on the import screen. ASK answers a question about a lecture, breaks a
  * passage down, or says what a left-out part contained, while someone waits on the
  * lecture page. These run alongside the main queue. FLASHCARDS writes independent
- * AK decks in a cloud side lane, or between main jobs when running locally.
+ * AK decks in a cloud side lane, or between main jobs when running locally. MCQS writes
+ * a lecture's multiple-choice questions for exam mode when it was prepared without them.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -33,9 +34,10 @@ export const STAGES = {
   questions: "Writing LAQs",
   marking: "Marking",
   flashcards: "Writing flashcards",
+  mcqs: "Writing exam MCQs",
   download: "Downloading model",
 } as const;
 export type Stage = keyof typeof STAGES;
 
-export const ATTEMPT_SOURCES = ["APP", "PASTED"] as const;
+export const ATTEMPT_SOURCES = ["APP", "PASTED", "EXAM"] as const;
 export type AttemptSource = (typeof ATTEMPT_SOURCES)[number];

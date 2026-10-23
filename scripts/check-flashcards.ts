@@ -69,6 +69,40 @@ async function main() {
     assert.match(image.back, /slide:2/);
     await prisma.job.update({ where: { id: imageJob.id }, data: { status: "DONE" } });
 
+    // Cards made by hand sit beside a generated deck.
+    const { saveCard, importCards, saveOcclusionCards, deleteCards } = await import("../lib/flashcards/manual");
+    const { saveCardImage, readCardImage } = await import("../lib/flashcards/images");
+    const own = await makeLecture("Hand-made deck");
+    const ownId = await saveCard(own.id, { front: "What does insulin do?", back: "Lowers glucose." });
+    await assert.rejects(saveCard(own.id, { front: " ", back: "x" }), /front/);
+    await saveCard(own.id, { id: ownId, front: "What does insulin do to glucose?", back: "Lowers it." });
+    const ownCard = await prisma.flashcard.findUniqueOrThrow({ where: { id: ownId } });
+    assert.equal(ownCard.origin, "manual");
+    assert.equal(ownCard.front, "What does insulin do to glucose?");
+    assert.deepEqual(await importCards(own.id, [{ front: "A", back: "1" }, { front: "A", back: "1" }, { front: "B", back: "" }]), { added: 1, skipped: 2 });
+    assert.equal((await importCards(own.id, [{ front: "A", back: "1" }])).added, 0, "re-importing a file adds nothing twice");
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await assert.rejects(saveCardImage(Buffer.from("not a picture")), /isn't a picture/);
+    const front = await saveCardImage(png);
+    const back = await saveCardImage(png);
+    assert.equal((await readCardImage(front.name))?.type, "image/png");
+    assert.equal(await readCardImage("../../lockin.db"), null);
+    await assert.rejects(saveOcclusionCards(own.id, { prompt: "", extra: "", cards: [{ front: "../x.png", back: back.name }] }), /went missing/);
+    await saveOcclusionCards(own.id, { prompt: "Name the part", extra: "", cards: [{ front: front.name, back: back.name }] });
+    const occluded = await prisma.flashcard.findFirstOrThrow({ where: { lectureId: own.id, origin: "occlusion" } });
+    assert.ok(occluded.front.startsWith("Name the part") && occluded.front.includes(front.url));
+    // A generated deck can still be added to a lecture of hand-made cards.
+    const ownJob = await queueFlashcards(own.id);
+    await prisma.job.update({ where: { id: ownJob.id }, data: { status: "RUNNING" } });
+    provider.generateFlashcards = FakeProvider.prototype.generateFlashcards.bind(provider);
+    assert.ok((await generateFlashcards(own.id, ownJob.id, provider)).generated > 0);
+    await prisma.job.update({ where: { id: ownJob.id }, data: { status: "DONE" } });
+    // Deleting a card deletes the pictures only it showed.
+    assert.equal(await deleteCards(own.id, [occluded.id]), 1);
+    assert.equal(await readCardImage(front.name), null);
+    assert.equal(await readCardImage(back.name), null);
+    assert.equal(await deleteCards(lecture.id, [ownId]), 0, "only a lecture's own cards");
+
     // Exercise the real worker dispatch, independent lane and opt-in preparation.
     assert.equal((await getSettings()).autoFlashcards, false);
     const manualDeck = await makeLecture("Separate deck lane");
@@ -102,6 +136,7 @@ async function main() {
     await untilDone(auto.id);
     assert.ok(await prisma.flashcard.count({ where: { lectureId: on.id } }));
     assert.ok(await prisma.question.count({ where: { lectureId: on.id } }));
+    assert.equal(await prisma.mcq.count({ where: { lectureId: off.id } }), 5, "preparing writes the hidden exam MCQs too");
     await prisma.lecture.delete({ where: { id: lecture.id } });
     assert.equal(await prisma.flashcardReview.count({ where: { cardId: card.id } }), 0);
     console.log("AK integration passed: migrations, deduplication, atomic generation, cancellation, durable reviews, stale/early review protection, worker lane, opt-in preparation, cascade cleanup.");
