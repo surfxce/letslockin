@@ -1,0 +1,102 @@
+{
+  "v": 1,
+  "computer": "Sandes-MacBook-Pro",
+  "generatedAt": "2026-10-23T02:15:00.000Z",
+  "marking": {
+    "kind": "anthropic",
+    "label": "Anthropic API · claude-sonnet-5-5",
+    "promptVersion": "mark@1.0.0",
+    "prompt": "## Question\n{{questionStem}}\n\n## Rubric\n{{rubric}}\n\n## Answer\n{{answerText}}\n\n## Concepts\n{{concepts}}\n",
+    "request": {
+      "url": "https://api.anthropic.com/v1/messages",
+      "headers": { "content-type": "application/json", "x-api-key": "sk-test", "anthropic-version": "2023-06-01" },
+      "body": {
+        "model": "claude-sonnet-5-5",
+        "max_tokens": 16000,
+        "output_config": { "effort": "medium" },
+        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "{{LOCKIN_PROMPT}}" }] }]
+      }
+    }
+  },
+  "computerMarker": "API key",
+  "courses": [
+    { "id": "ccourse0000000000000000001", "code": "BIOM3015", "title": "Renal physiology", "examDate": "2026-11-20T00:00:00.000Z" },
+    { "id": "ccourse0000000000000000002", "code": "PHYS1001", "title": "Physics", "examDate": null }
+  ],
+  "lectures": [
+    {
+      "id": "clecture000000000000000001",
+      "courseId": "ccourse0000000000000000001",
+      "ordinal": 1,
+      "title": "IgA Nephropathy: Pathophysiology",
+      "module": "Glomerular disease",
+      "deliveredOn": "2026-10-01T00:00:00.000Z",
+      "summaryHtml": "<h2>Mechanism</h2>\n<p>Galactose-deficient IgA1 forms immune complexes.</p>\n<figure class=\"slide-fig\"><img src=\"lockin-slide://clecture000000000000000001/3?crop=0.1,0.2,0.5,0.4\" alt=\"Mesangial deposits\"><figcaption>Mesangial deposits <span>· slide 3</span></figcaption></figure>",
+      "summaryModel": "Claude Code · claude-sonnet-5-5",
+      "images": ["3?crop=0.1,0.2,0.5,0.4", "5"],
+      "questions": [
+        {
+          "id": "cquestion00000000000000001",
+          "stem": "Explain how galactose-deficient IgA1 leads to mesangial injury.",
+          "type": "LAQ",
+          "modelAnswer": "Gd-IgA1 is recognised by autoantibodies…",
+          "criteria": [{ "point": "Names Gd-IgA1", "marks": 2 }, { "point": "Immune complexes deposit in mesangium", "marks": 3 }],
+          "markVars": {
+            "questionStem": "Explain how galactose-deficient IgA1 leads to mesangial injury.",
+            "rubric": "{\n  \"modelAnswer\": \"Gd-IgA1 is recognised by autoantibodies…\"\n}",
+            "concepts": "- cconcept000000000000000001 :: Gd-IgA1 — galactose-deficient IgA1"
+          }
+        }
+      ],
+      "nextSitting": ["cquestion00000000000000001"]
+    },
+    {
+      "id": "clecture000000000000000002",
+      "courseId": "ccourse0000000000000000002",
+      "ordinal": 1,
+      "title": "Kinematics",
+      "module": null,
+      "deliveredOn": "2026-09-01T00:00:00.000Z",
+      "summaryHtml": null,
+      "summaryModel": null,
+      "images": [],
+      "questions": [],
+      "nextSitting": []
+    }
+  ],
+  "sittings": [
+    {
+      "id": "cattempt000000000000000001",
+      "lectureId": "clecture000000000000000001",
+      "sittingDate": "2026-10-10T09:30:00.000Z",
+      "completedAt": "2026-10-10T09:45:00.000Z",
+      "score": 6.5,
+      "responses": [
+        {
+          "id": "cresponse00000000000000001",
+          "questionId": "cquestion00000000000000001",
+          "answerText": "IgA1 lacks galactose so antibodies bind it…",
+          "mark": 6.5,
+          "pending": false,
+          "feedback": [{ "kind": "good", "text": "Names Gd-IgA1" }, { "kind": "missed", "text": "Complexes activate mesangial cells to proliferate." }]
+        }
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "id": "ccard000000000000000000001",
+      "lectureId": "clecture000000000000000001",
+      "frontHtml": "<p>What is deficient in IgA nephropathy's IgA1?</p>",
+      "backHtml": "<p>Galactose on the hinge-region O-glycans.</p>\n<figure class=\"slide-fig\"><img src=\"lockin-slide://clecture000000000000000001/5\" alt=\"Lecture diagram\"><figcaption>Lecture diagram</figcaption></figure>",
+      "state": "new",
+      "dueAt": "2026-10-20T00:00:00.000Z",
+      "intervalDays": 0,
+      "ease": 2.5,
+      "repetitions": 0,
+      "lapses": 0,
+      "version": 0,
+      "createdAt": "2026-10-20T00:00:00.000Z"
+    }
+  ]
+}

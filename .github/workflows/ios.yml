@@ -1,0 +1,43 @@
+# The Lockin iPhone app: LockinKit's tests on a Mac, then the app built for the iOS
+# simulator (no signing). Installing on a phone happens in Xcode: see ios/README.md.
+name: iPhone app
+
+on:
+  push:
+    branches: [main, claude/blissful-carson-5hdqo3]
+    paths: ["ios/**", "lib/phone/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: LockinKit tests
+        working-directory: ios/LockinKit
+        run: swift test
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build the app for the simulator
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project LockinPhone.xcodeproj \
+            -scheme LockinPhone \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log | grep -E "error:|warning: .*(deprecated|will be an error)|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log

@@ -133,6 +133,15 @@ hard Claude Code thinks when preparing and marking. Claude is given one tool,
 reading files, and only in the folder of the lecture's slides. To try the app without model
 calls, run the worker with `LOCKIN_PROVIDER=fake`.
 
+## On your iPhone
+
+`ios/` is a companion iPhone app for studying on the go: summaries with their slides, LAQ
+sittings and AK reviews, synced straight with this computer over Wi-Fi. Pair it in
+Settings → iPhone with a QR code; there's no account and no cloud. With an API key, the
+phone marks answers itself; with Claude Code, Codex, Antigravity or an offline model, the
+computer marks them at the next sync. See [ios/README.md](ios/README.md) for pairing, and
+for installing it on your own phone from Xcode with a free Apple ID.
+
 ## Offline AI
 
 Choosing *On this computer* (in the tour, or Settings → Offline AI) shows three models
