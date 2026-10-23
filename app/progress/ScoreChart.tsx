@@ -76,7 +76,7 @@ export function ScoreChart({ scores }: { scores: ScorePoint[] }) {
           {p.lecture}
           <div className="muted">
             {new Date(p.at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
-            {p.source === "EXAM" ? " · in an exam" : p.source === "PASTED" ? " · marked in an AI chat" : ""}
+            {p.source === "EXAM" ? " · in an exam" : p.source === "VIVA" ? " · in a viva" : p.source === "PASTED" ? " · marked in an AI chat" : ""}
           </div>
         </div>
       )}

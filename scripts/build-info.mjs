@@ -25,7 +25,9 @@ const swiftFiles = (dir) =>
   });
 const hash = createHash("sha256")
   .update(readFileSync("package-lock.json"))
-  .update(String(pkg.devDependencies?.electron ?? ""));
+  .update(String(pkg.devDependencies?.electron ?? ""))
+  // The app's Info.plist (such as why it asks for the microphone) is made from this.
+  .update(JSON.stringify(pkg.build ?? {}));
 for (const dir of ["LockinEngine", "LockinWhisper"]) {
   for (const file of swiftFiles(path.join("swift", dir)).sort()) hash.update(file).update(readFileSync(file));
 }

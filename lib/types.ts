@@ -23,9 +23,10 @@ export type GapType = (typeof GAP_TYPES)[number];
  * PAPER splits a past paper into questions. MIXED writes questions that join up a
  * course's related lectures, for exams. TRANSCRIBE turns a lecture's recording into a
  * transcript on its own (PREPARE does it first when it needs to), in a lane of its own
- * that runs with no AI too.
+ * that runs with no AI too. VIVA is the examiner's next line in a viva, in the quick lane
+ * beside ASK: someone is waiting to hear it.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE", "VIVA"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -47,5 +48,5 @@ export const STAGES = {
 } as const;
 export type Stage = keyof typeof STAGES;
 
-export const ATTEMPT_SOURCES = ["APP", "PASTED", "EXAM"] as const;
+export const ATTEMPT_SOURCES = ["APP", "PASTED", "EXAM", "VIVA"] as const;
 export type AttemptSource = (typeof ATTEMPT_SOURCES)[number];

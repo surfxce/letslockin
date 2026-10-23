@@ -5,7 +5,8 @@ import { contextBridge, ipcRenderer } from "electron";
  * the main process (which can notify with no window open) and make room for the
  * macOS window buttons; `pickFolder` is a native folder picker for importing;
  * `savePdf` prints the export page to a PDF file, which `openFile`/`showFile` then
- * open. In a plain browser tab this object is simply absent.
+ * open; `microphone` asks macOS to let a viva hear spoken answers. In a plain browser
+ * tab this object is simply absent.
  */
 contextBridge.exposeInMainWorld("lockin", {
   desktop: true,
@@ -15,4 +16,5 @@ contextBridge.exposeInMainWorld("lockin", {
   showFile: (file: string): Promise<string | null> => ipcRenderer.invoke("lockin:showFile", file),
   checkUpdate: () => ipcRenderer.invoke("lockin:checkUpdate"),
   installUpdate: (): Promise<string | null> => ipcRenderer.invoke("lockin:installUpdate"),
+  microphone: (): Promise<"granted" | "denied" | "unavailable"> => ipcRenderer.invoke("lockin:microphone"),
 });

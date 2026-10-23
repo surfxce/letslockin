@@ -27,6 +27,16 @@ final class AppModel {
     private(set) var examDraft: ExamDraft?
     /// Exams sat on this phone, newest first: for their results and to know what's been asked.
     private(set) var examHistory: [PhoneExam] = []
+    /// The viva being held, kept as it goes.
+    private(set) var vivaDraft: VivaDraft?
+    /// Vivas handed in here, waiting to go to the computer.
+    private(set) var outboxVivas: [PhoneViva] = []
+    /// Vivas held on this phone, newest first.
+    private(set) var vivaHistory: [PhoneViva] = []
+    /// The examiner is deciding what to say.
+    private(set) var examinerThinking = false
+    /// Why the examiner couldn't follow up, to show.
+    var vivaNote: String?
     private(set) var drafts: [Draft] = []
     private(set) var lastSyncAt: Date?
 
@@ -43,6 +53,8 @@ final class AppModel {
     @ObservationIgnored private var client: SyncClient?
     @ObservationIgnored private var draftSave: Task<Void, Never>?
     @ObservationIgnored private var examSave: Task<Void, Never>?
+    /// A viva whose examiner couldn't be reached on the computer: not tried again in it.
+    @ObservationIgnored private var relayDownFor: String?
 
     init() {
         load()
@@ -70,7 +82,7 @@ final class AppModel {
     }
 
     func sittings(for lectureId: String) -> [SittingRecord] {
-        sittingRecords(lectureId: lectureId, snapshot: snapshot, outbox: outboxSittings + outboxExams.flatMap(\.sittings))
+        sittingRecords(lectureId: lectureId, snapshot: snapshot, outbox: outboxSittings + outboxExams.flatMap(\.sittings) + outboxVivas.flatMap(\.sittings))
     }
 
     func draft(for lectureId: String) -> Draft? { drafts.first { $0.lectureId == lectureId } }
@@ -129,7 +141,7 @@ final class AppModel {
 
     func draft(id: String) -> Draft? { drafts.first { $0.id == id } }
 
-    var unsentCount: Int { outboxSittings.count + outboxReviews.count + outboxExams.count }
+    var unsentCount: Int { outboxSittings.count + outboxReviews.count + outboxExams.count + outboxVivas.count }
 
     /// Who marks answers: this phone with the API key, or the computer at the next sync.
     var markingNote: String {
@@ -179,11 +191,15 @@ final class AppModel {
         outboxExams = []
         examDraft = nil
         examHistory = []
+        outboxVivas = []
+        vivaDraft = nil
+        vivaHistory = []
         drafts = []
         lastSyncAt = nil
         syncError = nil
         Keychain.delete("pairing")
         Keychain.delete("marking")
+        Keychain.delete("viva")
         images.removeAll()
         try? FileManager.default.removeItem(at: photoFolder)
         coursePhotos = [:]
@@ -192,6 +208,8 @@ final class AppModel {
         saveDrafts()
         saveExamDraft()
         saveExams()
+        saveVivaDraft()
+        saveVivas()
     }
 
     private func rememberHost(_ host: String) {
@@ -235,14 +253,16 @@ final class AppModel {
         do {
             try await client.hello()
             syncStatus = "Syncing…"
-            let reply = try await client.sync(SyncRequest(device: device, sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams))
+            let reply = try await client.sync(SyncRequest(device: device, sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams, vivas: outboxVivas))
             let sentSittings = Set(reply.accepted.sittings)
             let sentReviews = Set(reply.accepted.reviews)
             let sentExams = Set(reply.accepted.exams ?? [])
+            let sentVivas = Set(reply.accepted.vivas ?? [])
             // Anything done while the sync was on its way stays to be sent next time.
             outboxSittings.removeAll { sentSittings.contains($0.id) }
             outboxReviews.removeAll { sentReviews.contains($0.id) }
             outboxExams.removeAll { sentExams.contains($0.id) }
+            outboxVivas.removeAll { sentVivas.contains($0.id) }
             var fresh = reply.snapshot
             applyPendingReviews(to: &fresh)
             snapshot = fresh
@@ -423,7 +443,9 @@ final class AppModel {
 
     /// What an exam can be set from, as things stand on this phone.
     var examSource: ExamSource? {
-        snapshot.map { ExamSource(snapshot: $0, localSittings: outboxSittings + outboxExams.flatMap(\.sittings), pastExams: examHistory) }
+        snapshot.map {
+            ExamSource(snapshot: $0, localSittings: outboxSittings + outboxExams.flatMap(\.sittings) + outboxVivas.flatMap(\.sittings), pastExams: examHistory)
+        }
     }
 
     /// Sets a new exam (replacing one not handed in). False when there's nothing to ask.
@@ -492,6 +514,127 @@ final class AppModel {
         return exam.id
     }
 
+    // MARK: - Viva
+
+    func question(_ id: String) -> Question? { snapshot?.lectures.lazy.flatMap(\.questions).first { $0.id == id } }
+
+    func pastViva(_ id: String) -> PhoneViva? { vivaHistory.first { $0.id == id } }
+
+    /// Who the examiner is: the API key here, the computer's AI, or no one (no follow-ups).
+    var examinerNote: String {
+        if let viva = snapshot?.viva { return "The examiner is \(viva.label), asked from this phone." }
+        let computer = pairing?.computer ?? "your computer"
+        if let marker = snapshot?.computerMarker { return "The examiner is \(marker) on \(computer), over your Wi-Fi. Away from it, questions come without follow-ups." }
+        return "\(computer) has no AI to be the examiner, so questions come without follow-ups."
+    }
+
+    /// Starts a viva (replacing one not finished). False when there's nothing to ask.
+    @discardableResult
+    func startViva(lectureIds: Set<String>, questions: Int, focus: ExamFocus) -> Bool {
+        var generator = SystemRandomNumberGenerator()
+        guard let draft = examSource?.makeViva(lectureIds: lectureIds, questions: questions, focus: focus, using: &generator) else { return false }
+        vivaDraft = draft
+        vivaNote = nil
+        relayDownFor = nil
+        saveVivaDraft()
+        return true
+    }
+
+    private func stem(_ questionId: String) -> String? { question(questionId)?.stem }
+
+    /// Keeps the viva as it now stands, handing it in once it's over.
+    private func commit(_ draft: VivaDraft) {
+        if draft.isOver {
+            finishViva(draft)
+        } else {
+            vivaDraft = draft
+            saveVivaDraft()
+        }
+    }
+
+    /// The student's answer; then the examiner follows up or moves on.
+    func answerViva(_ text: String) async {
+        guard var draft = vivaDraft, !examinerThinking else { return }
+        guard draft.answer(text), let item = draft.item else { return }
+        vivaDraft = draft
+        saveVivaDraft()
+        if draft.probesLeft == 0 {
+            draft.moveOn(closing: "Okay, thank you.", stem: { self.stem($0) })
+            commit(draft)
+            return
+        }
+        examinerThinking = true
+        defer { examinerThinking = false }
+        let exchange = draft.exchange(item.questionId)
+        var move: VivaMove?
+        if let template = snapshot?.viva, let question = question(item.questionId), let lecture = lecture(item.lectureId) {
+            do {
+                move = try await askExaminer(template: template, lectureTitle: lecture.title, question: question,
+                                             exchange: exchange, probesLeft: draft.probesLeft)
+            } catch {
+                vivaNote = error.localizedDescription
+            }
+        }
+        if move == nil, relayDownFor != draft.id, let client = makeClient() {
+            do {
+                move = try await client.vivaTurn(questionId: item.questionId, exchange: exchange, probesLeft: draft.probesLeft)
+                vivaNote = nil
+            } catch {
+                relayDownFor = draft.id
+                vivaNote = "No follow-ups for now: \(error.localizedDescription)"
+            }
+        }
+        // Ended or discarded while the examiner was thinking.
+        guard var now = vivaDraft, now.id == draft.id, now.turns.count == draft.turns.count else { return }
+        now.examiner(move ?? VivaMove(move: "next", say: "Okay, thank you."), stem: { self.stem($0) })
+        commit(now)
+    }
+
+    /// "I don't know": moves on.
+    func skipVivaQuestion() {
+        guard var draft = vivaDraft, !examinerThinking else { return }
+        draft.moveOn(closing: "Alright, let's move on.", stem: { self.stem($0) })
+        commit(draft)
+    }
+
+    /// Ends it early; what was asked is marked.
+    func endViva() {
+        guard var draft = vivaDraft else { return }
+        examinerThinking = false
+        draft.end()
+        commit(draft)
+    }
+
+    func discardViva() {
+        vivaDraft = nil
+        saveVivaDraft()
+    }
+
+    /// Hands a finished viva in: marked here with the API key when there is one, else by
+    /// the computer after the next sync.
+    private func finishViva(_ draft: VivaDraft) {
+        let viva = draft.handIn()
+        vivaDraft = nil
+        outboxVivas.append(viva)
+        vivaHistory.insert(viva, at: 0)
+        if vivaHistory.count > 50 { vivaHistory.removeLast(vivaHistory.count - 50) }
+        saveVivaDraft()
+        saveOutbox()
+        saveVivas()
+        Task {
+            for sitting in viva.sittings {
+                let results = await markResponses(of: sitting)
+                guard !results.isEmpty,
+                      let v = outboxVivas.firstIndex(where: { $0.id == viva.id }),
+                      let s = outboxVivas[v].sittings.firstIndex(where: { $0.id == sitting.id })
+                else { continue }
+                apply(results, to: &outboxVivas[v].sittings[s])
+                saveOutbox()
+            }
+            await sync()
+        }
+    }
+
     // MARK: - AK
 
     func review(_ card: Card, _ rating: Rating) {
@@ -523,6 +666,8 @@ final class AppModel {
         var reviews: [CardReview]
         /// Absent from outboxes saved before exam mode.
         var exams: [PhoneExam]?
+        /// Absent from outboxes saved before viva mode.
+        var vivas: [PhoneViva]?
     }
 
     private func load() {
@@ -534,12 +679,20 @@ final class AppModel {
             lastSyncAt = library.lastSyncAt
             // Kept apart because it can hold an API key.
             if let data = Keychain.get("marking") { snapshot?.marking = try? decoder.decode(MarkingTemplate.self, from: data) }
+            if let data = Keychain.get("viva") { snapshot?.viva = try? decoder.decode(MarkingTemplate.self, from: data) }
         }
         if let data = try? Data(contentsOf: folder.appendingPathComponent("outbox.json")),
            let outbox = try? decoder.decode(Outbox.self, from: data) {
             outboxSittings = outbox.sittings
             outboxReviews = outbox.reviews
             outboxExams = outbox.exams ?? []
+            outboxVivas = outbox.vivas ?? []
+        }
+        if let data = try? Data(contentsOf: folder.appendingPathComponent("viva-draft.json")) {
+            vivaDraft = try? decoder.decode(VivaDraft.self, from: data)
+        }
+        if let data = try? Data(contentsOf: folder.appendingPathComponent("vivas.json")) {
+            vivaHistory = (try? decoder.decode([PhoneViva].self, from: data)) ?? []
         }
         if let data = try? Data(contentsOf: folder.appendingPathComponent("exam-draft.json")) {
             examDraft = try? decoder.decode(ExamDraft.self, from: data)
@@ -572,11 +725,17 @@ final class AppModel {
             Keychain.delete("marking")
         }
         stored?.marking = nil
+        if let viva = stored?.viva, let data = try? LockinJSON.encoder().encode(viva) {
+            Keychain.set(data, for: "viva")
+        } else {
+            Keychain.delete("viva")
+        }
+        stored?.viva = nil
         write(Library(snapshot: stored, lastSyncAt: lastSyncAt), to: "library.json")
     }
 
     private func saveOutbox() {
-        write(Outbox(sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams), to: "outbox.json")
+        write(Outbox(sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams, vivas: outboxVivas), to: "outbox.json")
     }
 
     private func saveExamDraft() {
@@ -589,6 +748,18 @@ final class AppModel {
 
     private func saveExams() {
         write(examHistory, to: "exams.json")
+    }
+
+    private func saveVivaDraft() {
+        if let vivaDraft {
+            write(vivaDraft, to: "viva-draft.json")
+        } else {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent("viva-draft.json"))
+        }
+    }
+
+    private func saveVivas() {
+        write(vivaHistory, to: "vivas.json")
     }
 
     private func saveDrafts() {

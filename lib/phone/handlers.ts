@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
 import { readCardImage } from "@/lib/flashcards/images";
 import { parseCrop } from "@/lib/markdown";
-import { ingestExam, ingestReviews, ingestSitting, type SittingOutcome } from "@/lib/phone/ingest";
+import { ingestExam, ingestReviews, ingestSitting, ingestViva, type SittingOutcome } from "@/lib/phone/ingest";
 import { computerName, touchPairing, type Pairing } from "@/lib/phone/pairing";
-import { HelloRequestSchema, SlideRequestSchema, SyncRequestSchema } from "@/lib/phone/schema";
+import { HelloRequestSchema, SlideRequestSchema, SyncRequestSchema, VivaTurnRequestSchema } from "@/lib/phone/schema";
 import { buildSnapshot } from "@/lib/phone/snapshot";
 import { cropPng, phoneJpeg, slidePng } from "@/lib/slides";
+import { relayVivaTurn } from "@/lib/viva/service";
 
 /** What a request from the phone gets back, before it is sealed. */
 export type PhoneReply =
@@ -28,7 +29,7 @@ export async function handleHello(pairing: Pairing, body: unknown): Promise<Phon
 export async function handleSync(pairing: Pairing, body: unknown): Promise<PhoneReply> {
   const parsed = SyncRequestSchema.safeParse(body);
   if (!parsed.success) return fail("The phone sent something this computer can't read. Update both apps.");
-  const { device, sittings, reviews, exams } = parsed.data;
+  const { device, sittings, reviews, exams, vivas } = parsed.data;
 
   const outcomes: SittingOutcome[] = [];
   const problems: string[] = [];
@@ -49,13 +50,21 @@ export async function handleSync(pairing: Pairing, body: unknown): Promise<Phone
       problems.push(`An exam couldn't be saved: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  const vivasTaken: string[] = [];
+  for (const v of vivas) {
+    try {
+      vivasTaken.push((await ingestViva(v)).id);
+    } catch (err) {
+      problems.push(`A viva couldn't be saved: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   await touchPairing(pairing.id, { deviceName: device?.name, synced: true });
 
   return {
     kind: "json",
     value: {
       ok: true,
-      accepted: { sittings: outcomes.map((o) => o.id), reviews: reviewOutcomes.map((r) => r.id), exams: examsTaken },
+      accepted: { sittings: outcomes.map((o) => o.id), reviews: reviewOutcomes.map((r) => r.id), exams: examsTaken, vivas: vivasTaken },
       sittings: outcomes,
       reviews: reviewOutcomes.filter((r) => !r.saved),
       problems,
@@ -89,4 +98,15 @@ export async function handleSlide(_pairing: Pairing, body: unknown): Promise<Pho
   const crop = m[2] ? parseCrop(m[2]) : null;
   if (crop) png = await cropPng(png, crop);
   return { kind: "image", bytes: await phoneJpeg(png) };
+}
+
+/** The viva examiner's next line, for a phone holding a viva with this computer's AI. */
+export async function handleViva(_pairing: Pairing, body: unknown): Promise<PhoneReply> {
+  const parsed = VivaTurnRequestSchema.safeParse(body);
+  if (!parsed.success) return fail("That viva request couldn't be read. Update both apps.");
+  try {
+    return { kind: "json", value: { ok: true, ...(await relayVivaTurn(parsed.data)) } };
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
 }

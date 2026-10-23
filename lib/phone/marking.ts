@@ -37,12 +37,22 @@ function onThisComputer(url: string): boolean {
   }
 }
 
-export async function phoneMarkingTemplate(): Promise<PhoneMarkingTemplate | null> {
+export function phoneMarkingTemplate(): Promise<PhoneMarkingTemplate | null> {
+  return phonePromptTemplate("mark");
+}
+
+/** The same, for the viva examiner's next line: short, and wanted quickly. */
+export function phoneVivaTemplate(): Promise<PhoneMarkingTemplate | null> {
+  return phonePromptTemplate("viva-turn");
+}
+
+async function phonePromptTemplate(promptName: "mark" | "viva-turn"): Promise<PhoneMarkingTemplate | null> {
   const s = await getSettings();
   if (s.mode !== "auto" || s.cloudEngine !== "api" || !(await phoneMayMarkWithKey())) return null;
   const key = await getApiKey();
-  const { text, version } = await loadPrompt("mark");
-  const promptVersion = `mark@${version}`;
+  const { text, version } = await loadPrompt(promptName);
+  const promptVersion = `${promptName}@${version}`;
+  const quick = promptName === "viva-turn";
 
   if (s.apiService === "anthropic") {
     if (!key) return null;
@@ -65,8 +75,8 @@ export async function phoneMarkingTemplate(): Promise<PhoneMarkingTemplate | nul
         },
         body: {
           model,
-          max_tokens: 16000,
-          output_config: { effort: "medium" },
+          max_tokens: quick ? 2000 : 16000,
+          output_config: { effort: quick ? "low" : "medium" },
           messages: [{ role: "user", content: [{ type: "text", text: PROMPT_SLOT }] }],
           ...(fallback ? { fallbacks: "default" } : {}),
         },

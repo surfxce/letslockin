@@ -169,16 +169,18 @@ public struct SyncRequest: Codable, Sendable {
     public var sittings: [PhoneSitting]
     public var reviews: [CardReview]
     public var exams: [PhoneExam]
+    public var vivas: [PhoneViva]
 
-    public init(device: Device, sittings: [PhoneSitting], reviews: [CardReview], exams: [PhoneExam] = []) {
+    public init(device: Device, sittings: [PhoneSitting], reviews: [CardReview], exams: [PhoneExam] = [], vivas: [PhoneViva] = []) {
         self.device = device
         self.sittings = sittings
         self.reviews = reviews
         self.exams = exams
+        self.vivas = vivas
     }
 
     private enum CodingKeys: String, CodingKey {
-        case device, sittings, reviews, exams
+        case device, sittings, reviews, exams, vivas
     }
 
     public init(from decoder: Decoder) throws {
@@ -187,6 +189,7 @@ public struct SyncRequest: Codable, Sendable {
         sittings = try container.decode([PhoneSitting].self, forKey: .sittings)
         reviews = try container.decode([CardReview].self, forKey: .reviews)
         exams = try container.decodeIfPresent([PhoneExam].self, forKey: .exams) ?? []
+        vivas = try container.decodeIfPresent([PhoneViva].self, forKey: .vivas) ?? []
     }
 }
 
@@ -196,6 +199,8 @@ public struct SyncReply: Decodable, Sendable {
         public var reviews: [String]
         /// Absent from computers before exam mode.
         public var exams: [String]?
+        /// Absent from computers before viva mode.
+        public var vivas: [String]?
     }
 
     public struct ReviewNote: Decodable, Sendable {

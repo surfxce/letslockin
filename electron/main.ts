@@ -13,11 +13,11 @@
  * Electron itself never imports Prisma, so it never has to care which one is which.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import path from "node:path";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, systemPreferences } from "electron";
 
 import { isExportPath, safeFileName } from "../lib/export";
 import { startPhoneGateway, type PhoneGateway } from "./phone-gateway";
@@ -444,6 +444,19 @@ app.whenReady().then(async () => {
     const check = await checkForUpdate({ packaged: PACKAGED, root: ROOT, bundle: BUNDLE });
     latest = check.state === "available" ? check.latest : null;
     return check;
+  });
+  // A viva hears spoken answers. macOS closes an app that opens the microphone without
+  // saying why in its Info.plist, so a copy built before it could ask says "unavailable".
+  ipcMain.handle("lockin:microphone", async () => {
+    if (process.platform !== "darwin") return "granted";
+    if (PACKAGED) {
+      const plist = await readFile(path.join(path.dirname(process.resourcesPath), "Info.plist"), "utf8").catch(() => "");
+      if (!plist.includes("NSMicrophoneUsageDescription")) return "unavailable";
+    }
+    const status = systemPreferences.getMediaAccessStatus("microphone");
+    if (status === "granted") return "granted";
+    if (status === "not-determined") return (await systemPreferences.askForMediaAccess("microphone")) ? "granted" : "denied";
+    return "denied";
   });
   ipcMain.handle("lockin:installUpdate", async () => {
     if (!latest) return "check for updates first";

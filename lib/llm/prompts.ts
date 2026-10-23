@@ -63,6 +63,7 @@ export type PromptName =
   | "mixed-questions"
   | "transcribe-audio"
   | "fix-transcript"
+  | "viva-turn"
   | "mark"
   | "parse-past-paper"
   | "sort-files"

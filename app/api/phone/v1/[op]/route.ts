@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 
-import { handleHello, handleSlide, handleSync, type PhoneReply } from "@/lib/phone/handlers";
+import { handleHello, handleSlide, handleSync, handleViva, type PhoneReply } from "@/lib/phone/handlers";
 import { isPhoneOp, openRequest, sealJson, sealReply } from "@/lib/phone/protocol";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ op: string
         ? await handleHello(opened.pairing, opened.body)
         : op === "sync"
           ? await handleSync(opened.pairing, opened.body)
-          : await handleSlide(opened.pairing, opened.body);
+          : op === "viva"
+            ? await handleViva(opened.pairing, opened.body)
+            : await handleSlide(opened.pairing, opened.body);
   } catch (err) {
     console.error(`phone ${op} failed:`, err);
     reply = { kind: "json", value: { ok: false, error: "Something went wrong on the computer. Try again." } };

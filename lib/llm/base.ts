@@ -4,6 +4,7 @@ import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashc
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
+import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -135,6 +136,11 @@ export abstract class PromptProvider implements LlmProvider {
 
   fixTranscript(input: FixInput) {
     return this.call("fix-transcript", fixVars(input), FixesSchema, { task: "transcript" });
+  }
+
+  vivaTurn(input: VivaTurnInput) {
+    // Someone is waiting to hear it: the quick setting, like questions from a lecture page.
+    return this.call("viva-turn", vivaVars(input), VivaMoveSchema, { task: "ask" });
   }
 
   mark(input: MarkInput) {

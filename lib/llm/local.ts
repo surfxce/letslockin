@@ -4,6 +4,7 @@ import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashc
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { mixedLectures, mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
+import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -492,6 +493,17 @@ export class LocalProvider implements LlmProvider {
       zod: FixesSchema,
       maxTokens: 2500,
       temperature: 0,
+    });
+  }
+
+  async vivaTurn(input: VivaTurnInput) {
+    return this.run({
+      prompt: "viva-turn",
+      vars: () => vivaVars(input),
+      schema: { type: "object", properties: { move: { enum: ["probe", "next"] }, say: text(400) } },
+      zod: VivaMoveSchema,
+      maxTokens: 300,
+      temperature: 0.3,
     });
   }
 

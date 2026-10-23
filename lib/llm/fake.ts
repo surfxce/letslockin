@@ -5,6 +5,7 @@ import type { MistakeCards, MistakeInput } from "@/lib/flashcards/mistakes";
 import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import type { MixedInput } from "@/lib/mixed/schema";
 import type { FixInput, Fixes } from "@/lib/recordings/schema";
+import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -198,6 +199,17 @@ export class FakeProvider implements LlmProvider {
         .map((word) => ({ heard: word.split("").join(" "), correct: word }))
         .filter((f) => input.transcript.toLowerCase().includes(f.heard.toLowerCase())),
     };
+  }
+
+  /** Asks about the first marking point once if the answer is short, then moves on. */
+  async vivaTurn(input: VivaTurnInput): Promise<VivaMove> {
+    await this.wait();
+    this.lastPromptVersion = "viva-turn@fake";
+    const said = input.exchange.filter((t) => t.role === "student").map((t) => t.text).join(" ");
+    if (input.probesLeft > 0 && said.split(/\s+/).length < 12 && input.criteria[0]) {
+      return { move: "probe", say: `Can you say more about this: ${input.criteria[0].point.toLowerCase()}?` };
+    }
+    return { move: "next", say: "Okay, thank you." };
   }
 
   async mark(input: MarkInput): Promise<Marking> {

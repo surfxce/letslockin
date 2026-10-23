@@ -83,6 +83,16 @@ public final class SyncClient: @unchecked Sendable {
         try LockinJSON.decoder().decode(SyncReply.self, from: try await call("sync", request, timeout: 180))
     }
 
+    /// The viva examiner's next line, from the computer's AI. It may take a while to think.
+    public func vivaTurn(questionId: String, exchange: [VivaLine], probesLeft: Int) async throws -> VivaMove {
+        let body = VivaTurnRequest(
+            questionId: questionId,
+            exchange: exchange.suffix(20).map { VivaTurnRequest.Line(role: $0.role, text: $0.text) },
+            probesLeft: probesLeft
+        )
+        return try LockinJSON.decoder().decode(VivaMove.self, from: try await call("viva", body, timeout: 100))
+    }
+
     /// One slide picture (JPEG), by the reference the snapshot lists it under.
     public func slide(lectureId: String, ref: String) async throws -> Data {
         try await call("slide", ["lectureId": lectureId, "ref": ref], timeout: 60, image: true)
@@ -152,4 +162,16 @@ public final class SyncClient: @unchecked Sendable {
         if image && type == "json" { throw SyncError.computer("No picture came back.") }
         return plain
     }
+}
+
+/// What the computer needs to say the viva examiner's next line (VivaTurnRequestSchema).
+struct VivaTurnRequest: Encodable {
+    struct Line: Encodable {
+        var role: String
+        var text: String
+    }
+
+    var questionId: String
+    var exchange: [Line]
+    var probesLeft: Int
 }

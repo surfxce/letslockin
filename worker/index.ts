@@ -36,6 +36,8 @@ import { writeMcqs } from "@/lib/mcq/service";
 import { writeMistakeCards } from "@/lib/flashcards/mistakes";
 import { writeMixedQuestions } from "@/lib/mixed/service";
 import { transcribeLecture, untranscribed } from "@/lib/recordings/service";
+import type { VivaTurnInput } from "@/lib/viva/schema";
+import { recoverViva, runVivaTurn } from "@/lib/viva/service";
 import { splitPaper } from "@/lib/papers/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
@@ -56,7 +58,7 @@ async function canClaimQueue(): Promise<boolean> {
 
 type Handler = (payload: Record<string, unknown>, jobId: string, provider: LlmProvider) => Promise<unknown>;
 
-const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK" | "TRANSCRIBE">, Handler> = {
+const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK" | "TRANSCRIBE" | "VIVA">, Handler> = {
   /** Files → title, summary, concepts → first LAQs. Skips whatever is already done. */
   PREPARE: async (payload, jobId, provider) => {
     const lectureId = String(payload.lectureId);
@@ -594,7 +596,7 @@ async function sortOne(): Promise<boolean> {
 async function askOne(): Promise<boolean> {
   if (!(await canClaimQueue())) return false;
   const pending = await prisma.job.findFirst({
-    where: { kind: "ASK", status: "PENDING" },
+    where: { kind: { in: ["ASK", "VIVA"] }, status: "PENDING" },
     orderBy: { createdAt: "asc" },
   });
   if (!pending) return false;
@@ -606,6 +608,22 @@ async function askOne(): Promise<boolean> {
   const started = Date.now();
   try {
     const provider = await currentProvider();
+    if (job.kind === "VIVA") {
+      const { vivaId, relay } = JSON.parse(job.payload) as { vivaId?: string; relay?: VivaTurnInput };
+      try {
+        if (!provider) throw new Error("no AI is set up to be the examiner");
+        // A phone's viva: the examiner's line is all it wants back.
+        const { result, used } = await withFallback(provider, (p) => (relay ? p.vivaTurn(relay) : runVivaTurn(vivaId!, p)));
+        await prisma.job.update({
+          where: { id: job.id },
+          data: { status: "DONE", result: JSON.stringify(result), model: used.lastModel, durationMs: Date.now() - started, finishedAt: new Date() },
+        });
+      } finally {
+        // Never leave the student waiting on an examiner who can't speak.
+        if (vivaId) await recoverViva(vivaId).catch(() => undefined);
+      }
+      return true;
+    }
     if (!provider) throw new Error("no AI is set up — choose Claude Code or download an offline model in Settings");
     const payload = JSON.parse(job.payload) as AskPayload;
     const { result, used } = await withFallback(provider, (p) => runAsk(payload, p));
@@ -694,6 +712,8 @@ async function main() {
   await prisma.job.deleteMany({ where: { kind: "SORT", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
   // Questions asked are kept a while: the lecture page lists recent ones.
   await prisma.job.deleteMany({ where: { kind: "ASK", createdAt: { lt: new Date(Date.now() - 30 * 86_400_000) } } });
+  // A viva's turns are kept in the viva itself.
+  await prisma.job.deleteMany({ where: { kind: "VIVA", createdAt: { lt: new Date(Date.now() - 86_400_000) } } });
   console.log(`worker up, polling every ${POLL_MS}ms`);
 
   let running = true;

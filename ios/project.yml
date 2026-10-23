@@ -33,6 +33,9 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSCameraUsageDescription: Scan the pairing code shown in Lockin's Settings on your computer.
+        # A viva is answered out loud.
+        NSMicrophoneUsageDescription: Lockin listens when you answer a viva out loud.
+        NSSpeechRecognitionUsageDescription: Lockin turns what you say in a viva into text, on your iPhone where it can.
         # lockin://pair?… opens the app from the Camera app's QR scanner.
         CFBundleURLTypes:
           - CFBundleURLName: com.sandeswelagedara.lockin.pair

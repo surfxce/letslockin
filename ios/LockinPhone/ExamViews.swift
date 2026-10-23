@@ -26,6 +26,29 @@ struct ExamTab: View {
                 } footer: {
                     Text("Mixed questions from the lectures you choose, timed if you like. Multiple choice is marked straight away; long answers are marked like any sitting and count towards each lecture's drill score.")
                 }
+                Section {
+                    if let viva = model.vivaDraft {
+                        NavigationLink(value: Route.vivaRoom) {
+                            Label("Continue \(viva.title) · question \(min(viva.current + 1, viva.plan.count)) of \(viva.plan.count)",
+                                  systemImage: "mic.circle")
+                        }
+                    }
+                    NavigationLink(value: Route.vivaSetup) {
+                        Label("New viva", systemImage: "mic")
+                    }
+                    ForEach(model.vivaHistory.prefix(10)) { viva in
+                        NavigationLink(value: Route.vivaResult(viva.id)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(viva.title)
+                                Text(viva.submittedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Viva")
+                } footer: {
+                    Text("An oral exam: answer out loud, and the examiner follows up on what you left out. Marked like any sitting.")
+                }
                 if !model.examHistory.isEmpty {
                     Section("Past exams") {
                         ForEach(model.examHistory) { exam in

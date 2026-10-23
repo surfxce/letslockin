@@ -46,6 +46,9 @@ declare global {
       checkUpdate?(): Promise<UpdateCheck>;
       /** Downloads the update and restarts into it; resolves only with what went wrong. */
       installUpdate?(): Promise<string | null>;
+      /** Asks macOS for the microphone, for answering a viva out loud. "unavailable" when
+       *  this copy of the app was built before it could ask (update with the .dmg). */
+      microphone?(): Promise<"granted" | "denied" | "unavailable">;
     };
     /** Set while answering closed-book, so a background refresh never disturbs typing. */
     __lockinHoldRefresh?: boolean;

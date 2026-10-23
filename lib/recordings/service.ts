@@ -45,7 +45,7 @@ function say(report: ((detail: string | null) => void) | undefined) {
 }
 
 /** The slides' technical words and the course's concept names: how terms should be spelled. */
-async function wordsFor(lectureId: string): Promise<{ title: string; words: string[] }> {
+export async function wordsFor(lectureId: string): Promise<{ title: string; words: string[] }> {
   const lecture = await prisma.lecture.findUniqueOrThrow({
     where: { id: lectureId },
     select: {

@@ -1,7 +1,7 @@
 /**
  * The door a paired iPhone comes in by. Lockin's own server only listens on this
  * computer (127.0.0.1); this listens on the local network, but only while a phone is
- * paired, and passes on exactly three requests — POST /v1/hello, /v1/sync, /v1/slide —
+ * paired, and passes on exactly four requests — POST /v1/hello, /v1/sync, /v1/slide, /v1/viva —
  * to the server's /api/phone/v1/… routes, untouched. Everything in them is sealed with
  * the pairing's key (lib/phone/protocol.ts), so this needs no secrets of its own; it
  * never reads the database and holds no keys.
@@ -10,7 +10,7 @@
  */
 import { createServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-const OPS = new Set(["hello", "sync", "slide"]);
+const OPS = new Set(["hello", "sync", "slide", "viva"]);
 const MAX_BYTES = 20 * 1024 * 1024;
 const POLL_MS = 3000;
 

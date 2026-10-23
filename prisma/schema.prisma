@@ -194,7 +194,7 @@ model Attempt {
   closedBook    Boolean   @default(true)
   geometricMean Float? // null until every response is marked
   completedAt   DateTime?
-  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat) | EXAM (LAQs from an exam)
+  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat) | EXAM (LAQs from an exam) | VIVA (spoken, in a viva)
 
   lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   responses Response[]
@@ -442,4 +442,28 @@ model ExamItem {
   response Response? @relation(fields: [responseId], references: [id], onDelete: SetNull)
 
   @@index([examId])
+}
+
+/// An oral exam: an AI examiner asks LAQs aloud, follows up on what an answer left out,
+/// and moves on. When it ends, each question's exchange becomes an answer in a sitting
+/// of its lecture (source VIVA) and is marked like any other.
+model Viva {
+  id         String    @id @default(cuid())
+  courseId   String?
+  title      String
+  /// JSON [{ questionId, lectureId, responseId? }]: the LAQs it asks, in order; the
+  /// response each became once it ended.
+  plan       String
+  /// JSON [{ role: "examiner" | "student", text, questionId, at }]: everything said.
+  turns      String    @default("[]")
+  /// Index into `plan` of the question being asked.
+  current    Int       @default(0)
+  /// Follow-ups asked on the current question.
+  probes     Int       @default(0)
+  /// Who speaks next: "student", "examiner" (the AI is thinking), or "done".
+  waitingOn  String    @default("student")
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([createdAt])
 }

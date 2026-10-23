@@ -9,6 +9,8 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var marking: MarkingTemplate?
     /// Who marks on the computer ("Claude Code"), or nil in copy-and-paste mode.
     public var computerMarker: String?
+    /// How this phone may ask the viva examiner itself, as `marking`; nil to ask the computer.
+    public var viva: MarkingTemplate?
     public var courses: [Course]
     public var lectures: [Lecture]
     public var sittings: [Sitting]
@@ -17,7 +19,7 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var cards: [Card]
 
     public init(v: Int = 1, computer: String, generatedAt: Date, marking: MarkingTemplate?, computerMarker: String?,
-                courses: [Course], lectures: [Lecture], sittings: [Sitting], cards: [Card], mcqs: [Mcq]? = nil) {
+                courses: [Course], lectures: [Lecture], sittings: [Sitting], cards: [Card], mcqs: [Mcq]? = nil, viva: MarkingTemplate? = nil) {
         self.v = v
         self.computer = computer
         self.generatedAt = generatedAt
@@ -28,6 +30,7 @@ public struct Snapshot: Codable, Hashable, Sendable {
         self.sittings = sittings
         self.cards = cards
         self.mcqs = mcqs
+        self.viva = viva
     }
 }
 

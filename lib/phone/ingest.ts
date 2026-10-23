@@ -4,7 +4,7 @@ import type { Rating } from "@/lib/flashcards/schedule";
 import { enqueue } from "@/lib/jobs";
 import { MarkingSchema } from "@/lib/llm/schemas";
 import { usesAi } from "@/lib/modes";
-import type { PhoneExam, PhoneReview, PhoneSitting } from "@/lib/phone/schema";
+import type { PhoneExam, PhoneReview, PhoneSitting, PhoneViva } from "@/lib/phone/schema";
 import { applyMarking, scoreAttemptIfMarked } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
 
@@ -31,7 +31,7 @@ export interface SittingOutcome {
   note: string | null;
 }
 
-export async function ingestSitting(sitting: PhoneSitting, now = new Date(), source: "APP" | "EXAM" = "APP"): Promise<SittingOutcome> {
+export async function ingestSitting(sitting: PhoneSitting, now = new Date(), source: "APP" | "EXAM" | "VIVA" = "APP"): Promise<SittingOutcome> {
   const outcome: SittingOutcome = { id: sitting.id, marked: 0, queued: 0, note: null };
   if (await prisma.attempt.findUnique({ where: { id: sitting.id }, select: { id: true } })) {
     return { ...outcome, note: "already received" };
@@ -148,4 +148,34 @@ export async function ingestReviews(reviews: PhoneReview[], now = new Date()): P
     }
   }
   return out;
+}
+
+/**
+ * A viva held on the phone: its answers become a sitting of each lecture (source VIVA),
+ * marked as any are, and the viva is kept with everything said, so it shows with the
+ * computer's own vivas.
+ */
+export async function ingestViva(viva: PhoneViva, now = new Date()): Promise<{ id: string; note: string | null }> {
+  if (await prisma.viva.findUnique({ where: { id: viva.id }, select: { id: true } })) return { id: viva.id, note: "already received" };
+  for (const s of viva.sittings) await ingestSitting(s, now, "VIVA");
+  const responseIds = viva.plan.flatMap((p) => (p.responseId ? [p.responseId] : []));
+  const kept = new Set((await prisma.response.findMany({ where: { id: { in: responseIds } }, select: { id: true } })).map((r) => r.id));
+  const plan = viva.plan.map((p) => ({
+    questionId: p.questionId,
+    lectureId: p.lectureId,
+    ...(p.responseId && kept.has(p.responseId) ? { responseId: p.responseId } : {}),
+  }));
+  await prisma.viva.create({
+    data: {
+      id: viva.id,
+      title: viva.title.trim() || "Viva on iPhone",
+      plan: JSON.stringify(plan),
+      turns: JSON.stringify(viva.turns),
+      current: plan.length,
+      waitingOn: "done",
+      createdAt: when(viva.startedAt, now),
+      finishedAt: when(viva.submittedAt, now),
+    },
+  });
+  return { id: viva.id, note: null };
 }

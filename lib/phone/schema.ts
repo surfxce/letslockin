@@ -30,6 +30,18 @@ export const PhoneSnapshotSchema = z.object({
     .nullable(),
   /** Who marks when the phone doesn't: for the phone to say so. */
   computerMarker: z.string().nullable(),
+  /** How the phone may ask the viva examiner's next line itself, as `marking`; null to
+   *  ask the computer (the "viva" request) or, away from it, to ask with no follow-ups. */
+  viva: z
+    .object({
+      kind: z.enum(["anthropic", "openai"]),
+      label: z.string(),
+      promptVersion: z.string(),
+      prompt: z.string(),
+      request: z.object({ url: z.string(), headers: z.record(z.string(), z.string()), body: z.unknown() }),
+    })
+    .nullable()
+    .optional(),
   courses: z.array(z.object({ id: Id, code: z.string(), title: z.string(), examDate: When.nullable() })),
   lectures: z.array(
     z.object({
@@ -177,11 +189,36 @@ export const PhoneExamSchema = z.object({
 });
 export type PhoneExam = z.infer<typeof PhoneExamSchema>;
 
+/**
+ * A viva held on the phone: everything said, and each question's answers as a sitting
+ * of its lecture (source VIVA), as the computer's own vivas end.
+ */
+export const PhoneVivaSchema = z.object({
+  id: Id,
+  title: z.string().max(200),
+  startedAt: When,
+  submittedAt: When,
+  plan: z.array(z.object({ questionId: Id, lectureId: Id, responseId: Id.nullable().optional() })).max(40),
+  turns: z
+    .array(z.object({ role: z.enum(["examiner", "student"]), text: z.string().max(20_000), questionId: z.string().max(64), at: When }))
+    .max(400),
+  sittings: z.array(PhoneSittingSchema).max(40),
+});
+export type PhoneViva = z.infer<typeof PhoneVivaSchema>;
+
 export const SyncRequestSchema = z.object({
   device: z.object({ name: z.string().max(120), app: z.string().max(40) }).optional(),
   sittings: z.array(PhoneSittingSchema).max(500).default([]),
   reviews: z.array(PhoneReviewSchema).max(20_000).default([]),
   exams: z.array(PhoneExamSchema).max(200).default([]),
+  vivas: z.array(PhoneVivaSchema).max(200).default([]),
+});
+
+/** The viva examiner's next line, asked of this computer by a phone holding a viva. */
+export const VivaTurnRequestSchema = z.object({
+  questionId: Id,
+  exchange: z.array(z.object({ role: z.enum(["examiner", "student"]), text: z.string().max(20_000) })).min(1).max(20),
+  probesLeft: z.number().int().min(0).max(5),
 });
 export type SyncRequest = z.infer<typeof SyncRequestSchema>;
 

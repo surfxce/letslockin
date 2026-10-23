@@ -22,6 +22,9 @@ export function NavLinks() {
       <Link href="/exam" className={on("/exam") ? "on" : undefined}>
         <Icon name="target" size={15} /> Exam
       </Link>
+      <Link href="/viva" className={on("/viva") ? "on" : undefined}>
+        <Icon name="mic" size={15} /> Viva
+      </Link>
       <Link href="/progress" className={on("/progress") ? "on" : undefined}>
         <Icon name="trend" size={15} /> Progress
       </Link>

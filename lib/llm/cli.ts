@@ -4,6 +4,7 @@ import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashc
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
+import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -321,6 +322,10 @@ export class ClaudeCliProvider implements LlmProvider {
 
   fixTranscript(input: FixInput) {
     return this.call("fix-transcript", fixVars(input), FixesSchema);
+  }
+
+  vivaTurn(input: VivaTurnInput) {
+    return this.call("viva-turn", vivaVars(input), VivaMoveSchema);
   }
 
   mark(input: MarkInput) {

@@ -4,6 +4,7 @@ import type { MistakeCards, MistakeInput } from "@/lib/flashcards/mistakes";
 import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import type { MixedInput } from "@/lib/mixed/schema";
 import type { FixInput, Fixes } from "@/lib/recordings/schema";
+import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
 import type { Answer, Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 import type { LaqStyle } from "@/lib/modes";
 
@@ -152,6 +153,8 @@ export interface LlmProvider {
   writeMixedQuestions(input: MixedInput): Promise<QuestionSet>;
   /** The technical words a speech model misheard in one piece of a transcript. */
   fixTranscript(input: FixInput): Promise<Fixes>;
+  /** The viva examiner's next line after an answer: a follow-up, or moving on. Quick. */
+  vivaTurn(input: VivaTurnInput): Promise<VivaMove>;
   mark(input: MarkInput): Promise<Marking>;
   parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems>;
   /** Groups a folder's files into lectures. Quick and cheap: it reads only openings. */

@@ -156,7 +156,7 @@ async function listenCli(part: AudioPart, prompt: string, l: Extract<Listener, {
  */
 export async function listen(
   parts: Array<AudioPart & { mime: string }>,
-  opts: { title: string; vocabulary: string[] },
+  opts: { title: string; vocabulary: string[]; /** A short answer may come back without times. */ untimed?: boolean },
   l: Listener,
   onPart?: (done: number) => void,
 ): Promise<{ segments: Segment[]; promptVersion: string }> {
@@ -172,7 +172,8 @@ export async function listen(
     promptVersion = rendered.version;
     const text = l.kind === "api" ? await listenApi(part, part.mime, rendered.text, l) : await listenCli(part, rendered.text, l);
     throwIfCancelled();
-    const heard = parseTimedLines(text, part.start);
+    let heard = parseTimedLines(text, part.start);
+    if (!heard.length && opts.untimed && text.trim()) heard = [{ start: part.start, text: text.replace(/```\w*/g, "").trim() }];
     if (!heard.length) throw new CloudError(`Gemini's transcript of part ${i + 1} had no times in it`);
     segments.push(...heard);
     onPart?.(i + 1);

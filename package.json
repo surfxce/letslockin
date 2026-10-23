@@ -119,7 +119,10 @@
       "category": "public.app-category.education",
       "icon": "build/icon.icns",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Lockin listens when you answer a viva out loud, and turns what you say into text."
+      }
     },
     "dmg": {
       "artifactName": "Lockin.dmg",

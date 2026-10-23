@@ -143,6 +143,23 @@ public struct ExamSource {
         return found
     }
 
+    /// How each LAQ has gone before: times answered (the computer's sittings, then this
+    /// phone's) and its latest mark, with when.
+    func laqHistory() -> (seen: [String: Int], last: [String: (Date, Double)]) {
+        var seen: [String: Int] = [:]
+        var last: [String: (Date, Double)] = [:]
+        for sitting in snapshot.sittings {
+            for r in sitting.responses where r.answerText.trimmingCharacters(in: .whitespacesAndNewlines) != "" || r.mark != nil {
+                seen[r.questionId, default: 0] += 1
+                if let mark = r.mark, (last[r.questionId]?.0 ?? .distantPast) <= sitting.sittingDate {
+                    last[r.questionId] = (sitting.sittingDate, mark)
+                }
+            }
+        }
+        for sitting in localSittings { for r in sitting.responses { seen[r.questionId, default: 0] += 1 } }
+        return (seen, last)
+    }
+
     public func mcqs(of lectureId: String) -> [Mcq] {
         (snapshot.mcqs ?? []).filter { $0.lectureId == lectureId && $0.options.count > $0.answer }
     }
@@ -155,18 +172,7 @@ public struct ExamSource {
         let lectures = snapshot.lectures.filter { lectureIds.contains($0.id) }
         guard !lectures.isEmpty else { return nil }
 
-        // How each LAQ has gone before: the computer's sittings, then this phone's.
-        var laqSeen: [String: Int] = [:]
-        var laqLast: [String: (Date, Double)] = [:]
-        for sitting in snapshot.sittings {
-            for r in sitting.responses where r.answerText.trimmingCharacters(in: .whitespacesAndNewlines) != "" || r.mark != nil {
-                laqSeen[r.questionId, default: 0] += 1
-                if let mark = r.mark, (laqLast[r.questionId]?.0 ?? .distantPast) <= sitting.sittingDate {
-                    laqLast[r.questionId] = (sitting.sittingDate, mark)
-                }
-            }
-        }
-        for sitting in localSittings { for r in sitting.responses { laqSeen[r.questionId, default: 0] += 1 } }
+        let (laqSeen, laqLast) = laqHistory()
         var mcqSeen: [String: Int] = [:]
         var mcqLast: [String: Double] = [:]
         let answers = Dictionary((snapshot.mcqs ?? []).map { ($0.id, $0.answer) }, uniquingKeysWith: { first, _ in first })
