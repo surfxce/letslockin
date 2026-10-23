@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   const kind = request.nextUrl.searchParams.get("kind");
   const lecture = await prisma.lecture.findUnique({
     where: { id },
-    include: { materials: true, _count: { select: { questions: true } } },
+    include: { materials: true, _count: { select: { questions: { where: { paperItemId: null } } } } },
   });
   if (!lecture) return new Response("No such lecture.", { status: 404 });
   const plain = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };

@@ -15,7 +15,8 @@ export async function pickQuestions(lectureId: string): Promise<string[]> {
   });
 
   const questions = await prisma.question.findMany({
-    where: { lectureId },
+    // Past-paper questions wait for the paper to be sat.
+    where: { lectureId, paperItemId: null },
     select: {
       id: true,
       concepts: { select: { conceptId: true } },

@@ -26,9 +26,10 @@ export function shuffle<T>(items: readonly T[], random = Math.random): T[] {
  * Picks `count` questions spread across the lectures: one from each lecture in turn,
  * then a second from each, so no lecture gets two before every lecture has one.
  * Lectures come in a random order and, within each, questions not yet seen first.
- * With `weak`, the weakest lectures (by drill score; never drilled counts as weakest)
- * go first, and within each the questions answered worst — one never answered counts
- * as middling, so a question failed before comes back ahead of a new one.
+ * With `weak`, questions answered worst come first, from any lecture — one never
+ * answered counts as middling, so a question failed before comes back ahead of a new
+ * one — and among equals the weakest lectures (by drill score; never drilled counts as
+ * weakest) go first.
  */
 export function pickExamItems(
   candidates: readonly ExamCandidate[],
@@ -53,19 +54,17 @@ export function pickExamItems(
     lectures = lectures.sort((a, b) => score(a) - score(b));
   }
 
-  const picked: string[] = [];
-  for (let round = 0; picked.length < count; round++) {
-    let took = false;
+  const ordered: ExamCandidate[] = [];
+  for (let round = 0; ordered.length < candidates.length; round++) {
     for (const id of lectures) {
       const item = byLecture.get(id)![round];
-      if (!item) continue;
-      picked.push(item.id);
-      took = true;
-      if (picked.length === count) break;
+      if (item) ordered.push(item);
     }
-    if (!took) break;
   }
-  return picked;
+  // Weak focus brings back everything answered worst first, wherever it's from; the
+  // spread across lectures then decides among equals.
+  if (weak) ordered.sort((a, b) => markKey(a.lastMark) - markKey(b.lastMark));
+  return ordered.slice(0, count).map((c) => c.id);
 }
 
 /** A rough exam time: a minute and a half per MCQ and fifteen minutes per LAQ. */

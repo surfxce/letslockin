@@ -10,6 +10,10 @@ import { prisma } from "@/lib/db";
 import { plural, shortDate } from "@/lib/format";
 import { renderMarkdown } from "@/lib/markdown";
 import { lectureDecks, pictured } from "@/lib/slides";
+import { HARD_CARDS } from "@/lib/flashcards/review";
+import { LEECH_LAPSES } from "@/lib/flashcards/schedule";
+import { cleanTag, tagList } from "@/lib/flashcards/tags";
+import type { Prisma } from "@/lib/generated/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +24,7 @@ export default async function CardsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ new?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ new?: string; q?: string; page?: string; show?: string; tag?: string; edit?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -29,17 +33,28 @@ export default async function CardsPage({
 
   const q = query.q?.trim().slice(0, 200) ?? "";
   const page = Math.max(0, Math.floor(Number(query.page) || 0));
-  const where = { lectureId: id, ...(q ? { OR: [{ front: { contains: q } }, { back: { contains: q } }] } : {}) };
-  const [decks, cards, total, byOrigin] = await Promise.all([
+  const show = query.show === "problems" || query.show === "suspended" || query.show === "hard" ? query.show : null;
+  const tag = query.tag ? cleanTag(query.tag) : "";
+  const where: Prisma.FlashcardWhereInput = {
+    lectureId: id,
+    ...(q ? { OR: [{ front: { contains: q } }, { back: { contains: q } }] } : {}),
+    ...(tag ? { tags: { contains: ` ${tag} ` } } : {}),
+    ...(show === "problems" ? { lapses: { gte: LEECH_LAPSES } } : show === "suspended" ? { suspended: true } : {}),
+    ...(show === "hard" ? { AND: [HARD_CARDS] } : {}),
+  };
+  const [decks, cards, total, byOrigin, editCard, problems, suspended] = await Promise.all([
     lectureDecks(id),
     prisma.flashcard.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * PER_PAGE, take: PER_PAGE }),
     prisma.flashcard.count({ where }),
     prisma.flashcard.groupBy({ by: ["origin"], where: { lectureId: id }, _count: true }),
+    query.edit ? prisma.flashcard.findFirst({ where: { id: query.edit, lectureId: id } }) : null,
+    prisma.flashcard.count({ where: { lectureId: id, lapses: { gte: LEECH_LAPSES } } }),
+    prisma.flashcard.count({ where: { lectureId: id, suspended: true } }),
   ]);
   const ranges = pictured(decks);
   const base = `/api/lectures/${encodeURIComponent(id)}/slides`;
   const listSlides = { base, ranges, print: true };
-  const rows: WorkshopCard[] = cards.map((c) => ({
+  const row = (c: (typeof cards)[number]): WorkshopCard => ({
     id: c.id,
     front: c.front,
     back: c.back,
@@ -48,12 +63,22 @@ export default async function CardsPage({
     origin: c.origin,
     state: c.state,
     due: shortDate(c.dueAt),
-  }));
+    tags: tagList(c.tags),
+    suspended: c.suspended,
+    problem: c.lapses >= LEECH_LAPSES,
+  });
+  const rows = cards.map(row);
   const count = (origin: string) => byOrigin.find((r) => r.origin === origin)?._count ?? 0;
   const all = byOrigin.reduce((n, r) => n + r._count, 0);
   const own = all - count("ai");
   const pages = Math.ceil(total / PER_PAGE);
-  const link = (p: number) => `/ak/${id}/cards?${new URLSearchParams({ ...(q ? { q } : {}), ...(p ? { page: String(p) } : {}) })}`;
+  const link = (p: number) =>
+    `/ak/${id}/cards?${new URLSearchParams({ ...(q ? { q } : {}), ...(show ? { show } : {}), ...(tag ? { tag } : {}), ...(p ? { page: String(p) } : {}) })}`;
+  const filter = (label: string, params: Record<string, string>, on: boolean) => (
+    <Link href={`/ak/${id}/cards?${new URLSearchParams(params)}`} className={`btn sm${on ? " primary" : ""}`}>
+      {label}
+    </Link>
+  );
 
   return (
     <main className="page ak-review-page">
@@ -84,7 +109,20 @@ export default async function CardsPage({
         slides={{ base, ranges }}
         pictures={{ base, numbers: ranges.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i)) }}
         cards={rows}
-        initialPanel={query.new === "occlusion" ? "occlusion" : query.new === "csv" ? "csv" : "write"}
+        initialPanel={query.new === "occlusion" ? "occlusion" : query.new === "csv" || query.new === "import" ? "import" : "write"}
+        initialEdit={editCard ? row(editCard) : null}
+        filters={
+          all > 0 && (
+            <div className="ws-filters">
+              <span className="small muted">Show</span>
+              {filter("All", {}, !show && !tag)}
+              {filter("Hard cards", { show: "hard" }, show === "hard")}
+              {problems > 0 && filter(`Problem cards · ${problems}`, { show: "problems" }, show === "problems")}
+              {suspended > 0 && filter(`Suspended · ${suspended}`, { show: "suspended" }, show === "suspended")}
+              {tag && filter(`#${tag}`, { tag }, true)}
+            </div>
+          )
+        }
       />
 
       {(all > PER_PAGE || q) && (

@@ -39,8 +39,7 @@ export function ModePicker({
             )}
           </span>
           <span className="cd">
-            Lockin prepares lectures itself with a cloud AI — Claude Code, ChatGPT Codex, Google Antigravity or an API
-            key, chosen below — one lecture at a time, and marks your answers.
+            An online AI prepares your lectures and marks your answers. Choose which one below.
           </span>
         </span>
       </label>
@@ -52,8 +51,7 @@ export function ModePicker({
             {localModel ? <span className="tag t-green">{localModel}</span> : <span className="tag t-gray">no model yet</span>}
           </span>
           <span className="cd">
-            A model downloaded to this computer does the work: fully offline, private and free, a little slower.
-            Pick one below.
+            A model downloaded to this computer does the work. Free and works offline, but slower.
           </span>
         </span>
       </label>
@@ -62,7 +60,7 @@ export function ModePicker({
         <span>
           <span className="ct">Copy & paste</span>
           <span className="cd">
-            No AI runs here. Each lecture has Copy prompt buttons for any AI chat, and boxes that format what you paste back.
+            Copy a prompt into any AI chat, then paste its reply back into Lockin.
           </span>
         </span>
       </label>
@@ -87,7 +85,7 @@ export function NotifyToggle({ enabled }: { enabled: boolean }) {
       }
       if (Notification.permission === "default") await Notification.requestPermission();
       if (Notification.permission !== "granted") {
-        setNote("Notifications are blocked for this page — allow them in the browser's site settings.");
+        setNote("Notifications are blocked. Allow them in your browser's settings.");
         return;
       }
     }
@@ -109,10 +107,8 @@ export function NotifyToggle({ enabled }: { enabled: boolean }) {
         <div>
           <div className="st">Remind me when LAQs are due</div>
           <div className="sd">
-            One notification a day per due lecture, between 8am and 10pm.{" "}
-            {desktop
-              ? "The desktop app sends them even with its window closed."
-              : "In a browser, only while a Lockin tab is open — the desktop app sends them any time."}
+            One a day for each lecture that&apos;s due, between 8am and 10pm.
+            {desktop ? "" : " In a browser, only while Lockin is open."}
           </div>
           {note && <div className="result err" style={{ marginTop: 4 }}>{note}</div>}
         </div>
@@ -180,7 +176,7 @@ export function LaqSettings({
         <div>
           <div className="st">LAQs written per lecture hour</div>
           <div className="sd">
-            When a lecture is prepared, and each time you press Write new LAQs — a 2-hour lecture gets {written * 2}.
+            A 2-hour lecture gets {written * 2}.
           </div>
         </div>
         <Stepper
@@ -196,8 +192,7 @@ export function LaqSettings({
         <div>
           <div className="st">LAQs per sitting, per lecture hour</div>
           <div className="sd">
-            How many a sitting asks, closed book — your weakest concepts first, so more written means more variety
-            from one sitting to the next.
+            How many questions each sitting asks. Your weakest topics come first.
           </div>
         </div>
         <Stepper
@@ -213,7 +208,7 @@ export function LaqSettings({
         <div>
           <div className="st">Question style</div>
           <div className="sd">{examples[style]}</div>
-          <div className="sd faint" style={{ marginTop: 2 }}>Applies to LAQs written from now on.</div>
+          <div className="sd faint" style={{ marginTop: 2 }}>For LAQs written from now on.</div>
         </div>
         <div className="seg" role="radiogroup" aria-label="Question style">
           {LAQ_STYLES.map((s) => (

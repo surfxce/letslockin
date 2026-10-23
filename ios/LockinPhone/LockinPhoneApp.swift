@@ -30,6 +30,10 @@ enum Route: Hashable {
     case result(lectureId: String, sittingId: String)
     /// AK review: one lecture's deck, or every deck's due cards.
     case review(String?)
+    /// Setting a new exam; the exam being sat; one handed in.
+    case examSetup
+    case examSitting
+    case examResult(String)
 }
 
 struct RootView: View {
@@ -48,6 +52,8 @@ struct RootView: View {
                     DecksTab()
                         .tabItem { Label("AK", systemImage: "rectangle.on.rectangle.angled") }
                         .badge(model.dueCount())
+                    ExamTab()
+                        .tabItem { Label("Exam", systemImage: "checklist") }
                     ComputerTab()
                         .tabItem { Label(model.pairing?.computer ?? "Computer", systemImage: "laptopcomputer.and.iphone") }
                         .badge(model.unsentCount)
@@ -81,6 +87,9 @@ struct RouteDestination: ViewModifier {
             case .sitting(let lectureId): SittingView(lectureId: lectureId)
             case .result(let lectureId, let sittingId): SittingResultView(lectureId: lectureId, sittingId: sittingId)
             case .review(let lectureId): ReviewView(lectureId: lectureId)
+            case .examSetup: ExamSetupView()
+            case .examSitting: ExamSittingView()
+            case .examResult(let id): ExamResultView(examId: id)
             }
         }
     }

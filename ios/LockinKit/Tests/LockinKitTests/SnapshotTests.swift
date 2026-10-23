@@ -17,10 +17,13 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.marking?.kind, "anthropic")
         XCTAssertEqual(snapshot.marking?.request.body["max_tokens"], .number(16000))
         XCTAssertNil(snapshot.lectures[1].summaryHtml)
+        XCTAssertEqual(snapshot.mcqs?.first?.options.count, 5)
+        XCTAssertEqual(snapshot.lectures[0].questions[0].fromPaper, false)
     }
 
     func testSendsWhatTheComputerAccepts() throws {
         let request = try LockinJSON.decoder().decode(SyncRequest.self, from: try Fixture.data("sync-request"))
+        XCTAssertEqual(request.exams, [], "absent from older phones' requests")
         XCTAssertEqual(request.sittings[0].responses[0].marking?.mark, 7)
         XCTAssertNil(request.sittings[0].responses[1].marking)
         let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: try LockinJSON.encoder().encode(request)) as? [String: Any])

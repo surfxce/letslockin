@@ -1,5 +1,8 @@
+import type { ParsePastPaperInput } from "@/lib/llm/provider";
 import type { FlashcardsInput, FlashcardSet } from "@/lib/flashcards/schema";
 import type { McqInput, McqSet } from "@/lib/mcq/schema";
+import type { MistakeCards, MistakeInput } from "@/lib/flashcards/mistakes";
+import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -87,6 +90,27 @@ export class FakeProvider implements LlmProvider {
     })) };
   }
 
+  async writePaperGuides(input: PaperGuideInput): Promise<PaperGuides> {
+    await this.wait();
+    this.lastPromptVersion = "paper-guides@fake";
+    return {
+      guides: input.questions.map((q) => ({
+        key: q.key,
+        modelAnswer: `A full answer to "${q.stem.slice(0, 60)}", drawing on ${input.lectureTitle}.`,
+        criteria: [
+          { point: "States the key mechanism", marks: 6 },
+          { point: "Links it to the clinical picture", marks: 4 },
+        ],
+      })),
+    };
+  }
+
+  async writeMistakeCards(input: MistakeInput): Promise<MistakeCards> {
+    await this.wait();
+    this.lastPromptVersion = "mistake-cards@fake";
+    return { cards: input.mistakes.map((m) => ({ key: m.key, front: `What should you know about ${m.concept}?`, back: m.text })) };
+  }
+
   async generateMcqs(input: McqInput): Promise<McqSet> {
     await this.wait();
     this.lastPromptVersion = "generate-mcqs@fake";
@@ -154,9 +178,23 @@ export class FakeProvider implements LlmProvider {
     };
   }
 
-  async parsePastPaper(): Promise<PaperItems> {
+  /** Splits on lines starting "1.", "2b)" and the like; tags a concept whose name the question mentions. */
+  async parsePastPaper(input: ParsePastPaperInput): Promise<PaperItems> {
     await this.wait();
-    return { items: [] };
+    this.lastPromptVersion = "parse-past-paper@fake";
+    const parts = input.paperText.split(/\n(?=\s*\d+[a-z]?[.)]\s)/).map((p) => p.trim()).filter((p) => /^\d/.test(p));
+    return {
+      items: parts.map((p) => {
+        const number = /^(\d+[a-z]?)/.exec(p)![1];
+        const marks = /\((\d+) marks?\)/i.exec(p);
+        return {
+          questionNumber: number,
+          stem: p.replace(/^\d+[a-z]?[.)]\s*/, ""),
+          marksAllocated: marks ? Number(marks[1]) : null,
+          conceptIds: input.concepts.filter((c) => p.toLowerCase().includes(c.name.toLowerCase())).map((c) => c.id),
+        };
+      }),
+    };
   }
 
   /** Sorts by filename, as the import screen does without AI, so the flow can be tried. */

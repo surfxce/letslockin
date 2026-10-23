@@ -10,6 +10,9 @@ export function NavLinks() {
   const on = (prefix: string) => (prefix === "/" ? path === "/" || path.startsWith("/lectures") : path.startsWith(prefix));
   return (
     <nav className="nav">
+      <Link href="/today" className={on("/today") ? "on" : undefined}>
+        <Icon name="calendar" size={15} /> Today
+      </Link>
       <Link href="/" className={on("/") ? "on" : undefined}>
         <Icon name="list" size={15} /> Lectures
       </Link>
@@ -18,6 +21,9 @@ export function NavLinks() {
       </Link>
       <Link href="/exam" className={on("/exam") ? "on" : undefined}>
         <Icon name="target" size={15} /> Exam
+      </Link>
+      <Link href="/progress" className={on("/progress") ? "on" : undefined}>
+        <Icon name="trend" size={15} /> Progress
       </Link>
     </nav>
   );

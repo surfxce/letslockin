@@ -176,7 +176,7 @@ struct SittingResultView: View {
     }
 }
 
-private struct AnswerStatus: View {
+struct AnswerStatus: View {
     let answer: SittingRecord.Answer
     let computer: String
     let marking: Bool

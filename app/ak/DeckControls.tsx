@@ -39,7 +39,7 @@ export function AutoFlashcardsToggle({ enabled }: { enabled: boolean }) {
   const [error, setError] = useState<string | null>(null);
   return <div className="setting">
     <div><div className="st">Generate AK decks with lectures</div>
-      <div className="sd">When preparing a lecture, also queue flashcards alongside its summary, LAQs and marking rubrics. Cards use a separate AI conversation and keep their own progress. You can also generate decks individually from AK.</div>
+      <div className="sd">Make a deck of flashcards whenever a lecture is prepared. You can also make decks one at a time in AK.</div>
       {error && <p role="alert" className="ak-error small">{error}</p>}
     </div>
     <label className="row"><input type="checkbox" aria-label="Generate AK decks with lectures" checked={enabled} disabled={pending} onChange={e => {

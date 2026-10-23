@@ -21,6 +21,12 @@ final class AppModel {
     private(set) var snapshot: Snapshot?
     private(set) var outboxSittings: [PhoneSitting] = []
     private(set) var outboxReviews: [CardReview] = []
+    /// Exams handed in here, waiting to go to the computer.
+    private(set) var outboxExams: [PhoneExam] = []
+    /// The exam being sat, kept as it's answered.
+    private(set) var examDraft: ExamDraft?
+    /// Exams sat on this phone, newest first: for their results and to know what's been asked.
+    private(set) var examHistory: [PhoneExam] = []
     private(set) var drafts: [Draft] = []
     private(set) var lastSyncAt: Date?
 
@@ -36,6 +42,7 @@ final class AppModel {
     let images = ImageStore()
     @ObservationIgnored private var client: SyncClient?
     @ObservationIgnored private var draftSave: Task<Void, Never>?
+    @ObservationIgnored private var examSave: Task<Void, Never>?
 
     init() {
         load()
@@ -63,7 +70,7 @@ final class AppModel {
     }
 
     func sittings(for lectureId: String) -> [SittingRecord] {
-        sittingRecords(lectureId: lectureId, snapshot: snapshot, outbox: outboxSittings)
+        sittingRecords(lectureId: lectureId, snapshot: snapshot, outbox: outboxSittings + outboxExams.flatMap(\.sittings))
     }
 
     func draft(for lectureId: String) -> Draft? { drafts.first { $0.lectureId == lectureId } }
@@ -122,7 +129,7 @@ final class AppModel {
 
     func draft(id: String) -> Draft? { drafts.first { $0.id == id } }
 
-    var unsentCount: Int { outboxSittings.count + outboxReviews.count }
+    var unsentCount: Int { outboxSittings.count + outboxReviews.count + outboxExams.count }
 
     /// Who marks answers: this phone with the API key, or the computer at the next sync.
     var markingNote: String {
@@ -169,6 +176,9 @@ final class AppModel {
         snapshot = nil
         outboxSittings = []
         outboxReviews = []
+        outboxExams = []
+        examDraft = nil
+        examHistory = []
         drafts = []
         lastSyncAt = nil
         syncError = nil
@@ -180,6 +190,8 @@ final class AppModel {
         saveState()
         saveOutbox()
         saveDrafts()
+        saveExamDraft()
+        saveExams()
     }
 
     private func rememberHost(_ host: String) {
@@ -223,12 +235,14 @@ final class AppModel {
         do {
             try await client.hello()
             syncStatus = "Syncing…"
-            let reply = try await client.sync(SyncRequest(device: device, sittings: outboxSittings, reviews: outboxReviews))
+            let reply = try await client.sync(SyncRequest(device: device, sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams))
             let sentSittings = Set(reply.accepted.sittings)
             let sentReviews = Set(reply.accepted.reviews)
+            let sentExams = Set(reply.accepted.exams ?? [])
             // Anything done while the sync was on its way stays to be sent next time.
             outboxSittings.removeAll { sentSittings.contains($0.id) }
             outboxReviews.removeAll { sentReviews.contains($0.id) }
+            outboxExams.removeAll { sentExams.contains($0.id) }
             var fresh = reply.snapshot
             applyPendingReviews(to: &fresh)
             snapshot = fresh
@@ -356,18 +370,36 @@ final class AppModel {
     }
 
     private func markOnPhone(_ sittingId: String) async {
-        guard let template = snapshot?.marking,
-              let sitting = outboxSittings.first(where: { $0.id == sittingId }),
-              let lecture = lecture(sitting.lectureId)
-        else { return }
+        guard let sitting = outboxSittings.first(where: { $0.id == sittingId }) else { return }
+        let results = await markResponses(of: sitting)
+        // The sitting may have been sent meanwhile: then the computer marks what's missing.
+        guard !results.isEmpty, let index = outboxSittings.firstIndex(where: { $0.id == sittingId }) else { return }
+        apply(results, to: &outboxSittings[index])
+        saveOutbox()
+    }
+
+    private func apply(_ results: [(String, Result<Marking, Error>)], to sitting: inout PhoneSitting) {
+        for (responseId, result) in results {
+            guard let r = sitting.responses.firstIndex(where: { $0.id == responseId }) else { continue }
+            switch result {
+            case .success(let marking): sitting.responses[r].marking = marking
+            case .failure(let error):
+                sitting.responses[r].markingError = "\(error.localizedDescription) Your computer will mark it after you sync."
+            }
+        }
+    }
+
+    /// Marks a sitting's answers here with the computer's API key, when it lends one.
+    private func markResponses(of sitting: PhoneSitting) async -> [(String, Result<Marking, Error>)] {
+        guard let template = snapshot?.marking, let lecture = lecture(sitting.lectureId) else { return [] }
         let jobs: [(responseId: String, question: Question, answer: String)] = sitting.responses.compactMap { r in
             guard !r.answerText.isEmpty, r.marking == nil, let q = lecture.questions.first(where: { $0.id == r.questionId }) else { return nil }
             return (r.id, q, r.answerText)
         }
-        guard !jobs.isEmpty else { return }
-        marking.insert(sittingId)
-        defer { marking.remove(sittingId) }
-        let results = await withTaskGroup(of: (String, Result<Marking, Error>).self, returning: [(String, Result<Marking, Error>)].self) { group in
+        guard !jobs.isEmpty else { return [] }
+        marking.insert(sitting.id)
+        defer { marking.remove(sitting.id) }
+        return await withTaskGroup(of: (String, Result<Marking, Error>).self, returning: [(String, Result<Marking, Error>)].self) { group in
             for job in jobs {
                 group.addTask {
                     do {
@@ -381,18 +413,83 @@ final class AppModel {
             for await result in group { out.append(result) }
             return out
         }
-        // The sitting may have been sent meanwhile: then the computer marks what's missing.
-        guard let index = outboxSittings.firstIndex(where: { $0.id == sittingId }) else { return }
-        for (responseId, result) in results {
-            guard let r = outboxSittings[index].responses.firstIndex(where: { $0.id == responseId }) else { continue }
-            switch result {
-            case .success(let marking): outboxSittings[index].responses[r].marking = marking
-            case .failure(let error):
-                outboxSittings[index].responses[r].markingError =
-                    "\(error.localizedDescription) Your computer will mark it after you sync."
-            }
+    }
+
+    // MARK: - Exams
+
+    func mcq(_ id: String) -> Mcq? { snapshot?.mcqs?.first { $0.id == id } }
+
+    func pastExam(_ id: String) -> PhoneExam? { examHistory.first { $0.id == id } }
+
+    /// What an exam can be set from, as things stand on this phone.
+    var examSource: ExamSource? {
+        snapshot.map { ExamSource(snapshot: $0, localSittings: outboxSittings + outboxExams.flatMap(\.sittings), pastExams: examHistory) }
+    }
+
+    /// Sets a new exam (replacing one not handed in). False when there's nothing to ask.
+    @discardableResult
+    func startExam(lectureIds: Set<String>, mcqs: Int, laqs: Int, focus: ExamFocus, timeLimitMin: Int?) -> Bool {
+        var generator = SystemRandomNumberGenerator()
+        guard let source = examSource,
+              let draft = source.makeExam(lectureIds: lectureIds, mcqs: mcqs, laqs: laqs, focus: focus, timeLimitMin: timeLimitMin, using: &generator)
+        else { return false }
+        examDraft = draft
+        saveExamDraft()
+        return true
+    }
+
+    func setExamChoice(_ itemId: String, _ choice: Int?) {
+        guard let index = examDraft?.items.firstIndex(where: { $0.id == itemId }) else { return }
+        examDraft?.items[index].choice = choice
+        saveExamDraft()
+    }
+
+    func examAnswer(_ itemId: String) -> String {
+        examDraft?.items.first { $0.id == itemId }?.answer ?? ""
+    }
+
+    func setExamAnswer(_ itemId: String, _ text: String) {
+        guard let index = examDraft?.items.firstIndex(where: { $0.id == itemId }) else { return }
+        examDraft?.items[index].answer = text
+        examSave?.cancel()
+        examSave = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            self?.saveExamDraft()
         }
+    }
+
+    func discardExam() {
+        examDraft = nil
+        saveExamDraft()
+    }
+
+    /// Hands the exam in: multiple choice is marked here at once; long answers are marked
+    /// here with the API key when there is one, else by the computer after the next sync.
+    @discardableResult
+    func handInExam() -> String? {
+        guard let draft = examDraft else { return nil }
+        let exam = draft.handIn()
+        examDraft = nil
+        outboxExams.append(exam)
+        examHistory.insert(exam, at: 0)
+        if examHistory.count > 50 { examHistory.removeLast(examHistory.count - 50) }
+        saveExamDraft()
         saveOutbox()
+        saveExams()
+        Task {
+            for sitting in exam.sittings {
+                let results = await markResponses(of: sitting)
+                guard !results.isEmpty,
+                      let e = outboxExams.firstIndex(where: { $0.id == exam.id }),
+                      let s = outboxExams[e].sittings.firstIndex(where: { $0.id == sitting.id })
+                else { continue }
+                apply(results, to: &outboxExams[e].sittings[s])
+                saveOutbox()
+            }
+            await sync()
+        }
+        return exam.id
     }
 
     // MARK: - AK
@@ -424,6 +521,8 @@ final class AppModel {
     private struct Outbox: Codable {
         var sittings: [PhoneSitting]
         var reviews: [CardReview]
+        /// Absent from outboxes saved before exam mode.
+        var exams: [PhoneExam]?
     }
 
     private func load() {
@@ -440,6 +539,13 @@ final class AppModel {
            let outbox = try? decoder.decode(Outbox.self, from: data) {
             outboxSittings = outbox.sittings
             outboxReviews = outbox.reviews
+            outboxExams = outbox.exams ?? []
+        }
+        if let data = try? Data(contentsOf: folder.appendingPathComponent("exam-draft.json")) {
+            examDraft = try? decoder.decode(ExamDraft.self, from: data)
+        }
+        if let data = try? Data(contentsOf: folder.appendingPathComponent("exams.json")) {
+            examHistory = (try? decoder.decode([PhoneExam].self, from: data)) ?? []
         }
         if let data = try? Data(contentsOf: folder.appendingPathComponent("drafts.json")) {
             drafts = (try? decoder.decode([Draft].self, from: data)) ?? []
@@ -470,7 +576,19 @@ final class AppModel {
     }
 
     private func saveOutbox() {
-        write(Outbox(sittings: outboxSittings, reviews: outboxReviews), to: "outbox.json")
+        write(Outbox(sittings: outboxSittings, reviews: outboxReviews, exams: outboxExams), to: "outbox.json")
+    }
+
+    private func saveExamDraft() {
+        if let examDraft {
+            write(examDraft, to: "exam-draft.json")
+        } else {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent("exam-draft.json"))
+        }
+    }
+
+    private func saveExams() {
+        write(examHistory, to: "exams.json")
     }
 
     private func saveDrafts() {

@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import type { Result } from "@/app/actions";
 import { createExam, deleteExam, saveExamAnswer, submitExam } from "@/lib/exam/service";
 import { queueMcqs } from "@/lib/mcq/service";
+import { createPaperExam, deletePaper } from "@/lib/papers/service";
+import { prisma } from "@/lib/db";
 import { usesAi } from "@/lib/modes";
 import { getSettings } from "@/lib/settings";
 
@@ -70,4 +72,28 @@ export async function removeExam(fd: FormData) {
   await deleteExam(String(fd.get("examId") ?? ""));
   refreshAll();
   if (fd.get("back") === "1") redirect("/exam");
+}
+
+export async function sitPaper(_prev: Result, fd: FormData): Promise<Result> {
+  let id: string;
+  try {
+    const minutes = Number(fd.get("minutes"));
+    id = await createPaperExam(String(fd.get("paperId") ?? ""), fd.get("timed") === "on" && minutes > 0 ? minutes : null);
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  refreshAll();
+  redirect(`/exam/${id}`);
+}
+
+export async function removePaper(fd: FormData) {
+  await deletePaper(String(fd.get("paperId") ?? ""));
+  refreshAll();
+}
+
+export async function retryPaper(fd: FormData) {
+  const paperId = String(fd.get("paperId") ?? "");
+  const busy = await prisma.job.findFirst({ where: { kind: "PAPER", status: { in: ["PENDING", "RUNNING"] }, payload: { contains: paperId } } });
+  if (!busy) await prisma.job.create({ data: { kind: "PAPER", payload: JSON.stringify({ paperId }) } });
+  refreshAll();
 }

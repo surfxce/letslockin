@@ -12,6 +12,9 @@ import { exportHref } from "@/lib/export";
 import { getSettings } from "@/lib/settings";
 import { dueLectures, lectureRows } from "@/lib/views";
 import { usesAi } from "@/lib/modes";
+import "@/app/today/today.css";
+import { TodayCard } from "@/app/today/TodayCard";
+import { todayPlan } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +33,14 @@ export default async function Home({
 
   // With one course there is nothing to choose between, so show it directly.
   const active = courses.find((c) => c.id === courseParam) ?? (courses.length === 1 ? courses[0] : null);
-  const [rows, allDue, settings] = await Promise.all([
+  const [rows, allDue, settings, plan] = await Promise.all([
     lectureRows(active ? { courseId: active.id } : {}),
     dueLectures(),
     getSettings(),
+    todayPlan(),
   ]);
+  // The plan spans every course; a single course's view keeps its own due strip.
+  const showPlan = !courseParam || courses.length === 1;
   const due = active ? allDue.filter((d) => d.courseId === active.id) : allDue;
   const toPrepare = rows.filter((r) => r.status === "todo" || r.status === "failed" || r.status === "summary");
   const daysToExam = active?.examDate ? daysUntil(active.examDate) : null;
@@ -76,7 +82,13 @@ export default async function Home({
         </div>
       )}
 
-      {due.length > 0 && (
+      {showPlan && plan.items.length > 0 && (
+        <div id="due">
+          <TodayCard plan={plan} />
+        </div>
+      )}
+
+      {!(showPlan && plan.items.length > 0) && due.length > 0 && (
         <section id="due">
           <h2 style={{ marginTop: 0 }}>
             <span className="row">

@@ -10,6 +10,8 @@ export interface Schedule {
   lapses: number;
 }
 const DAY = 86_400_000;
+/** Forgotten this many times after being learnt: a problem card, worth rewording or splitting. */
+export const LEECH_LAPSES = 4;
 export function scheduleCard(card: Schedule, rating: Rating, now = new Date()) {
   if (!RATINGS.includes(rating)) throw new Error("Choose one of the four ratings.");
   const learning = card.state !== "review";

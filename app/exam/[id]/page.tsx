@@ -15,6 +15,9 @@ import { clockTime, duration, formatScore, scoreTone, shortDate } from "@/lib/fo
 import { readOptions } from "@/lib/mcq/service";
 import { usesAi } from "@/lib/modes";
 import { getSettings } from "@/lib/settings";
+import "@/app/ak/ak.css";
+import { MistakeCards } from "@/app/ak/MistakeCards";
+import { mistakesLeft, wrongMcqsLeft } from "@/lib/flashcards/mistakes";
 
 export const dynamic = "force-dynamic";
 
@@ -70,8 +73,15 @@ export default async function ExamSittingPage({ params }: { params: Promise<{ id
     );
   }
 
-  const settings = await getSettings();
+  const laqResponseIds = exam.items.filter((i) => i.kind === "LAQ" && i.response?.mark !== null && i.responseId).map((i) => i.responseId!);
+  const [settings, gapsLeft, mcqsLeft, gapCount] = await Promise.all([
+    getSettings(),
+    mistakesLeft(laqResponseIds),
+    wrongMcqsLeft(exam.id),
+    prisma.gap.count({ where: { responseId: { in: laqResponseIds } } }),
+  ]);
   const s = summarise(exam.items);
+  const wrongMcqs = s.mcqTotal - s.mcqCorrect;
   const took = exam.submittedAt.getTime() - exam.createdAt.getTime();
   const mcqs = items.filter((i) => i.kind === "MCQ");
   const laqs = items.filter((i) => i.kind === "LAQ");
@@ -143,6 +153,8 @@ export default async function ExamSittingPage({ params }: { params: Promise<{ id
           </div>
         )}
       </div>
+
+      <MistakeCards examId={exam.id} left={gapsLeft + mcqsLeft} made={gapCount - gapsLeft + wrongMcqs - mcqsLeft} />
 
       {unmarkedAttempts.length > 0 && !usesAi(settings.mode) && (
         <div className="callout">

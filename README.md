@@ -89,6 +89,28 @@ deletions included; re-importing a file adds nothing twice). Any picture can be 
 first — circle it, box it, point at it, cover part of it up. Cards and their pictures sync to
 the iPhone app.
 
+**Today.** The **Today** tab (and the top of the home page) plans the day to fit the time you
+have: AK cards that are due, LAQs that are due — courses with a sooner exam first, then the
+longest overdue — a weak lecture to drill, some new cards, and a practice exam in the weeks
+before an exam. What doesn't fit is listed under *If you have more time*.
+
+**Progress.** How ready you are for each course if the exam were today (your latest drill
+score on each lecture, undrilled ones counting as zero), every sitting's score over time,
+every concept coloured by its latest mark, and a map of how your lectures relate: lectures
+are linked by the distinctive words they share, so revising one points you to its
+neighbours.
+
+**Mistakes become cards.** A marked sitting or exam offers to turn what you missed or got
+wrong into AK cards — written as proper questions by the AI, or as they stand without one —
+and wrong multiple choice becomes a card with its options. **AK** also reviews everything
+due at once (or a course, or a tag), runs a *Hard cards* session of the ones you keep
+forgetting, flags problem cards, lets you suspend and tag cards, and imports Anki decks
+(*.apkg*, pictures and tags included).
+
+**Past papers.** Add a real past paper on the Exam tab: it's split into questions, each
+matched to the lecture it tests and given a marking guide from that lecture, then sat timed
+and marked like your LAQs. Its questions stay out of normal sittings until you sit it.
+
 **Reading a summary.** The round **?** in the corner asks a question answered from the
 summary, and adds the answer under a heading of your choice. Select any text to have it
 **broken down**, then *Add to glossary*: the words are underlined wherever they appear and

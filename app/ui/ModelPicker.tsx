@@ -118,8 +118,7 @@ export function ModelPicker({ initial, showInstalled = false }: { initial: Model
       {picks.caution && <p className="picker-caution">{picks.caution}</p>}
       {busy && !data.workerAlive && (
         <p className="picker-caution">
-          The background worker isn&apos;t running, so the download can&apos;t start. The desktop app runs it; from a
-          terminal, run <code>npm run worker</code>.
+          The download can&apos;t start until the Lockin app is open.
         </p>
       )}
       {error && <p className="result err">{error}</p>}

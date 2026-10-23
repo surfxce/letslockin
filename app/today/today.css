@@ -1,0 +1,39 @@
+/* The Today plan: the page, and its card at the top of the home page. */
+.today-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.today-budget { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-soft); margin-top: 10px; }
+.today-budget select { width: auto; }
+.today-exams { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
+.today-exam { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--bg-soft); color: var(--text-soft); }
+.today-exam.close { background: var(--t-red-bg); color: var(--t-red); }
+.today-summary { color: var(--text-soft); margin: 0 0 12px; }
+.today-list { list-style: none; margin: 0; padding: 0; counter-reset: step; display: flex; flex-direction: column; gap: 8px; }
+.today-list li { counter-increment: step; }
+.today-item { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); color: inherit; }
+.today-item:hover { border-color: var(--rule-strong); background: var(--hover); }
+.today-list:not(.plain) .today-item::before { content: counter(step); grid-row: 1; font-family: var(--mono); font-size: 12px; color: var(--text-faint); width: 14px; }
+.today-list:not(.plain) .today-item { grid-template-columns: auto auto 1fr auto auto; }
+.today-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--bg-soft); color: var(--text-soft); }
+.today-icon.k-cards, .today-icon.k-new-cards { background: var(--t-blue-bg); color: var(--t-blue); }
+.today-icon.k-laq { background: var(--t-purple-bg, var(--bg-soft)); color: var(--t-purple, var(--text-soft)); }
+.today-icon.k-weak { background: var(--t-orange-bg); color: var(--t-orange); }
+.today-icon.k-exam { background: var(--t-green-bg); color: var(--t-green); }
+.today-text { display: flex; flex-direction: column; min-width: 0; }
+.today-title { font-weight: 550; }
+.today-detail { font-size: 13px; color: var(--text-soft); }
+.today-min { font-family: var(--mono); font-size: 12.5px; color: var(--text-soft); white-space: nowrap; }
+.today-list li.urgent .today-item { border-left: 3px solid var(--s-red); }
+.today-later { margin-top: 28px; }
+.today-clear { text-align: center; padding: 36px 20px; background: var(--bg-soft); border-radius: 12px; }
+.today-clear > svg { color: var(--s-green); }
+.today-clear h2 { margin: 8px 0; }
+.today-clear p { color: var(--text-soft); max-width: 460px; margin: 0 auto 16px; }
+.today-card { margin: 4px 0 26px; }
+.today-card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.today-card-head h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; }
+.today-card-head .spacer { flex: 1; }
+.today-card > .link { display: inline-block; margin-top: 8px; }
+@media (max-width: 640px) {
+  .today-item, .today-list:not(.plain) .today-item { grid-template-columns: auto 1fr auto; }
+  .today-list:not(.plain) .today-item::before { display: none; }
+  .today-item > svg:last-child { display: none; }
+}

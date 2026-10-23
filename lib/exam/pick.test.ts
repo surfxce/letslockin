@@ -44,7 +44,8 @@ describe("pickExamItems", () => {
   it("aims at the weakest lectures and answers with weak focus", () => {
     const scores = new Map<string, number | null>([["A", 8.5], ["B", 3.2], ["C", null]]);
     const marked = [item("a1", "A", 1, 9), item("b1", "B", 1, 7), item("b2", "B", 1, 2), item("c1", "C")];
-    expect(pickExamItems(marked, 2, { focus: "weak", lectureScore: scores, random: seeded(7) })).toEqual(["c1", "b2"]);
+    expect(pickExamItems(marked, 2, { focus: "weak", lectureScore: scores, random: seeded(7) })).toEqual(["b2", "c1"]);
+    expect(pickExamItems(marked, 4, { focus: "weak", lectureScore: scores, random: seeded(7) })).toEqual(["b2", "c1", "b1", "a1"]);
   });
 
   it("brings back a question failed before ahead of a new one with weak focus", () => {

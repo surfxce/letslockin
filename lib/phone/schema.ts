@@ -54,6 +54,8 @@ export const PhoneSnapshotSchema = z.object({
           criteria: z.array(z.object({ point: z.string(), marks: z.number().nullable() })),
           /** The marking prompt's variables, all but the answer. */
           markVars: z.object({ questionStem: z.string(), rubric: z.string(), concepts: z.string() }),
+          /** From a past paper: asked only when the paper is sat, so never in the phone's exams. */
+          fromPaper: z.boolean(),
         }),
       ),
       /** The questions a sitting would ask now, as the computer picks them. */
@@ -82,6 +84,17 @@ export const PhoneSnapshotSchema = z.object({
           feedback: z.array(FeedbackItem),
         }),
       ),
+    }),
+  ),
+  /** Multiple choice for exam mode, answers included: the phone marks them itself. Shown nowhere else. */
+  mcqs: z.array(
+    z.object({
+      id: Id,
+      lectureId: Id,
+      stem: z.string(),
+      options: z.array(z.string()),
+      answer: z.number().int(),
+      explanation: z.string(),
     }),
   ),
   cards: z.array(
@@ -135,10 +148,37 @@ export const PhoneReviewSchema = z.object({
 });
 export type PhoneReview = z.infer<typeof PhoneReviewSchema>;
 
+/**
+ * An exam sat on the phone: its multiple choice (marked there) and its long answers,
+ * sent as a sitting of each lecture they came from, as the computer's own exams do.
+ */
+export const PhoneExamSchema = z.object({
+  id: Id,
+  title: z.string().max(200),
+  startedAt: When,
+  submittedAt: When,
+  timeLimitMin: z.number().int().min(1).max(600).nullable(),
+  items: z
+    .array(
+      z.object({
+        id: Id,
+        kind: z.enum(["MCQ", "LAQ"]),
+        mcqId: Id.nullable().optional(),
+        choice: z.number().int().min(0).max(4).nullable().optional(),
+        questionId: Id.nullable().optional(),
+        responseId: Id.nullable().optional(),
+      }),
+    )
+    .max(200),
+  sittings: z.array(PhoneSittingSchema).max(60),
+});
+export type PhoneExam = z.infer<typeof PhoneExamSchema>;
+
 export const SyncRequestSchema = z.object({
   device: z.object({ name: z.string().max(120), app: z.string().max(40) }).optional(),
   sittings: z.array(PhoneSittingSchema).max(500).default([]),
   reviews: z.array(PhoneReviewSchema).max(20_000).default([]),
+  exams: z.array(PhoneExamSchema).max(200).default([]),
 });
 export type SyncRequest = z.infer<typeof SyncRequestSchema>;
 

@@ -11,7 +11,10 @@ import { RATINGS, scheduleCard, type Rating } from "@/lib/flashcards/schedule";
 export async function queueFlashcards(lectureId: string) {
   return prisma.$transaction(async tx => {
     const lecture = await tx.lecture.findUniqueOrThrow({ where: { id: lectureId }, select: { id: true } });
-    const existing = await tx.job.findFirst({ where: { lectureId, kind: "FLASHCARDS", status: { in: ["PENDING", "RUNNING"] } } });
+    const existing = await tx.job.findFirst({
+      // A job writing cards from mistakes (its payload lists gapIds) isn't a deck.
+      where: { lectureId, kind: "FLASHCARDS", status: { in: ["PENDING", "RUNNING"] }, payload: { not: { contains: "gapIds" } } },
+    });
     if (existing) return existing;
     return tx.job.create({ data: { lectureId: lecture.id, kind: "FLASHCARDS", payload: JSON.stringify({ lectureId }) } });
   });
@@ -67,12 +70,13 @@ export async function generateFlashcards(lectureId: string, jobId: string, provi
   });
 }
 
-export async function reviewCard(cardId: string, version: number, rating: Rating, now = new Date()) {
+/** `early` lets a hard-cards session review a card before it's due; it's rescheduled from now. */
+export async function reviewCard(cardId: string, version: number, rating: Rating, now = new Date(), early = false) {
   if (!RATINGS.includes(rating) || !Number.isInteger(version) || version < 0) throw new Error("Invalid review.");
   return prisma.$transaction(async tx => {
     const card = await tx.flashcard.findUniqueOrThrow({ where: { id: cardId } });
     if (card.version !== version) return { saved: false, reason: "This card was already reviewed. Your progress is safe." };
-    if (card.dueAt > now) return { saved: false, reason: "This card is not due yet." };
+    if (card.dueAt > now && !early) return { saved: false, reason: "This card is not due yet." };
     const next = scheduleCard(card, rating, now);
     const updated = await tx.flashcard.updateMany({ where: { id: cardId, version }, data: { ...next, version: { increment: 1 } } });
     if (!updated.count) return { saved: false, reason: "This card was already reviewed." };

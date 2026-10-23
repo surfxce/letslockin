@@ -5,11 +5,11 @@ import { prisma } from "@/lib/db";
 import { cancelJob } from "@/lib/jobs";
 import { queueFlashcards, reviewCard } from "@/lib/flashcards/service";
 import { deleteCards, importCards, saveCard, saveOcclusionCards } from "@/lib/flashcards/manual";
-import { scheduleCard, intervalLabel, RATINGS, type Rating } from "@/lib/flashcards/schedule";
+import { type Rating } from "@/lib/flashcards/schedule";
+import { nextCard as nextInScope, type ReviewScope } from "@/lib/flashcards/review";
+import { addTags, removeTag, storeTags, tagList } from "@/lib/flashcards/tags";
 import { getSettings, setSetting } from "@/lib/settings";
 import { activeLocalModel } from "@/lib/models";
-import { lectureDecks } from "@/lib/slides";
-import { renderMarkdown } from "@/lib/markdown";
 
 export async function setAutoFlashcards(enabled: boolean) {
   if (typeof enabled !== "boolean") throw new Error("Invalid setting.");
@@ -36,33 +36,35 @@ export async function stopDeck(jobId: string) {
   revalidatePath("/ak", "layout");
 }
 
-export async function nextCard(lectureId: string) {
-  const now = new Date();
-  // Already-seen due cards first, then new cards in creation order.
-  const where = { lectureId, dueAt: { lte: now } };
-  const card = await prisma.flashcard.findFirst({ where: { ...where, state: { not: "new" } }, orderBy: [{ dueAt: "asc" }, { id: "asc" }] })
-    ?? await prisma.flashcard.findFirst({ where: { ...where, state: "new" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-  const [remaining, upcoming] = await Promise.all([
-    prisma.flashcard.count({ where }),
-    prisma.flashcard.findFirst({ where: { lectureId, dueAt: { gt: now } }, orderBy: { dueAt: "asc" }, select: { dueAt: true } }),
-  ]);
-  if (!card) return { card: null, remaining, nextDue: upcoming?.dueAt.toISOString() ?? null };
-  const decks = await lectureDecks(lectureId);
-  const slides = { base: `/api/lectures/${encodeURIComponent(lectureId)}/slides`, ranges: decks.filter(d => d.pdf).map(d => [d.first, d.first + d.pages - 1] as [number, number]) };
-  return {
-    card: { id: card.id, version: card.version, state: card.state,
-      front: renderMarkdown(card.front, slides), back: renderMarkdown(card.back, slides),
-      intervals: RATINGS.map(r => intervalLabel(scheduleCard(card, r, now).intervalDays)),
-    }, remaining, nextDue: upcoming?.dueAt.toISOString() ?? null,
-  };
+export async function nextCard(scope: ReviewScope | string, seen: string[] = []) {
+  return nextInScope(typeof scope === "string" ? { lectureId: scope } : scope, seen.slice(-500));
 }
 
-export async function gradeCard(cardId: string, version: number, rating: Rating) {
+export async function gradeCard(cardId: string, version: number, rating: Rating, early = false) {
   try {
-    const result = await reviewCard(cardId, version, rating);
+    const result = await reviewCard(cardId, version, rating, new Date(), early);
     revalidatePath("/ak");
     return result;
   } catch { return { saved: false, reason: "Could not save your review. Please try again." }; }
+}
+
+export async function suspendCards(ids: string[], suspended: boolean) {
+  const { count } = await prisma.flashcard.updateMany({ where: { id: { in: ids.slice(0, 5000) } }, data: { suspended } });
+  revalidatePath("/ak", "layout");
+  return { ok: true as const, message: `${suspended ? "Suspended" : "Unsuspended"} ${count} card${count === 1 ? "" : "s"}.` };
+}
+
+/** Adds tags to cards, or with `remove`, takes one off. */
+export async function tagCards(ids: string[], tags: string, remove = false) {
+  const cards = await prisma.flashcard.findMany({ where: { id: { in: ids.slice(0, 5000) } }, select: { id: true, tags: true } });
+  const wanted = tagList(storeTags(tags));
+  if (!wanted.length) return { ok: false as const, message: "Type a tag first." };
+  for (const c of cards) {
+    const next = remove ? wanted.reduce((t, w) => removeTag(t, w), c.tags) : addTags(c.tags, wanted);
+    if (next !== c.tags) await prisma.flashcard.update({ where: { id: c.id }, data: { tags: next } });
+  }
+  revalidatePath("/ak", "layout");
+  return { ok: true as const, message: `${remove ? "Untagged" : "Tagged"} ${cards.length} card${cards.length === 1 ? "" : "s"}.` };
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +76,7 @@ function failed(err: unknown): Saved {
   return { ok: false, message: err instanceof Error ? err.message : "Couldn't save that. Try again." };
 }
 
-export async function saveOwnCard(lectureId: string, card: { id?: string; front: string; back: string }): Promise<Saved> {
+export async function saveOwnCard(lectureId: string, card: { id?: string; front: string; back: string; tags?: string }): Promise<Saved> {
   try {
     const id = await saveCard(lectureId, card);
     revalidatePath("/ak", "layout");

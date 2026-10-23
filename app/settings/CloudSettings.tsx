@@ -53,9 +53,9 @@ export function CloudSettings(props: {
     start(() => setEngineSettings(patch));
   };
   const blurb: Record<CloudModel, string> = {
-    sonnet: "Fast and thorough — the right size for summaries, LAQs and marking.",
-    opus: "The most thorough, and the slowest: a lecture takes noticeably longer.",
-    haiku: "The quickest and lightest. Fine for short lectures; less depth in summaries.",
+    sonnet: "Fast and thorough. Recommended.",
+    opus: "The most thorough, and the slowest.",
+    haiku: "The quickest, with less depth.",
   };
   const claudeModels = (
     <div className="seg" role="radiogroup" aria-label="Claude model">
@@ -84,7 +84,7 @@ export function CloudSettings(props: {
       <div className="setting" style={{ alignItems: "flex-start" }}>
         <div>
           <div className="st">Cloud AI</div>
-          <div className="sd">Which AI prepares lectures, writes LAQs and marks. Each uses your own sign-in or key.</div>
+          <div className="sd">Each uses your own account or key.</div>
         </div>
         <div className="seg" role="radiogroup" aria-label="Cloud AI">
           {CLOUD_ENGINES.map((e) => (
@@ -137,12 +137,12 @@ export function CloudSettings(props: {
                 </>
               }
             />
-            <p className="small muted">Uses your ChatGPT plan. It sees the slides as pictures.</p>
+            <p className="small muted">Uses your ChatGPT plan.</p>
             <TextSetting
               label="Model"
               initial={props.codexModel}
               placeholder="Codex's default"
-              hint="Leave empty for the model Codex is set to use."
+              hint="Leave empty for Codex's default."
               onSave={(v) => save({ codexModel: v })}
             />
           </>
@@ -155,12 +155,12 @@ export function CloudSettings(props: {
               name={props.tools.antigravity.binary === "gemini" ? "Gemini CLI" : "Antigravity CLI"}
               install={
                 <>
-                  Install the Antigravity CLI from <code>antigravity.google/cli</code>, then run <code>agy</code> once to
-                  sign in with your Google account. The older Gemini CLI (<code>gemini</code>) works too.
+                  Install it from <code>antigravity.google/cli</code>, then run <code>agy</code> once to sign in with
+                  your Google account.
                 </>
               }
             />
-            <p className="small muted">Uses your Google account. Gemini reads the slide PDFs itself.</p>
+            <p className="small muted">Uses your Google account.</p>
             <TextSetting
               label="Model"
               initial={props.agyModel}
@@ -193,7 +193,7 @@ export function CloudSettings(props: {
             </label>
             {service === "anthropic" ? (
               <div className="engine-row">
-                <span className="small muted">Billed per use to your Anthropic account. {blurb[model]}</span>
+                <span className="small muted">Paid per use. {blurb[model]}</span>
                 {claudeModels}
               </div>
             ) : (
@@ -203,7 +203,7 @@ export function CloudSettings(props: {
                     label="Address"
                     initial={props.apiBaseUrl}
                     placeholder="http://localhost:11434/v1"
-                    hint="Any service that speaks OpenAI's chat format — Ollama, LM Studio, a company endpoint."
+                    hint="For Ollama, LM Studio or any OpenAI-compatible service."
                     onSave={(v) => save({ apiBaseUrl: v })}
                   />
                 )}
@@ -224,8 +224,8 @@ export function CloudSettings(props: {
                     }}
                   />
                   <span>
-                    This model can see images
-                    <span className="small muted"> — it is shown the slides as pictures. Untick it for a text-only model.</span>
+                    This model can read images
+                    <span className="small muted"> — so it sees your slides</span>
                   </span>
                 </label>
               </>
@@ -264,8 +264,8 @@ export function CloudSettings(props: {
               )}
             </form>
             <p className="small faint" style={{ margin: "2px 0 0" }}>
-              {API_SERVICES[service].keys ? `Get a key at ${API_SERVICES[service].keys}. ` : ""}It stays on this
-              computer, in Lockin&apos;s own database.
+              {API_SERVICES[service].keys ? `Get a key at ${API_SERVICES[service].keys}. ` : ""}It&apos;s saved on this
+              computer only.
               {keyNote && <span className={`result ${keyNote.ok ? "ok" : "err"}`}> {keyNote.message}</span>}
             </p>
           </>
@@ -288,17 +288,17 @@ export function CloudSettings(props: {
               {test.message}
             </span>
           )}
-          {test === null && <span className="small faint">Sends one tiny question, to check it is set up.</span>}
+          {test === null && <span className="small faint">Checks that it&apos;s working.</span>}
         </div>
       </div>
 
       <div className="setting">
         <div>
-          <div className="st">If the cloud AI fails, use the offline model</div>
+          <div className="st">Use the offline model as a backup</div>
           <div className="sd">
             {props.offlineModel
-              ? `When ${CLOUD_ENGINE_LABEL[engine]} can't do a job — signed out, over a usage limit, offline — ${props.offlineModel} on this computer does it instead. The cloud AI is always tried first.`
-              : `Download an offline model below and Lockin uses it whenever ${CLOUD_ENGINE_LABEL[engine]} can't do a job — signed out, over a usage limit, offline. The cloud AI is always tried first.`}
+              ? `If ${CLOUD_ENGINE_LABEL[engine]} isn't available — signed out, over its limit or offline — ${props.offlineModel} takes over.`
+              : `Download an offline model below to take over when ${CLOUD_ENGINE_LABEL[engine]} isn't available.`}
           </div>
         </div>
         <label className="switch">

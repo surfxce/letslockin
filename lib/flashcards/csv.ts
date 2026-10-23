@@ -14,6 +14,8 @@ export interface CardFile {
   header: string[] | null;
   /** True when cells are HTML (Anki's default) and are converted on import. */
   html: boolean;
+  /** The column of tags, 0-based, from Anki's `#tags column:`; -1 when there is none. */
+  tagsColumn: number;
 }
 
 const SEPARATORS: Record<string, string> = { tab: "\t", comma: ",", semicolon: ";", pipe: "|", space: " ", colon: ":" };
@@ -97,6 +99,7 @@ export function parseCardFile(raw: string): CardFile {
   let delimiter: string | null = null;
   let html: boolean | null = null;
   let columns: string | null = null;
+  let tagsColumn = -1;
   let skip = 0;
   // Anki's file headers come first, one per line.
   while (skip < lines.length && lines[skip].startsWith("#")) {
@@ -107,6 +110,7 @@ export function parseCardFile(raw: string): CardFile {
       if (key === "separator") delimiter = SEPARATORS[value.toLowerCase()] ?? (value.length === 1 ? value : null);
       else if (key === "html") html = value.toLowerCase() === "true";
       else if (key === "columns") columns = value;
+      else if (key === "tags column") tagsColumn = Math.max(-1, Number(value) - 1 || -1);
     }
     skip++;
   }
@@ -118,10 +122,12 @@ export function parseCardFile(raw: string): CardFile {
     header = rows[0].map((c) => c.trim());
     rows = rows.slice(1);
   }
+  if (tagsColumn < 0 && header) tagsColumn = header.findIndex((h) => /^tags?$/i.test(h.trim()));
   return {
     rows,
     delimiter: sep,
     header,
+    tagsColumn,
     html: html ?? rows.slice(0, 50).some((r) => r.some((c) => /<(br|div|p|b|i|u|span|img|strong|em|sup|sub|ul|ol|li)\b[^>]*>/i.test(c))),
   };
 }
@@ -167,8 +173,14 @@ const HAS_CLOZE = /\{\{c\d+::/;
  * Rows to cards, from the chosen columns. Anki cloze text ({{c1::answer}}) becomes a
  * card asking for the hidden part, with the full sentence on the back.
  */
-export function cardsFromRows(rows: string[][], front: number, back: number, html: boolean): Array<{ front: string; back: string }> {
-  const cards: Array<{ front: string; back: string }> = [];
+export function cardsFromRows(
+  rows: string[][],
+  front: number,
+  back: number,
+  html: boolean,
+  tags = -1,
+): Array<{ front: string; back: string; tags?: string }> {
+  const cards: Array<{ front: string; back: string; tags?: string }> = [];
   for (const row of rows) {
     let f = cellToMarkdown(row[front] ?? "", html);
     let b = back >= 0 ? cellToMarkdown(row[back] ?? "", html) : "";
@@ -178,7 +190,7 @@ export function cardsFromRows(rows: string[][], front: number, back: number, htm
       b = [full, b].filter(Boolean).join("\n\n");
     }
     if (!f || !b) continue;
-    cards.push({ front: f.slice(0, 20_000), back: b.slice(0, 20_000) });
+    cards.push({ front: f.slice(0, 20_000), back: b.slice(0, 20_000), ...(tags >= 0 && row[tags]?.trim() ? { tags: row[tags].trim() } : {}) });
     if (cards.length >= MAX_IMPORT_CARDS) break;
   }
   return cards;

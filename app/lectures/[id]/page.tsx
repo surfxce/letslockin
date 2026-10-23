@@ -53,6 +53,8 @@ const LECTURE_INCLUDE = {
   module: { select: { title: true } },
   materials: { orderBy: { createdAt: "asc" } },
   questions: {
+    // Past-paper questions are asked only when the paper is sat.
+    where: { paperItemId: null },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
       concepts: { include: { concept: { select: { name: true } } } },

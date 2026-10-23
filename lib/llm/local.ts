@@ -1,5 +1,7 @@
 import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
 import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
+import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
+import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -342,6 +344,61 @@ export class LocalProvider implements LlmProvider {
       },
       zod: FlashcardSetSchema,
       maxTokens: 6000,
+      temperature: 0.3,
+    });
+  }
+
+  async writePaperGuides(input: PaperGuideInput) {
+    const n = input.questions.length;
+    return this.run({
+      prompt: "paper-guides",
+      vars: (summary) => paperGuideVars({ ...input, summary }),
+      transcript: input.summary,
+      schema: {
+        type: "object",
+        properties: {
+          guides: {
+            type: "array",
+            minItems: n,
+            maxItems: n,
+            items: {
+              type: "object",
+              properties: {
+                key: { enum: input.questions.map((q) => q.key) },
+                modelAnswer: text(),
+                criteria: { type: "array", minItems: 2, maxItems: 8, items: { type: "object", properties: { point: text(), marks: WHOLE_MARKS } } },
+              },
+            },
+          },
+        },
+      },
+      zod: PaperGuidesSchema,
+      maxTokens: 1100 * n + 300,
+      temperature: 0.2,
+    });
+  }
+
+  async writeMistakeCards(input: MistakeInput) {
+    const n = input.mistakes.length;
+    return this.run({
+      prompt: "mistake-cards",
+      vars: () => mistakeVars(input),
+      schema: {
+        type: "object",
+        properties: {
+          cards: {
+            type: "array",
+            minItems: n,
+            maxItems: n,
+            items: {
+              type: "object",
+              properties: { key: { enum: input.mistakes.map((m) => m.key) }, front: text(600), back: text(900) },
+            },
+          },
+        },
+      },
+      zod: MistakeCardsSchema,
+      maxTokens: 260 * n + 200,
       temperature: 0.3,
     });
   }

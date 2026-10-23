@@ -4,7 +4,7 @@ import type { Rating } from "@/lib/flashcards/schedule";
 import { enqueue } from "@/lib/jobs";
 import { MarkingSchema } from "@/lib/llm/schemas";
 import { usesAi } from "@/lib/modes";
-import type { PhoneReview, PhoneSitting } from "@/lib/phone/schema";
+import type { PhoneExam, PhoneReview, PhoneSitting } from "@/lib/phone/schema";
 import { applyMarking, scoreAttemptIfMarked } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
 
@@ -31,7 +31,7 @@ export interface SittingOutcome {
   note: string | null;
 }
 
-export async function ingestSitting(sitting: PhoneSitting, now = new Date()): Promise<SittingOutcome> {
+export async function ingestSitting(sitting: PhoneSitting, now = new Date(), source: "APP" | "EXAM" = "APP"): Promise<SittingOutcome> {
   const outcome: SittingOutcome = { id: sitting.id, marked: 0, queued: 0, note: null };
   if (await prisma.attempt.findUnique({ where: { id: sitting.id }, select: { id: true } })) {
     return { ...outcome, note: "already received" };
@@ -55,7 +55,7 @@ export async function ingestSitting(sitting: PhoneSitting, now = new Date()): Pr
       lectureId: lecture.id,
       sittingDate: when(sitting.startedAt, now),
       closedBook: true,
-      source: "APP",
+      source,
       responses: {
         create: responses.map((r) => {
           const text = r.answerText.trim();
@@ -88,6 +88,45 @@ export async function ingestSitting(sitting: PhoneSitting, now = new Date()): Pr
   }
   await scoreAttemptIfMarked(sitting.id);
   return outcome;
+}
+
+/**
+ * An exam sat on the phone: its long answers become a sitting of each lecture (marked
+ * as any are), and the exam itself is kept with its multiple-choice answers, so it
+ * shows with the computer's own exams.
+ */
+export async function ingestExam(exam: PhoneExam, now = new Date()): Promise<{ id: string; note: string | null }> {
+  if (await prisma.exam.findUnique({ where: { id: exam.id }, select: { id: true } })) return { id: exam.id, note: "already received" };
+  for (const s of exam.sittings) await ingestSitting(s, now, "EXAM");
+  const [mcqs, questions, responses] = await Promise.all([
+    prisma.mcq.findMany({ where: { id: { in: exam.items.flatMap((i) => (i.mcqId ? [i.mcqId] : [])) } }, select: { id: true } }),
+    prisma.question.findMany({ where: { id: { in: exam.items.flatMap((i) => (i.questionId ? [i.questionId] : [])) } }, select: { id: true } }),
+    prisma.response.findMany({ where: { id: { in: exam.items.flatMap((i) => (i.responseId ? [i.responseId] : [])) } }, select: { id: true } }),
+  ]);
+  const has = (ids: Array<{ id: string }>) => new Set(ids.map((x) => x.id));
+  const [mcqIds, questionIds, responseIds] = [has(mcqs), has(questions), has(responses)];
+  const lectureIds = [...new Set(exam.sittings.map((s) => s.lectureId))];
+  await prisma.exam.create({
+    data: {
+      id: exam.id,
+      title: exam.title.trim() || "Exam on iPhone",
+      scope: JSON.stringify({ lectureIds, phone: true }),
+      timeLimitMin: exam.timeLimitMin,
+      createdAt: when(exam.startedAt, now),
+      submittedAt: when(exam.submittedAt, now),
+      items: {
+        create: exam.items.map((item, position) => ({
+          position,
+          kind: item.kind,
+          mcqId: item.mcqId && mcqIds.has(item.mcqId) ? item.mcqId : null,
+          choice: item.kind === "MCQ" ? (item.choice ?? null) : null,
+          questionId: item.questionId && questionIds.has(item.questionId) ? item.questionId : null,
+          responseId: item.responseId && responseIds.has(item.responseId) ? item.responseId : null,
+        })),
+      },
+    },
+  });
+  return { id: exam.id, note: null };
 }
 
 export interface ReviewOutcome {

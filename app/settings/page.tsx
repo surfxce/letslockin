@@ -58,8 +58,11 @@ export default async function SettingsPage() {
     <main className="page narrow">
       <h1 className="page-title">Settings</h1>
       <p className="page-sub">
-        Everything stays on this computer. <a href="#intro">See how Lockin works again</a>.
+        Your lectures, answers and cards stay on this computer. <a href="#intro">See how Lockin works again</a>.
       </p>
+
+      <h2 id="phone">iPhone</h2>
+      <PhoneLink initial={await phoneStatus()} />
 
       <h2>Summaries and LAQs</h2>
       <ModePicker mode={settings.mode} engine={engine} localModel={linked?.name ?? null} />
@@ -82,18 +85,11 @@ export default async function SettingsPage() {
       {usesAi(settings.mode) && (
         <div className="setting">
           <div>
-            <div className="st">AI worker</div>
+            <div className="st">AI</div>
             <div className="sd">
-              {beat?.alive ? (
-                <>
-                  Running on <code>{worker}</code> — prepares one lecture at a time, and marks answers first.
-                </>
-              ) : (
-                <>
-                  Not running, so nothing queued will start. The desktop app runs it for you; from the repository,
-                  run <code>npm run worker</code> beside <code>npm run dev</code>.
-                </>
-              )}
+              {beat?.alive
+                ? `Working with ${worker}.`
+                : "Not running, so nothing is being prepared or marked. It starts with the Lockin app."}
             </div>
           </div>
           <Tag tone={beat?.alive ? "green" : "orange"}>{beat?.alive ? "Running" : "Stopped"}</Tag>
@@ -110,13 +106,9 @@ export default async function SettingsPage() {
       <h2 id="ak">AK · Anki Killer</h2>
       <AutoFlashcardsToggle enabled={settings.autoFlashcards} />
 
-      <h2 id="phone">iPhone</h2>
-      <PhoneLink initial={await phoneStatus()} />
-
       <h2 id="local">Offline AI on this computer</h2>
       <p className="muted small" style={{ marginTop: -4 }}>
-        Download a model once and Lockin works with no internet. The middle one is chosen for this computer; downloading
-        any of them switches Lockin to it when it finishes.
+        Download a model once and Lockin works without the internet. The middle one suits this computer best.
       </p>
       <ModelPicker initial={models} showInstalled />
 
@@ -126,7 +118,7 @@ export default async function SettingsPage() {
       <div className="setting">
         <div>
           <div className="st">Onboarding</div>
-          <div className="sd">The walkthrough from the first time you opened Lockin: adding lectures, choosing the AI, practising and reminders.</div>
+          <div className="sd">The short tour from the first time you opened Lockin.</div>
         </div>
         <a href="#intro" className="btn">
           <Icon name="refresh" size={14} /> Repeat onboarding

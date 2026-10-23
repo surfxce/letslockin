@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { readCardImage } from "@/lib/flashcards/images";
 import { parseCrop } from "@/lib/markdown";
-import { ingestReviews, ingestSitting, type SittingOutcome } from "@/lib/phone/ingest";
+import { ingestExam, ingestReviews, ingestSitting, type SittingOutcome } from "@/lib/phone/ingest";
 import { computerName, touchPairing, type Pairing } from "@/lib/phone/pairing";
 import { HelloRequestSchema, SlideRequestSchema, SyncRequestSchema } from "@/lib/phone/schema";
 import { buildSnapshot } from "@/lib/phone/snapshot";
@@ -28,7 +28,7 @@ export async function handleHello(pairing: Pairing, body: unknown): Promise<Phon
 export async function handleSync(pairing: Pairing, body: unknown): Promise<PhoneReply> {
   const parsed = SyncRequestSchema.safeParse(body);
   if (!parsed.success) return fail("The phone sent something this computer can't read. Update both apps.");
-  const { device, sittings, reviews } = parsed.data;
+  const { device, sittings, reviews, exams } = parsed.data;
 
   const outcomes: SittingOutcome[] = [];
   const problems: string[] = [];
@@ -41,13 +41,21 @@ export async function handleSync(pairing: Pairing, body: unknown): Promise<Phone
     }
   }
   const reviewOutcomes = await ingestReviews(reviews);
+  const examsTaken: string[] = [];
+  for (const e of exams) {
+    try {
+      examsTaken.push((await ingestExam(e)).id);
+    } catch (err) {
+      problems.push(`An exam couldn't be saved: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   await touchPairing(pairing.id, { deviceName: device?.name, synced: true });
 
   return {
     kind: "json",
     value: {
       ok: true,
-      accepted: { sittings: outcomes.map((o) => o.id), reviews: reviewOutcomes.map((r) => r.id) },
+      accepted: { sittings: outcomes.map((o) => o.id), reviews: reviewOutcomes.map((r) => r.id), exams: examsTaken },
       sittings: outcomes,
       reviews: reviewOutcomes.filter((r) => !r.saved),
       problems,

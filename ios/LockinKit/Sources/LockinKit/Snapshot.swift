@@ -12,10 +12,12 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var courses: [Course]
     public var lectures: [Lecture]
     public var sittings: [Sitting]
+    /// Multiple choice for exam mode, answers included; nil from computers before exam mode.
+    public var mcqs: [Mcq]?
     public var cards: [Card]
 
     public init(v: Int = 1, computer: String, generatedAt: Date, marking: MarkingTemplate?, computerMarker: String?,
-                courses: [Course], lectures: [Lecture], sittings: [Sitting], cards: [Card]) {
+                courses: [Course], lectures: [Lecture], sittings: [Sitting], cards: [Card], mcqs: [Mcq]? = nil) {
         self.v = v
         self.computer = computer
         self.generatedAt = generatedAt
@@ -25,6 +27,27 @@ public struct Snapshot: Codable, Hashable, Sendable {
         self.lectures = lectures
         self.sittings = sittings
         self.cards = cards
+        self.mcqs = mcqs
+    }
+}
+
+/// A multiple-choice question, shown only in exam mode.
+public struct Mcq: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var lectureId: String
+    public var stem: String
+    public var options: [String]
+    /// Index of the right option.
+    public var answer: Int
+    public var explanation: String
+
+    public init(id: String, lectureId: String, stem: String, options: [String], answer: Int, explanation: String) {
+        self.id = id
+        self.lectureId = lectureId
+        self.stem = stem
+        self.options = options
+        self.answer = answer
+        self.explanation = explanation
     }
 }
 
@@ -64,6 +87,8 @@ public struct Question: Codable, Hashable, Identifiable, Sendable {
     public var modelAnswer: String?
     public var criteria: [Criterion]
     public var markVars: MarkVars
+    /// From a past paper: asked only when the paper is sat on the computer.
+    public var fromPaper: Bool?
 }
 
 public struct Criterion: Codable, Hashable, Sendable {

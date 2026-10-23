@@ -20,7 +20,7 @@ export type GapType = (typeof GAP_TYPES)[number];
  * AK decks in a cloud side lane, or between main jobs when running locally. MCQS writes
  * a lecture's multiple-choice questions for exam mode when it was prepared without them.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -35,6 +35,7 @@ export const STAGES = {
   marking: "Marking",
   flashcards: "Writing flashcards",
   mcqs: "Writing exam MCQs",
+  paper: "Reading a past paper",
   download: "Downloading model",
 } as const;
 export type Stage = keyof typeof STAGES;

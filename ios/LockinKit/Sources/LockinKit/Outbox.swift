@@ -123,15 +123,70 @@ public struct Device: Codable, Hashable, Sendable {
     }
 }
 
+/// An exam sat on the phone (PhoneExamSchema): its multiple choice, marked here, and its
+/// long answers as a sitting of each lecture they came from.
+public struct PhoneExam: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var title: String
+    public var startedAt: Date
+    public var submittedAt: Date
+    public var timeLimitMin: Int?
+    public var items: [PhoneExamItem]
+    public var sittings: [PhoneSitting]
+
+    public init(id: String, title: String, startedAt: Date, submittedAt: Date, timeLimitMin: Int?, items: [PhoneExamItem], sittings: [PhoneSitting]) {
+        self.id = id
+        self.title = title
+        self.startedAt = startedAt
+        self.submittedAt = submittedAt
+        self.timeLimitMin = timeLimitMin
+        self.items = items
+        self.sittings = sittings
+    }
+}
+
+public struct PhoneExamItem: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    /// "MCQ" or "LAQ".
+    public var kind: String
+    public var mcqId: String?
+    public var choice: Int?
+    public var questionId: String?
+    public var responseId: String?
+
+    public init(id: String, kind: String, mcqId: String? = nil, choice: Int? = nil, questionId: String? = nil, responseId: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.mcqId = mcqId
+        self.choice = choice
+        self.questionId = questionId
+        self.responseId = responseId
+    }
+}
+
 public struct SyncRequest: Codable, Sendable {
     public var device: Device
     public var sittings: [PhoneSitting]
     public var reviews: [CardReview]
+    public var exams: [PhoneExam]
 
-    public init(device: Device, sittings: [PhoneSitting], reviews: [CardReview]) {
+    public init(device: Device, sittings: [PhoneSitting], reviews: [CardReview], exams: [PhoneExam] = []) {
         self.device = device
         self.sittings = sittings
         self.reviews = reviews
+        self.exams = exams
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case device, sittings, reviews, exams
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        device = try container.decode(Device.self, forKey: .device)
+        sittings = try container.decode([PhoneSitting].self, forKey: .sittings)
+        reviews = try container.decode([CardReview].self, forKey: .reviews)
+        exams = try container.decodeIfPresent([PhoneExam].self, forKey: .exams) ?? []
     }
 }
 
@@ -139,6 +194,8 @@ public struct SyncReply: Decodable, Sendable {
     public struct Accepted: Decodable, Sendable {
         public var sittings: [String]
         public var reviews: [String]
+        /// Absent from computers before exam mode.
+        public var exams: [String]?
     }
 
     public struct ReviewNote: Decodable, Sendable {

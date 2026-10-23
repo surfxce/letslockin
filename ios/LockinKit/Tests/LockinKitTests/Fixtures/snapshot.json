@@ -83,7 +83,8 @@
             "questionStem": "Explain how galactose-deficient IgA1 leads to mesangial injury.",
             "rubric": "{\n  \"modelAnswer\": \"Gd-IgA1 is recognised by autoantibodies…\"\n}",
             "concepts": "- cconcept000000000000000001 :: Gd-IgA1 — galactose-deficient IgA1"
-          }
+          },
+          "fromPaper": false
         }
       ],
       "nextSitting": [
@@ -136,6 +137,22 @@
           ]
         }
       ]
+    }
+  ],
+  "mcqs": [
+    {
+      "id": "mcq-0001",
+      "lectureId": "clecture000000000000000001",
+      "stem": "Which immunoglobulin deposits in the mesangium?",
+      "options": [
+        "IgG",
+        "IgA1",
+        "IgM",
+        "IgE",
+        "C3 alone"
+      ],
+      "answer": 1,
+      "explanation": "Galactose-deficient IgA1 forms immune complexes that deposit in the mesangium."
     }
   ],
   "cards": [

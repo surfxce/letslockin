@@ -58,23 +58,22 @@ export function AppUpdate() {
           <div className="sd">
             {current && (
               <>
-                This is build <code>{current.version}</code> from {day(current.builtAt)}.{" "}
+                You have the version from {day(current.builtAt)}.{" "}
               </>
             )}
             {check.state === "available" && (
               <>
-                The new one is <code>{check.latest.version}</code> from {day(check.latest.builtAt)}
+                The new one is from {day(check.latest.builtAt)}
                 {check.latest.notes ? `: ${check.latest.notes}` : ""}.{" "}
                 {check.inPlace
                   ? `It's a ${mb(check.latest.size)} download, then Lockin restarts.`
-                  : "It needs a newer Electron or libraries, so it comes as the full download: open it and drag Lockin into Applications again."}
+                  : "This one is a full download: open it and drag Lockin into Applications."}
               </>
             )}
             {building && (
               <span className="update-building">
                 <br />
-                Newer changes ({building.notes ? `“${building.notes}”` : <code>{building.version}</code>}) are being built — come
-                back in {minutesLeft(building.readyAt)}.
+                A newer version is on its way — check again in {minutesLeft(building.readyAt)}.
               </span>
             )}
             {check.state === "error" && <span className="result err">Couldn&apos;t check: {check.message}</span>}

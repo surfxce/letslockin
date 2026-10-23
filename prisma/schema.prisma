@@ -152,6 +152,9 @@ model Question {
   /// Who wrote it, for display, as Lecture.summaryModel.
   model         String?
   createdAt     DateTime @default(now())
+  /// Set on a question from a past paper (the PaperItem's id). Those are asked only
+  /// when the paper is sat, never in the lecture's own sittings or mixed exams.
+  paperItemId   String?
 
   lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   concepts  QuestionConcept[]
@@ -159,6 +162,7 @@ model Question {
   examItems ExamItem[]
 
   @@index([lectureId])
+  @@index([paperItemId])
 }
 
 model QuestionConcept {
@@ -338,8 +342,14 @@ model Flashcard {
   version      Int      @default(0)
   createdAt    DateTime @default(now())
   /// Where the card came from: "ai" (a generated deck), "manual" (written by the
-  /// student), "csv" (imported) or "occlusion" (cover-up boxes on a picture).
+  /// student), "csv" (imported), "anki" (an Anki package), "occlusion" (cover-up boxes
+  /// on a picture) or "mistake" (something missed or got wrong in a marked answer).
   origin       String   @default("ai")
+  /// Left out of reviews until unsuspended.
+  suspended    Boolean  @default(false)
+  /// Space-separated tags, padded with a space each side (" renal drugs ") so one tag
+  /// can be matched whole; "" when there are none.
+  tags         String   @default("")
   lecture      Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   reviews      FlashcardReview[]
 

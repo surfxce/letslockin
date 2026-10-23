@@ -32,6 +32,8 @@ import { lectureDecks } from "@/lib/slides";
 import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { writeMcqs } from "@/lib/mcq/service";
+import { writeMistakeCards } from "@/lib/flashcards/mistakes";
+import { splitPaper } from "@/lib/papers/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
 import type { JobKind } from "@/lib/types";
@@ -60,7 +62,7 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       where: { id: lectureId },
       select: {
         summaryMd: true,
-        _count: { select: { questions: true, mcqs: true, concepts: { where: { mergedIntoId: null } } } },
+        _count: { select: { questions: { where: { paperItemId: null } }, mcqs: true, concepts: { where: { mergedIntoId: null } } } },
       },
     });
 
@@ -107,6 +109,12 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
     return result;
   },
 
+  /** A past paper: split into questions, each filed under its lecture with a marking guide. */
+  PAPER: async (payload, jobId, provider) => {
+    await enterStage(jobId, "paper");
+    return splitPaper(String(payload.paperId), provider);
+  },
+
   /** The hidden exam MCQs on their own, for lectures prepared before exam mode. */
   MCQS: async (payload, jobId, provider) => {
     await enterStage(jobId, "mcqs");
@@ -115,6 +123,8 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
 
   FLASHCARDS: async (payload, jobId, provider) => {
     await enterStage(jobId, "flashcards");
+    // Cards from the mistakes in marked answers ride in the same lane as decks.
+    if (Array.isArray(payload.gapIds)) return writeMistakeCards(String(payload.lectureId), payload.gapIds.map(String), provider);
     return generateFlashcards(String(payload.lectureId), jobId, provider);
   },
 

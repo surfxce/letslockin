@@ -19,7 +19,7 @@ const BUSY_POLL_MS = 2500;
 const IDLE_POLL_MS = 20_000;
 const HIDDEN_POLL_MS = 60_000;
 
-const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer", MCQS: "Exam MCQs" };
+const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer", MCQS: "Exam MCQs", PAPER: "Past paper" };
 
 /**
  * The top-bar status: what the AI is doing right now and since when, what is
@@ -100,7 +100,7 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
         <>
           <span className="dot pulse" />
           <span className="label">
-            {running.stageLabel ?? KIND_LABEL[running.kind]} · {running.lectureTitle ?? "lecture"}
+            {running.stageLabel ?? KIND_LABEL[running.kind]} · {running.lectureTitle ?? (running.kind === "PAPER" ? "past paper" : "lecture")}
           </span>
           {since && <span className="nowrap">{duration(now - new Date(since).getTime())}</span>}
           {queued.length > 0 && <span className="nowrap">· {queued.length} waiting</span>}
@@ -256,8 +256,8 @@ function JobLine({ job, now, detailed }: { job: ActivityJob; now: number; detail
         <span style={{ color: failed ? "var(--danger)" : job.status === "DONE" ? "var(--s-green)" : "var(--accent-text)", marginTop: 2 }}>
           <Icon name={failed ? "alert" : job.status === "DONE" ? "check" : "sparkles"} size={14} />
         </span>
-        <Link href={job.lectureId ? `/lectures/${job.lectureId}` : "/"} className="what">
-          <div className="t">{job.lectureTitle ?? "Lecture"}</div>
+        <Link href={job.lectureId ? `/lectures/${job.lectureId}` : job.kind === "PAPER" ? "/exam#papers" : "/"} className="what">
+          <div className="t">{job.lectureTitle ?? (job.kind === "PAPER" ? "Past paper" : "Lecture")}</div>
           <div className="s">
             {KIND_LABEL[job.kind]}
             {job.courseCode ? ` · ${job.courseCode}` : ""}

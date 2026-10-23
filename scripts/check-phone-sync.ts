@@ -155,6 +155,42 @@ async function main() {
     assert.equal(await prisma.flashcardReview.count(), 1);
     assert.equal((await prisma.flashcard.findUniqueOrThrow({ where: { id: card.id } })).version, 1);
 
+    // An exam sat on the phone: multiple choice marked there, long answers as exam sittings.
+    const mcq = await prisma.mcq.create({
+      data: { lectureId: lecture.id, stem: "Which deposits?", options: JSON.stringify(["IgG", "IgM", "IgA1", "IgE", "C3"]), answer: 2, explanation: "IgA1.", promptVersion: "t" },
+    });
+    const at = new Date().toISOString();
+    const examSync = {
+      device: { name: "Test iPhone", app: "1.0" },
+      exams: [
+        {
+          id: "phone-exam-0001",
+          title: "PHONE1 exam",
+          startedAt: at,
+          submittedAt: at,
+          timeLimitMin: 30,
+          items: [
+            { id: "phone-item-0001", kind: "MCQ", mcqId: mcq.id, choice: 2 },
+            { id: "phone-item-0002", kind: "LAQ", questionId: question.id, responseId: "phone-exam-resp-01" },
+          ],
+          sittings: [
+            { id: "phone-exam-sit-01", lectureId: lecture.id, startedAt: at, submittedAt: at, responses: [{ id: "phone-exam-resp-01", questionId: question.id, answerText: "Gd-IgA1 deposits." }] },
+          ],
+        },
+      ],
+    };
+    const examReply = (await handleSync(pairing, examSync)) as { kind: "json"; value: Json };
+    assert.deepEqual(examReply.value.accepted.exams, ["phone-exam-0001"]);
+    const phoneExam = await prisma.exam.findUniqueOrThrow({ where: { id: "phone-exam-0001" }, include: { items: { orderBy: { position: "asc" } } } });
+    assert.equal(phoneExam.items[0].choice, 2);
+    assert.equal(phoneExam.items[1].responseId, "phone-exam-resp-01");
+    assert.equal((await prisma.attempt.findUniqueOrThrow({ where: { id: "phone-exam-sit-01" } })).source, "EXAM", "counts towards the drill score");
+    assert.deepEqual(((await handleSync(pairing, examSync)) as { kind: "json"; value: Json }).value.accepted.exams, ["phone-exam-0001"]);
+    assert.equal(await prisma.exam.count(), 1, "sent twice, kept once");
+    const examSnapshot = PhoneSnapshotSchema.parse(examReply.value.snapshot);
+    assert.equal(examSnapshot.mcqs.find((m) => m.id === mcq.id)?.answer, 2);
+    assert.equal(examSnapshot.lectures[0].questions[0].fromPaper, false);
+
     // Pictures: only refs that look like slides.
     const bad = (await handleSlide(pairing, { lectureId: lecture.id, ref: "../etc/passwd" })) as { kind: "json"; value: Json };
     assert.equal(bad.value.ok, false);

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { nextCard } from "@/app/ak/actions";
+import { scopeCounts } from "@/lib/flashcards/review";
 import { Review } from "@/app/ak/Review";
 import { DeckControls, DeckRefresh } from "@/app/ak/DeckControls";
 import { Icon } from "@/app/ui/Icon";
@@ -18,7 +19,10 @@ export default async function DeckPage({ params }: { params: Promise<{ id: strin
   if (!lecture) notFound();
   const job = lecture.jobs[0] ?? null;
   const busy = !!job && ["PENDING", "RUNNING"].includes(job.status);
-  const generated = await prisma.flashcard.count({ where: { lectureId: id, origin: "ai" } });
+  const [generated, counts] = await Promise.all([
+    prisma.flashcard.count({ where: { lectureId: id, origin: "ai" } }),
+    scopeCounts({ lectureId: id }),
+  ]);
   const make = (label: string, href: string, icon: "pen" | "scissors" | "upload") => (
     <Link href={href} className="btn sm"><Icon name={icon} size={14} /> {label}</Link>
   );
@@ -29,11 +33,12 @@ export default async function DeckPage({ params }: { params: Promise<{ id: strin
     {lecture._count.flashcards > 0 && <div className="ak-deck-tools">
       {make("Add or edit cards", `/ak/${id}/cards`, "pen")}
       {make("Cover-up cards", `/ak/${id}/cards?new=occlusion`, "scissors")}
-      {make("Import a CSV", `/ak/${id}/cards?new=csv`, "upload")}
+      {make("Import (Anki or CSV)", `/ak/${id}/cards?new=import`, "upload")}
+      {counts.hard > 0 && <Link href={`/ak/review?lecture=${id}&hard=1`} className="btn sm"><Icon name="target" size={14} /> Hard cards ({counts.hard})</Link>}
       {!generated && <DeckRefresh active={busy} />}
       {!generated && <DeckControls lectureId={id} job={job} />}
     </div>}
-    {lecture._count.flashcards ? <Review lectureId={id} initial={await nextCard(id)} /> : <div className="ak-done">
+    {lecture._count.flashcards ? <Review scope={{ lectureId: id }} initial={await nextCard(id)} /> : <div className="ak-done">
       <DeckRefresh active={busy} /><Icon name="layers" size={32} /><h2>{busy ? "Your deck is on its way" : "Make this lecture stick"}</h2>
       <p>{busy ? "Cards are generated independently of your summary and LAQs. You can leave this page while they’re being written." : "Generate a deck of focused questions and answers, with diagrams from your lecture slides."}</p>
       {job?.status === "FAILED" && <p className="ak-error" role="alert">{job.error}</p>}
@@ -42,7 +47,7 @@ export default async function DeckPage({ params }: { params: Promise<{ id: strin
         <div className="ak-make-label">Or make them yourself</div>
         {make("Write cards", `/ak/${id}/cards`, "pen")}
         {make("Cover-up cards from a picture", `/ak/${id}/cards?new=occlusion`, "scissors")}
-        {make("Import a CSV", `/ak/${id}/cards?new=csv`, "upload")}
+        {make("Import (Anki or CSV)", `/ak/${id}/cards?new=import`, "upload")}
       </div>
     </div>}
   </main>;

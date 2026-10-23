@@ -17,7 +17,7 @@ function ago(iso: string | null): string {
 
 /**
  * Pairing the iPhone app: a QR code with this computer's addresses and a new key. The
- * phone then syncs straight with this computer over the Wi-Fi — no account, no cloud.
+ * phone then syncs straight with this computer over the Wi-Fi, sealed with that key.
  */
 export function PhoneLink({ initial }: { initial: PhoneStatus }) {
   const [status, setStatus] = useState(initial);
@@ -49,9 +49,8 @@ export function PhoneLink({ initial }: { initial: PhoneStatus }) {
         <div>
           <div className="st">Study on your iPhone</div>
           <div className="sd">
-            Read summaries with their slides, answer LAQs and review AK cards on the go. The phone syncs straight
-            with this computer over your Wi-Fi, encrypted with a key only the two of them have: no account, no cloud.
-            Answers and reviews from the phone come back here at the next sync.
+            Read summaries, answer LAQs, review cards and sit exams on your phone. It syncs with this computer
+            whenever both are on the same Wi-Fi.
           </div>
         </div>
         <button
@@ -84,25 +83,19 @@ export function PhoneLink({ initial }: { initial: PhoneStatus }) {
                   <strong>On your iPhone, open Lockin and tap Scan</strong>, or point the Camera app at this code. Keep
                   the phone on the same Wi-Fi as this computer.
                 </p>
-                <p className="small muted">
-                  The code holds the key to your Lockin library: show it only to your own phone.
-                </p>
+                <p className="small muted">Only scan it with your own phone.</p>
                 <p className="small">
                   {listening ? (
                     <span className="tag t-green">Waiting for your phone…</span>
                   ) : gateway?.state.startsWith("error") ? (
                     <span className="result err">{gateway.state.replace(/^error: /, "Can't listen for phones: ")}</span>
                   ) : gateway ? (
-                    <span className="tag t-gray">Opening the connection…</span>
+                    <span className="tag t-gray">Getting ready…</span>
                   ) : (
-                    <span className="result err">
-                      The phone connects through the Lockin desktop app. From the repository, run{" "}
-                      <code>npm run phone</code> beside <code>npm run dev</code>.
-                    </span>
+                    <span className="result err">Open the Lockin desktop app to pair a phone.</span>
                   )}
                 </p>
                 <p className="small muted">
-                  Reaches this computer at {status.hosts.join(", ")} on port {status.port}.{" "}
                   <button
                     type="button"
                     className="btn quiet sm"
@@ -169,8 +162,8 @@ export function PhoneLink({ initial }: { initial: PhoneStatus }) {
           <div className="st">Mark answers on the phone</div>
           <div className="sd">
             {status.keyMarking
-              ? "Lockin marks with your API key, so the phone can mark answers itself, anywhere, with the same key, model and marking prompt. The key goes to the phone encrypted and stays in its Keychain. Off: the phone saves your answers and this computer marks them at the next sync."
-              : "Claude Code, Codex, Antigravity and offline models run on this computer, so the phone saves your answers and this computer marks them at the next sync. With an API key (Summaries and LAQs, above), the phone can mark them itself."}
+              ? "Your phone marks answers straight away, anywhere, using your API key. Off: they're marked here the next time your phone syncs."
+              : "Answers from your phone are marked here the next time it syncs. With an API key (under Summaries and LAQs), the phone can mark them itself."}
           </div>
         </div>
         <label className="switch">

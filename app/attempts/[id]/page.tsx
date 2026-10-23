@@ -16,6 +16,9 @@ import { getSettings } from "@/lib/settings";
 import { lectureRows, questionNumbers } from "@/lib/views";
 import { usesAi } from "@/lib/modes";
 import { buildNotesSheet, notesFileName } from "@/lib/notes-sheet";
+import "@/app/ak/ak.css";
+import { MistakeCards } from "@/app/ak/MistakeCards";
+import { mistakesLeft } from "@/lib/flashcards/mistakes";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +72,13 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const [settings, [row]] = await Promise.all([getSettings(), lectureRows({ ids: [attempt.lectureId] })]);
+  const markedIds = responses.filter((r) => r.mark !== null).map((r) => r.id);
+  const [settings, [row], left, gapCount] = await Promise.all([
+    getSettings(),
+    lectureRows({ ids: [attempt.lectureId] }),
+    mistakesLeft(markedIds),
+    prisma.gap.count({ where: { responseId: { in: markedIds } } }),
+  ]);
   const unmarked = responses.filter((r) => r.mark === null);
   const needsPaste = unmarked.length > 0 && settings.mode === "manual";
   const rows = responses.map((r) => ({ r, fb: feedbackFor(r), rubric: readRubric(r.question.rubric) }));
@@ -164,12 +173,14 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
         }}
       />
 
+      <MistakeCards attemptId={attempt.id} left={left} made={gapCount - left} />
+
       <FeedbackLegend />
       <div className="q-scores" style={{ borderTop: 0 }}>
         {rows.map(({ r, fb, rubric }) => (
           <div key={r.id} className="sitting" style={{ marginBottom: 14 }}>
             <QuestionScore
-              label={`LAQ ${numbers.get(r.questionId) ?? "?"}`}
+              label={r.question.paperItemId ? "Paper" : `LAQ ${numbers.get(r.questionId) ?? "?"}`}
               mark={r.mark}
               raw={fb.raw ?? undefined}
               feedback={fb.items}

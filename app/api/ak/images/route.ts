@@ -1,14 +1,11 @@
 import { MAX_CARD_IMAGE_BYTES, saveCardImage } from "@/lib/flashcards/images";
+import { fromLockin } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
 
 /** A picture for a card, sent as the raw request body. Only from Lockin's own pages. */
 export async function POST(request: Request) {
-  const site = request.headers.get("sec-fetch-site");
-  const origin = request.headers.get("origin");
-  if ((site && site !== "same-origin") || (origin && new URL(origin).host !== request.headers.get("host"))) {
-    return Response.json({ error: "Not allowed." }, { status: 403 });
-  }
+  if (!fromLockin(request)) return Response.json({ error: "Not allowed." }, { status: 403 });
   if (Number(request.headers.get("content-length") ?? 0) > MAX_CARD_IMAGE_BYTES) {
     return Response.json({ error: "That picture is too big (15 MB at most)." }, { status: 413 });
   }

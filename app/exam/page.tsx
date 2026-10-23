@@ -4,6 +4,9 @@ import Link from "next/link";
 
 import { removeExam } from "@/app/exam/actions";
 import { ExamSetup } from "@/app/exam/ExamSetup";
+import { Papers } from "@/app/exam/Papers";
+import { DeckRefresh } from "@/app/ak/DeckControls";
+import { paperRows } from "@/lib/papers/service";
 import { Tag } from "@/app/ui/bits";
 import { Icon } from "@/app/ui/Icon";
 import { prisma } from "@/lib/db";
@@ -16,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ExamPage({ searchParams }: { searchParams: Promise<{ course?: string }> }) {
   const { course } = await searchParams;
-  const [tree, settings, exams] = await Promise.all([
+  const [tree, settings, exams, papers, allCourses] = await Promise.all([
     examTree(),
     getSettings(),
     prisma.exam.findMany({
@@ -28,7 +31,10 @@ export default async function ExamPage({ searchParams }: { searchParams: Promise
         },
       },
     }),
+    paperRows(),
+    prisma.course.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, code: true } }),
   ]);
+  const reading = papers.some((p) => p.job && (p.job.status === "PENDING" || p.job.status === "RUNNING"));
   const open = exams.filter((e) => !e.submittedAt);
   const done = exams.filter((e) => e.submittedAt);
 
@@ -59,6 +65,9 @@ export default async function ExamPage({ searchParams }: { searchParams: Promise
       ))}
 
       <ExamSetup tree={tree} ai={usesAi(settings.mode)} course={course} />
+
+      <DeckRefresh active={reading} />
+      <Papers papers={papers} courses={allCourses} ai={usesAi(settings.mode)} />
 
       {done.length > 0 && (
         <section style={{ marginTop: 36 }}>

@@ -59,3 +59,12 @@
   .ws-form { grid-template-columns: 1fr; }
   .pe-options { grid-template-columns: 1fr; }
 }
+.ws-tags { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.ws-tags input { flex: 1; max-width: 420px; }
+.ws-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ws-bulk input { width: 120px; height: 26px; padding: 2px 8px; font-size: 13px; }
+.ws-suspended td > * { opacity: 0.5; }
+.ws-problem { margin-top: 4px; display: inline-flex; }
+.ws-tag-list { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.ws-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+label.btn.disabled { opacity: 0.45; pointer-events: none; }

@@ -64,3 +64,10 @@
   .exam-module { padding-left: 12px; }
   .exam-lectures { padding-left: 12px; grid-template-columns: 1fr; }
 }
+.exam-papers { margin-top: 36px; }
+.exam-paper-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.exam-paper { padding: 12px 16px; border: 1px solid var(--rule); border-radius: 10px; }
+.exam-paper-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.exam-paper-head .spacer { flex: 1; }
+.exam-paper p { margin: 6px 0 0; }
+.exam-paper-sit { margin-top: 8px; flex-wrap: wrap; gap: 8px; }

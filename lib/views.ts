@@ -24,7 +24,7 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
       summaryMd: true,
       course: { select: { code: true, examDate: true } },
       module: { select: { id: true, title: true } },
-      _count: { select: { questions: true, materials: true } },
+      _count: { select: { questions: { where: { paperItemId: null } }, materials: true } },
       attempts: {
         where: { geometricMean: { not: null } },
         select: {
@@ -35,7 +35,7 @@ export async function lectureRows(where: { courseId?: string; ids?: string[] } =
         },
         orderBy: { sittingDate: "asc" },
       },
-      questions: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      questions: { where: { paperItemId: null }, select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
       jobs: {
         where: { kind: { in: ["PREPARE", "GENERATE"] } },
         orderBy: { createdAt: "desc" },
@@ -135,7 +135,7 @@ export async function dueLectures(now = new Date()): Promise<LectureRow[]> {
  */
 export async function questionNumbers(lectureId: string): Promise<Map<string, number>> {
   const questions = await prisma.question.findMany({
-    where: { lectureId },
+    where: { lectureId, paperItemId: null },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { id: true },
   });

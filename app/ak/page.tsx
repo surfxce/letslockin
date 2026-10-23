@@ -5,6 +5,8 @@ import { Tag } from "@/app/ui/bits";
 import { tagTone, plural } from "@/lib/format";
 import { Icon } from "@/app/ui/Icon";
 import { DeckControls, DeckRefresh } from "@/app/ak/DeckControls";
+import { scopeCounts, tagCounts } from "@/lib/flashcards/review";
+import { LEECH_LAPSES } from "@/lib/flashcards/schedule";
 import "./ak.css";
 
 export const dynamic = "force-dynamic";
@@ -30,23 +32,26 @@ export default async function AKPage({ searchParams }: { searchParams: Promise<{
   const ids = lectures.map(l => l.id);
   // Aggregate in SQLite: no card text or full review history in the library payload.
   const [newCounts, dueCounts, overdueCounts, learningCounts, nextDates] = await Promise.all([
-    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, state: "new" }, _count: true }),
-    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, state: { not: "new" }, dueAt: { lte: now } }, _count: true }),
-    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, state: { not: "new" }, dueAt: { lt: dayStart } }, _count: true }),
-    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, state: "learning" }, _count: true }),
-    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, dueAt: { gt: now } }, _min: { dueAt: true } }),
+    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, suspended: false, state: "new" }, _count: true }),
+    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, suspended: false, state: { not: "new" }, dueAt: { lte: now } }, _count: true }),
+    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, suspended: false, state: { not: "new" }, dueAt: { lt: dayStart } }, _count: true }),
+    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, suspended: false, state: "learning" }, _count: true }),
+    prisma.flashcard.groupBy({ by: ["lectureId"], where: { lectureId: { in: ids }, suspended: false, dueAt: { gt: now } }, _min: { dueAt: true } }),
   ]);
   const count = (rows: typeof newCounts, id: string) => rows.find(r => r.lectureId === id)?._count ?? 0;
   const rows = lectures.map(l => ({ ...l, fresh: count(newCounts, l.id), due: count(dueCounts, l.id), overdue: count(overdueCounts, l.id), learning: count(learningCounts, l.id), next: nextDates.find(r => r.lectureId === l.id)?._min.dueAt }));
   const visible = params.due === "1" ? rows.filter(r => r.fresh + r.due > 0) : rows;
   const total = (key: "fresh" | "due" | "overdue") => rows.reduce((n, r) => n + r[key], 0);
-  const first = [...rows].sort((a, b) => b.overdue - a.overdue || b.due - a.due).find(r => r.fresh + r.due > 0);
+  const ready = rows.reduce((n, r) => n + r.fresh + r.due, 0);
+  const scope = course ? { courseId: course.id } : {};
+  const [counts, tags] = await Promise.all([scopeCounts(scope), tagCounts(course ? { lecture: { courseId: course.id } } : {})]);
+  const courseQuery = course ? `course=${course.id}&` : "";
   const active = rows.some(r => ["PENDING", "RUNNING"].includes(r.jobs[0]?.status));
   return <main className="page">
     <DeckRefresh active={active} />
     <div className="ak-heading"><div><h1 className="page-title">AK <span className="ak-subtitle">Anki Killer</span></h1>
       <p className="page-sub">Small questions. Lasting recall. Your lectures, one card at a time.</p></div>
-      {first && <Link href={`/ak/${first.id}`} className="btn primary"><Icon name="play" size={15} /> Review now</Link>}
+      {ready > 0 && <Link href={`/ak/review${course ? `?course=${course.id}` : ""}`} className="btn primary"><Icon name="play" size={15} /> Review {course ? course.code : "everything"} · {ready}</Link>}
     </div>
     <div className="ak-stats">
       <div><strong className="ak-overdue">{total("overdue")}</strong><span>Overdue</span></div>
@@ -54,6 +59,12 @@ export default async function AKPage({ searchParams }: { searchParams: Promise<{
       <div><strong className="ak-new">{total("fresh")}</strong><span>New cards</span></div>
       <div><strong>{rows.filter(r => r._count.flashcards > 0).length}</strong><span>Decks ready</span></div>
     </div>
+    {(counts.hard > 0 || tags.length > 0) && <div className="ak-scopes">
+      {counts.hard > 0 && <Link href={`/ak/review?${courseQuery}hard=1`} className="btn sm"><Icon name="target" size={14} /> Hard cards · {counts.hard}</Link>}
+      {tags.length > 0 && <span className="small muted">Tags</span>}
+      {tags.slice(0, 24).map(t => <Link key={t.tag} href={`/ak/review?${courseQuery}tag=${encodeURIComponent(t.tag)}`} className="ak-tag">#{t.tag} <span className="faint">{t.count}</span></Link>)}
+    </div>}
+    {counts.problems > 0 && <div className="callout yellow ak-problems"><Icon name="alert" size={16} /><span>{counts.problems} problem card{counts.problems === 1 ? "" : "s"} — forgotten {LEECH_LAPSES} or more times. Rewording or splitting them usually helps; you can also suspend them. They&apos;re marked in each deck&apos;s card list.</span></div>}
     {active && (!beat?.alive || settings.mode === "manual") && <div className="callout">Deck generation is waiting. {settings.mode === "manual" ? "Choose an AI in Settings to continue." : "Open the desktop app or start the worker to continue."}</div>}
     <div className="views">
       <Link href="/ak" className={!course ? "on" : undefined}>All courses</Link>

@@ -46,7 +46,7 @@ export async function examTree(): Promise<ExamCourse[]> {
       modules: { orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, title: true } },
       lectures: {
         orderBy: [{ deliveredOn: "asc" }, { createdAt: "asc" }],
-        select: { id: true, title: true, moduleId: true, summaryMd: true, _count: { select: { questions: true, mcqs: true } } },
+        select: { id: true, title: true, moduleId: true, summaryMd: true, _count: { select: { questions: { where: { paperItemId: null } }, mcqs: true } } },
       },
     },
   });
@@ -103,7 +103,7 @@ export async function createExam(opts: ExamOptions): Promise<string> {
       : [],
     laqCount
       ? prisma.question.findMany({
-          where: { lectureId: { in: ids } },
+          where: { lectureId: { in: ids }, paperItemId: null },
           select: {
             id: true,
             lectureId: true,

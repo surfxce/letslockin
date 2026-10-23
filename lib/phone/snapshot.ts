@@ -10,6 +10,7 @@ import type { PhoneSnapshot } from "@/lib/phone/schema";
 import { getSettings } from "@/lib/settings";
 import { lectureDecks, pictured } from "@/lib/slides";
 import { lectureRows } from "@/lib/views";
+import { readOptions } from "@/lib/mcq/service";
 
 /** Pictures in the phone's copy point here; the app serves them from its own cache. */
 export const SLIDE_SCHEME = "lockin-slide";
@@ -39,7 +40,7 @@ function iso(d: Date | null | undefined): string | null {
 /** Everything the phone shows, rendered the way the computer renders it. */
 export async function buildSnapshot(): Promise<PhoneSnapshot> {
   const settings = await getSettings();
-  const [courses, lectures, attempts, cards, markJobs, marking, rows] = await Promise.all([
+  const [courses, lectures, attempts, cards, markJobs, marking, rows, mcqs] = await Promise.all([
     prisma.course.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, code: true, title: true, examDate: true } }),
     prisma.lecture.findMany({
       orderBy: [{ deliveredOn: "asc" }, { createdAt: "asc" }],
@@ -58,6 +59,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
             stem: true,
             type: true,
             rubric: true,
+            paperItemId: true,
             concepts: { select: { concept: { select: { id: true, name: true, definition: true } } } },
           },
         },
@@ -83,10 +85,12 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
         },
       },
     }),
-    prisma.flashcard.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    // Suspended cards stay off the phone, as they stay out of reviews here.
+    prisma.flashcard.findMany({ where: { suspended: false }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     prisma.job.findMany({ where: { kind: "MARK", status: { in: ["PENDING", "RUNNING"] } }, select: { payload: true } }),
     phoneMarkingTemplate(),
     lectureRows(),
+    prisma.mcq.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, lectureId: true, stem: true, options: true, answer: true, explanation: true } }),
   ]);
   const rowOf = new Map(rows.map((r) => [r.id, r]));
 
@@ -181,6 +185,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
           modelAnswer: rubric.modelAnswer,
           criteria: rubric.criteria,
           markVars: { questionStem: vars.questionStem, rubric: vars.rubric, concepts: vars.concepts },
+          fromPaper: q.paperItemId !== null,
         };
       }),
       nextSitting,
@@ -227,6 +232,10 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
     courses: courses.map((c) => ({ ...c, examDate: iso(c.examDate) })),
     lectures: phoneLectures,
     sittings,
+    mcqs: mcqs.flatMap((m) => {
+      const options = readOptions(m.options);
+      return options.length > m.answer ? [{ ...m, options }] : [];
+    }),
     cards: phoneCards,
   };
 }

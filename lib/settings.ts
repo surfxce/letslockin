@@ -50,6 +50,8 @@ export interface Settings {
   apiModel: string;
   /** The API model takes images, so it is shown the slides as pictures. */
   apiVision: boolean;
+  /** How long the Today plan fills, in minutes. */
+  dailyMinutes: number;
 }
 
 const DEFAULTS: Settings = {
@@ -71,6 +73,7 @@ const DEFAULTS: Settings = {
   apiBaseUrl: "",
   apiModel: "",
   apiVision: true,
+  dailyMinutes: 60,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -98,6 +101,7 @@ export async function getSettings(): Promise<Settings> {
   out.autoFlashcards = out.autoFlashcards === true;
   out.apiVision = out.apiVision !== false;
   if (typeof out.slideReader !== "string") out.slideReader = null;
+  out.dailyMinutes = Number.isFinite(out.dailyMinutes) ? Math.min(600, Math.max(10, Math.round(out.dailyMinutes))) : DEFAULTS.dailyMinutes;
   return out;
 }
 

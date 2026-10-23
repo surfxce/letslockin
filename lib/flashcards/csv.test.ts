@@ -24,7 +24,9 @@ describe("detectDelimiter", () => {
 
 describe("parseCardFile", () => {
   it("reads Anki's export headers", () => {
-    const file = parseCardFile("#separator:tab\n#html:true\n#columns:Front\tBack\tTags\nWhat?<br>Really\t<b>Yes</b>\tbio\n");
+    const file = parseCardFile("#separator:tab\n#html:true\n#tags column:3\n#columns:Front\tBack\tTags\nWhat?<br>Really\t<b>Yes</b>\tbio\n");
+    expect(file.tagsColumn).toBe(2);
+    expect(cardsFromRows(file.rows, 0, 1, true, file.tagsColumn)).toEqual([{ front: "What?\nReally", back: "**Yes**", tags: "bio" }]);
     expect(file.delimiter).toBe("\t");
     expect(file.html).toBe(true);
     expect(file.header).toEqual(["Front", "Back", "Tags"]);

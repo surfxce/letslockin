@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { importCardBatch, removeCards, saveOwnCard } from "@/app/ak/actions";
+import { importCardBatch, removeCards, saveOwnCard, suspendCards, tagCards } from "@/app/ak/actions";
 import { PictureEditor } from "@/app/ak/[id]/cards/PictureEditor";
 import { Icon } from "@/app/ui/Icon";
 import { Markdown } from "@/app/ui/render";
@@ -19,12 +19,16 @@ export interface WorkshopCard {
   origin: string;
   state: string;
   due: string;
+  tags: string[];
+  suspended: boolean;
+  /** Forgotten so often it's worth rewording. */
+  problem: boolean;
 }
 
-type Panel = "write" | "occlusion" | "csv";
+type Panel = "write" | "occlusion" | "import";
 type Field = "front" | "back";
 
-const ORIGIN: Record<string, string> = { ai: "Generated", manual: "Yours", csv: "Imported", occlusion: "Cover-up" };
+const ORIGIN: Record<string, string> = { ai: "Generated", manual: "Yours", csv: "Imported", occlusion: "Cover-up", mistake: "From a mistake", anki: "From Anki" };
 
 export function CardsWorkshop({
   lectureId,
@@ -32,6 +36,8 @@ export function CardsWorkshop({
   pictures,
   cards,
   initialPanel,
+  initialEdit = null,
+  filters,
 }: {
   lectureId: string;
   /** For showing slide:N pictures in previews. */
@@ -40,9 +46,13 @@ export function CardsWorkshop({
   pictures: { base: string; numbers: number[] };
   cards: WorkshopCard[];
   initialPanel: Panel;
+  /** A card to open for editing straight away (from a review's Edit). */
+  initialEdit?: WorkshopCard | null;
+  /** Links that filter the list, from the page. */
+  filters?: React.ReactNode;
 }) {
-  const [panel, setPanel] = useState<Panel>(initialPanel);
-  const [editing, setEditing] = useState<WorkshopCard | null>(null);
+  const [panel, setPanel] = useState<Panel>(initialEdit ? "write" : initialPanel);
+  const [editing, setEditing] = useState<WorkshopCard | null>(initialEdit);
   const [notice, setNotice] = useState<string | null>(null);
   const [occluding, setOccluding] = useState(false);
   const top = useRef<HTMLDivElement>(null);
@@ -54,7 +64,7 @@ export function CardsWorkshop({
           [
             ["write", "Write a card", "pen"],
             ["occlusion", "Cover-up cards", "scissors"],
-            ["csv", "Import a CSV", "upload"],
+            ["import", "Import (Anki or CSV)", "upload"],
           ] as const
         ).map(([id, label, icon]) => (
           <button key={id} type="button" role="tab" aria-selected={panel === id} className={`view${panel === id ? " on" : ""}`} onClick={() => {
@@ -105,8 +115,14 @@ export function CardsWorkshop({
           )}
         </div>
       )}
-      {panel === "csv" && <CsvImport lectureId={lectureId} onDone={setNotice} />}
+      {panel === "import" && (
+        <>
+          <AnkiImport lectureId={lectureId} onDone={setNotice} />
+          <CsvImport lectureId={lectureId} onDone={setNotice} />
+        </>
+      )}
 
+      {filters}
       <CardList
         lectureId={lectureId}
         cards={cards}
@@ -139,6 +155,7 @@ function CardForm({
   onCancel: () => void;
 }) {
   const [text, setText] = useState<Record<Field, string>>({ front: editing?.front ?? "", back: editing?.back ?? "" });
+  const [tags, setTags] = useState(editing?.tags.join(" ") ?? "");
   const [preview, setPreview] = useState(false);
   const [picture, setPicture] = useState<{ field: Field; start: File | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -173,9 +190,10 @@ function CardForm({
   function save() {
     setError(null);
     startSaving(async () => {
-      const result = await saveOwnCard(lectureId, { id: editing?.id, front: text.front, back: text.back });
+      const result = await saveOwnCard(lectureId, { id: editing?.id, front: text.front, back: text.back, tags });
       if (!result.ok) return setError(result.message);
       setText({ front: "", back: "" });
+      // Tags stay for the next card: cards written together usually share them.
       setPreview(false);
       onSaved(result.message);
       requestAnimationFrame(() => boxes.front.current?.focus());
@@ -236,6 +254,10 @@ function CardForm({
           )}
         </div>
       ))}
+      <label className="ws-tags">
+        <span className="small muted">Tags</span>
+        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="renal immunology week3" aria-label="Tags" />
+      </label>
       <div className="row ws-actions">
         <button type="button" className="btn primary" disabled={saving || !text.front.trim() || !text.back.trim()} onClick={save}>
           {saving ? "Saving…" : editing ? "Save changes" : "Add card"}
@@ -269,6 +291,67 @@ function CardForm({
   );
 }
 
+/** An Anki package (.apkg) — the deck file Anki exports, pictures and all. */
+function AnkiImport({ lectureId, onDone }: { lectureId: string; onDone: (message: string) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function upload(file: File) {
+    setError(null);
+    if (file.size > 400 * 1024 * 1024) return setError("That package is too big (400 MB at most).");
+    setBusy(`Reading ${file.name}…`);
+    try {
+      const res = await fetch(`/api/ak/import?lecture=${encodeURIComponent(lectureId)}`, { method: "POST", body: file });
+      const json = (await res.json().catch(() => ({}))) as {
+        added?: number;
+        skipped?: number;
+        pictures?: number;
+        decks?: Array<{ name: string; cards: number }>;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Couldn't import that package.");
+      const decks = json.decks?.map((d) => d.name).join(", ");
+      onDone(
+        `Imported ${json.added} card${json.added === 1 ? "" : "s"}${json.pictures ? ` with ${json.pictures} picture${json.pictures === 1 ? "" : "s"}` : ""}` +
+          `${decks ? ` from ${decks}` : ""}${json.skipped ? `; ${json.skipped} skipped (already here, or a kind Lockin can't show yet)` : ""}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="soft-card ws-csv">
+      <p>
+        <b>An Anki deck.</b> In Anki, choose <i>File → Export</i>, pick <i>Anki Deck Package (.apkg)</i>, then choose the file here. Cards come
+        in as new, with their pictures and tags; each Anki deck becomes a tag. Importing the same deck again only adds cards that are new.
+      </p>
+      <div className="row">
+        <label className={`btn primary${busy ? " disabled" : ""}`} aria-disabled={!!busy}>
+          <Icon name="upload" size={15} /> {busy ? "Importing…" : "Choose an .apkg file"}
+          <input
+            type="file"
+            accept=".apkg,.colpkg,application/octet-stream"
+            hidden
+            disabled={!!busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void upload(f);
+            }}
+          />
+        </label>
+        {busy && <span className="small muted">{busy}</span>}
+      </div>
+      {error && (
+        <p className="result err" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** A spreadsheet or an Anki export, previewed before anything is added. */
 function CsvImport({ lectureId, onDone }: { lectureId: string; onDone: (message: string) => void }) {
   const [file, setFile] = useState<{ name: string; parsed: CardFile } | null>(null);
@@ -294,7 +377,7 @@ function CsvImport({ lectureId, onDone }: { lectureId: string; onDone: (message:
     const n = Math.max(...file.parsed.rows.slice(0, 50).map((r) => r.length));
     return Array.from({ length: n }, (_, i) => file.parsed.header?.[i]?.trim() || `Column ${i + 1}`);
   }, [file]);
-  const cards = useMemo(() => (file ? cardsFromRows(file.parsed.rows, front, back, html) : []), [file, front, back, html]);
+  const cards = useMemo(() => (file ? cardsFromRows(file.parsed.rows, front, back, html, file.parsed.tagsColumn) : []), [file, front, back, html]);
 
   async function run() {
     setError(null);
@@ -324,8 +407,8 @@ function CsvImport({ lectureId, onDone }: { lectureId: string; onDone: (message:
       {!file ? (
         <>
           <p>
-            One card per row: a column for the front and one for the back. Comma-, tab- or semicolon-separated files work, and so do Anki exports
-            (<i>File → Export → Notes in Plain Text</i>), formatting and cloze deletions included.
+            <b>A spreadsheet (CSV).</b> One card per row: a column for the front and one for the back. Anki&apos;s <i>Notes in Plain Text</i>{" "}
+            export works too.
           </p>
           <div className="row" style={{ flexWrap: "wrap" }}>
             <label className="btn primary">
@@ -453,6 +536,7 @@ function CardList({
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [tag, setTag] = useState("");
   useEffect(() => {
     // Cards gone from this page (deleted, or another page) can't stay chosen.
     queueMicrotask(() => setChosen((prev) => new Set([...prev].filter((id) => cards.some((c) => c.id === id)))));
@@ -468,17 +552,43 @@ function CardList({
     });
   }
 
+  function act(run: () => Promise<{ ok: boolean; message: string }>) {
+    setError(null);
+    start(async () => {
+      const result = await run();
+      if (!result.ok) return setError(result.message);
+      onDeleted(result.message);
+    });
+  }
+
   if (!cards.length) return null;
   const all = cards.every((c) => chosen.has(c.id));
+  const ids = [...chosen];
   return (
     <section className="ws-list">
       <div className="row" style={{ flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Cards</h2>
         <span className="spacer" />
         {chosen.size > 0 && (
-          <button type="button" className="btn sm danger" disabled={pending} onClick={() => remove([...chosen])}>
-            <Icon name="trash" size={14} /> Delete {chosen.size}
-          </button>
+          <div className="ws-bulk">
+            <span className="small muted">{chosen.size} chosen</span>
+            <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="tag" aria-label="Tag to add" />
+            <button type="button" className="btn sm" disabled={pending || !tag.trim()} onClick={() => act(() => tagCards(ids, tag))}>
+              Tag
+            </button>
+            <button type="button" className="btn sm" disabled={pending || !tag.trim()} onClick={() => act(() => tagCards(ids, tag, true))}>
+              Untag
+            </button>
+            <button type="button" className="btn sm" disabled={pending} onClick={() => act(() => suspendCards(ids, true))}>
+              Suspend
+            </button>
+            <button type="button" className="btn sm" disabled={pending} onClick={() => act(() => suspendCards(ids, false))}>
+              Unsuspend
+            </button>
+            <button type="button" className="btn sm danger" disabled={pending} onClick={() => remove(ids)}>
+              <Icon name="trash" size={14} /> Delete
+            </button>
+          </div>
         )}
         {error && (
           <span className="result err" role="alert">
@@ -506,7 +616,7 @@ function CardList({
           </thead>
           <tbody>
             {cards.map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className={c.suspended ? "ws-suspended" : undefined}>
                 <td>
                   <input
                     type="checkbox"
@@ -530,7 +640,17 @@ function CardList({
                 </td>
                 <td className="small muted">
                   {ORIGIN[c.origin] ?? c.origin}
-                  <div className="faint">{c.state === "new" ? "new" : c.due}</div>
+                  <div className="faint">{c.suspended ? "suspended" : c.state === "new" ? "new" : c.due}</div>
+                  {c.problem && <span className="tag t-red ws-problem">Problem card</span>}
+                  {c.tags.length > 0 && (
+                    <div className="ws-tag-list">
+                      {c.tags.map((t) => (
+                        <span key={t} className="ak-tag">
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td className="ws-row-actions">
                   {c.origin !== "occlusion" && (

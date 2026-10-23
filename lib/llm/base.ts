@@ -1,5 +1,7 @@
 import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
 import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
+import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
+import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -111,6 +113,14 @@ export abstract class PromptProvider implements LlmProvider {
 
   generateMcqs(input: McqInput) {
     return this.call("generate-mcqs", mcqVars(input), McqSetSchema, { task: "mcqs" });
+  }
+
+  writeMistakeCards(input: MistakeInput) {
+    return this.call("mistake-cards", mistakeVars(input), MistakeCardsSchema, { task: "flashcards" });
+  }
+
+  writePaperGuides(input: PaperGuideInput) {
+    return this.call("paper-guides", paperGuideVars(input), PaperGuidesSchema, { task: "paper" });
   }
 
   generateQuestions(input: GenerateQuestionsInput) {
