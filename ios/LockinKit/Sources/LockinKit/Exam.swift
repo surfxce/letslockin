@@ -112,6 +112,7 @@ public struct ExamDraft: Codable, Hashable, Identifiable, Sendable {
 
 /// What the phone has to set an exam from: the computer's copy and what was answered here.
 public struct ExamSource {
+    static let linkingTurn = "linking"
     public var snapshot: Snapshot
     /// Sittings answered here and not yet sent, including earlier exams' long answers.
     public var localSittings: [PhoneSitting]
@@ -124,9 +125,22 @@ public struct ExamSource {
         self.pastExams = pastExams
     }
 
-    /// The LAQs an exam may ask of a lecture: not past-paper ones.
+    /// The LAQs an exam may ask of a lecture: not past-paper ones, nor ones linking it to others.
     public func laqs(of lecture: Lecture) -> [Question] {
-        lecture.questions.filter { $0.fromPaper != true }
+        lecture.questions.filter(\.isOwn)
+    }
+
+    /// Questions linking lectures that an exam over these may ask: every lecture they need
+    /// is chosen. Each with the lecture it's filed under.
+    public func linking(_ lectureIds: Set<String>) -> [(lectureId: String, question: Question)] {
+        var found: [(lectureId: String, question: Question)] = []
+        for lecture in snapshot.lectures where lectureIds.contains(lecture.id) {
+            for q in lecture.questions where q.fromPaper != true {
+                guard let ids = q.linkedLectureIds, !ids.isEmpty, ids.allSatisfy({ lectureIds.contains($0) }) else { continue }
+                found.append((lectureId: lecture.id, question: q))
+            }
+        }
+        return found
     }
 
     public func mcqs(of lectureId: String) -> [Mcq] {
@@ -166,17 +180,22 @@ public struct ExamSource {
 
         let scores = Dictionary(lectures.compactMap { l in l.drillScore.map { (l.id, $0) } }, uniquingKeysWith: { first, _ in first })
         let mcqPool = lectures.flatMap { l in mcqs(of: l.id).map { ExamCandidate(id: $0.id, lectureId: l.id, seen: mcqSeen[$0.id] ?? 0, lastMark: mcqLast[$0.id]) } }
+        // Linking questions take turns as if they were one more lecture, and come last.
+        let linked = linking(lectureIds)
         let laqPool = lectures.flatMap { l in laqs(of: l).map { ExamCandidate(id: $0.id, lectureId: l.id, seen: laqSeen[$0.id] ?? 0, lastMark: laqLast[$0.id]?.1) } }
+            + linked.map { ExamCandidate(id: $0.question.id, lectureId: Self.linkingTurn, seen: laqSeen[$0.question.id] ?? 0, lastMark: laqLast[$0.question.id]?.1) }
+        var filedUnder = Dictionary(lectures.flatMap { l in laqs(of: l).map { ($0.id, l.id) } }, uniquingKeysWith: { first, _ in first })
+        for (lectureId, question) in linked { filedUnder[question.id] = lectureId }
         let pickedMcqs = pickExamItems(mcqPool, count: mcqCount, focus: focus, lectureScore: scores, using: &generator).shuffled(using: &generator)
         let order = Dictionary(lectures.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         let laqLecture = Dictionary(laqPool.map { ($0.id, $0.lectureId) }, uniquingKeysWith: { first, _ in first })
         let pickedLaqs = pickExamItems(laqPool, count: laqCount, focus: focus, lectureScore: scores, using: &generator)
-            .sorted { (order[laqLecture[$0] ?? ""] ?? 0) < (order[laqLecture[$1] ?? ""] ?? 0) }
+            .sorted { (order[laqLecture[$0] ?? ""] ?? lectures.count) < (order[laqLecture[$1] ?? ""] ?? lectures.count) }
         guard !pickedMcqs.isEmpty || !pickedLaqs.isEmpty else { return nil }
 
         let mcqLecture = Dictionary(mcqPool.map { ($0.id, $0.lectureId) }, uniquingKeysWith: { first, _ in first })
         let items = pickedMcqs.map { ExamDraft.Item(id: LockinID.make(prefix: "x"), kind: "MCQ", lectureId: mcqLecture[$0] ?? "", mcqId: $0, questionId: nil, choice: nil, answer: "") }
-            + pickedLaqs.map { ExamDraft.Item(id: LockinID.make(prefix: "x"), kind: "LAQ", lectureId: laqLecture[$0] ?? "", mcqId: nil, questionId: $0, choice: nil, answer: "") }
+            + pickedLaqs.map { ExamDraft.Item(id: LockinID.make(prefix: "x"), kind: "LAQ", lectureId: filedUnder[$0] ?? "", mcqId: nil, questionId: $0, choice: nil, answer: "") }
         let codes = Array(Set(lectures.compactMap { l in snapshot.courses.first(where: { $0.id == l.courseId })?.code })).sorted()
         return ExamDraft(
             id: LockinID.make(prefix: "e"),

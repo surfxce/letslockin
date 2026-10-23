@@ -19,8 +19,10 @@ export type GapType = (typeof GAP_TYPES)[number];
  * lecture page. These run alongside the main queue. FLASHCARDS writes independent
  * AK decks in a cloud side lane, or between main jobs when running locally. MCQS writes
  * a lecture's multiple-choice questions for exam mode when it was prepared without them.
+ * PAPER splits a past paper into questions. MIXED writes questions that join up a
+ * course's related lectures, for exams.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER", "MIXED"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -36,6 +38,7 @@ export const STAGES = {
   flashcards: "Writing flashcards",
   mcqs: "Writing exam MCQs",
   paper: "Reading a past paper",
+  mixed: "Writing questions that link lectures",
   download: "Downloading model",
 } as const;
 export type Stage = keyof typeof STAGES;

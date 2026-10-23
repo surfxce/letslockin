@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { readLinked } from "@/lib/mixed/schema";
 import { pickQuestions } from "@/lib/engines/attempt";
 import { feedbackFor, readRubric } from "@/lib/feedback";
 import { markVars } from "@/lib/llm/prompts";
@@ -60,6 +61,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
             type: true,
             rubric: true,
             paperItemId: true,
+            linkedLectureIds: true,
             concepts: { select: { concept: { select: { id: true, name: true, definition: true } } } },
           },
         },
@@ -150,7 +152,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
       try {
         nextSitting = await pickQuestions(l.id);
       } catch {
-        nextSitting = l.questions.map((q) => q.id);
+        nextSitting = l.questions.filter((q) => !q.paperItemId && !q.linkedLectureIds).map((q) => q.id);
       }
     }
 
@@ -186,6 +188,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
           criteria: rubric.criteria,
           markVars: { questionStem: vars.questionStem, rubric: vars.rubric, concepts: vars.concepts },
           fromPaper: q.paperItemId !== null,
+          ...(q.linkedLectureIds ? { linkedLectureIds: readLinked(q.linkedLectureIds) } : {}),
         };
       }),
       nextSitting,

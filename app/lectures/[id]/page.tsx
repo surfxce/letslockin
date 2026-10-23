@@ -29,6 +29,7 @@ import { SummaryView } from "@/app/ui/SummaryView";
 import type { GlossaryEntry } from "@/app/study-actions";
 import type { AskResult } from "@/lib/ask";
 import { prisma } from "@/lib/db";
+import { OWN_QUESTIONS } from "@/lib/mixed/schema";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { questionBudget } from "@/lib/engines/mastery";
 import { feedbackFor, readRubric } from "@/lib/feedback";
@@ -54,7 +55,7 @@ const LECTURE_INCLUDE = {
   materials: { orderBy: { createdAt: "asc" } },
   questions: {
     // Past-paper questions are asked only when the paper is sat.
-    where: { paperItemId: null },
+    where: OWN_QUESTIONS,
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
       concepts: { include: { concept: { select: { name: true } } } },

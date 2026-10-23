@@ -7,6 +7,7 @@ import { GlossaryHighlights, GlossaryList, SelectionTools } from "@/app/ui/Summa
 import { Icon } from "@/app/ui/Icon";
 import { Markdown } from "@/app/ui/render";
 import { SlideCropper } from "@/app/ui/SlideCropper";
+import { SlideOccluder } from "@/app/ui/SlideOccluder";
 import { SummaryEditor } from "@/app/ui/SummaryEditor";
 import type { SlideImages } from "@/lib/markdown";
 import type { Mode } from "@/lib/modes";
@@ -143,6 +144,7 @@ export function SummaryView({
       <div id={CONTAINER}>{body}</div>
       <SelectionTools lectureId={lectureId} mode={mode} containerId={CONTAINER} slides={slides} />
       <SlideCropper lectureId={lectureId} containerId={CONTAINER} base={slides.base} />
+      <SlideOccluder lectureId={lectureId} containerId={CONTAINER} base={slides.base} />
       <GlossaryHighlights containerId={CONTAINER} terms={terms} watch={md} />
       <GlossaryList terms={terms} />
     </>

@@ -129,7 +129,7 @@ struct LAQList: View {
     var body: some View {
         List {
             Section {
-                if lecture.questions.isEmpty {
+                if !lecture.questions.contains(where: \.isOwn) {
                     Text("No LAQs yet. Write them on your computer, then sync.").foregroundStyle(.secondary)
                 } else if let draft = model.draft(for: lecture.id) {
                     NavigationLink(value: Route.sitting(lectureId: lecture.id)) {
@@ -137,7 +137,7 @@ struct LAQList: View {
                               systemImage: "pencil.and.list.clipboard")
                     }
                 } else {
-                    let count = lecture.nextSitting.isEmpty ? lecture.questions.count : lecture.nextSitting.count
+                    let count = lecture.nextSitting.isEmpty ? lecture.questions.filter(\.isOwn).count : lecture.nextSitting.count
                     NavigationLink(value: Route.sitting(lectureId: lecture.id)) {
                         Label("Start a sitting · \(count) question\(count == 1 ? "" : "s"), closed book", systemImage: "pencil.line")
                     }

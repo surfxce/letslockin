@@ -18,6 +18,7 @@ import { getSettings } from "@/lib/settings";
 import "@/app/ak/ak.css";
 import { MistakeCards } from "@/app/ak/MistakeCards";
 import { mistakesLeft, wrongMcqsLeft } from "@/lib/flashcards/mistakes";
+import { readLinked } from "@/lib/mixed/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,13 @@ export default async function ExamSittingPage({ params }: { params: Promise<{ id
     },
   });
   if (!exam) notFound();
+  // Questions linking lectures say which, by title.
+  const linkedIds = [...new Set(exam.items.flatMap((i) => readLinked(i.question?.linkedLectureIds)))];
+  const titles = new Map(
+    linkedIds.length
+      ? (await prisma.lecture.findMany({ where: { id: { in: linkedIds } }, select: { id: true, title: true } })).map((l) => [l.id, l.title])
+      : [],
+  );
 
   const crumbs = (
     <nav className="crumbs">
@@ -242,7 +250,13 @@ export default async function ExamSittingPage({ params }: { params: Promise<{ id
             return (
               <div key={i.id} className="sitting" style={{ marginBottom: 14 }}>
                 <div className="small muted" style={{ marginBottom: 6 }}>
-                  {i.question!.lecture.course.code} · {i.question!.lecture.title}
+                  {i.question!.lecture.course.code} ·{" "}
+                  {i.question!.linkedLectureIds
+                    ? `Links ${readLinked(i.question!.linkedLectureIds)
+                        .map((id) => titles.get(id))
+                        .filter(Boolean)
+                        .join(" and ")}`
+                    : i.question!.lecture.title}
                 </div>
                 <QuestionScore
                   label={`LAQ ${i.number}`}

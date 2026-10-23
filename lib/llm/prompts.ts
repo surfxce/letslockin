@@ -60,6 +60,7 @@ export type PromptName =
   | "paper-guides"
   | "digest-lecture"
   | "generate-questions"
+  | "mixed-questions"
   | "mark"
   | "parse-past-paper"
   | "sort-files"

@@ -89,6 +89,12 @@ public struct Question: Codable, Hashable, Identifiable, Sendable {
     public var markVars: MarkVars
     /// From a past paper: asked only when the paper is sat on the computer.
     public var fromPaper: Bool?
+    /// Links lectures: every lecture it needs, the one it's filed under first. Asked only in
+    /// exams that include them all, never in a lecture's own sittings.
+    public var linkedLectureIds: [String]?
+
+    /// One of its lecture's own questions: not from a past paper, not linking lectures.
+    public var isOwn: Bool { fromPaper != true && (linkedLectureIds ?? []).isEmpty }
 }
 
 public struct Criterion: Codable, Hashable, Sendable {

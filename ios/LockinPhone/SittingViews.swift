@@ -75,7 +75,7 @@ struct SittingView: View {
             } message: {
                 Text(model.markingNote)
             }
-        } else if let lecture = model.lecture(lectureId), !lecture.questions.isEmpty {
+        } else if let lecture = model.lecture(lectureId), lecture.questions.contains(where: \.isOwn) {
             ProgressView().onAppear { draftId = model.startSitting(lecture).id }
         } else {
             ContentUnavailableView("No LAQs to answer", systemImage: "pencil.slash")

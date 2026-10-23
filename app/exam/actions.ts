@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import type { Result } from "@/app/actions";
 import { createExam, deleteExam, saveExamAnswer, submitExam } from "@/lib/exam/service";
 import { queueMcqs } from "@/lib/mcq/service";
+import { enqueueMixed } from "@/lib/mixed/service";
 import { createPaperExam, deletePaper } from "@/lib/papers/service";
 import { prisma } from "@/lib/db";
 import { usesAi } from "@/lib/modes";
@@ -25,6 +26,7 @@ export async function startExam(_prev: Result, fd: FormData): Promise<Result> {
       laqs: Number(fd.get("laqs") ?? 0),
       timeLimitMin: fd.get("timed") === "on" && minutes > 0 ? minutes : null,
       focus: fd.get("focus") === "weak" ? "weak" : "mixed",
+      linking: fd.get("linking") !== "0",
     });
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
@@ -41,6 +43,16 @@ export async function writeMissingMcqs(lectureIds: string[]): Promise<Result> {
   return queued.length
     ? { ok: true, message: `Writing MCQs for ${queued.length} lecture${queued.length === 1 ? "" : "s"} — they'll be ready for your next exam.` }
     : { ok: false, message: "Nothing to write: those lectures need preparing first, or are already queued." };
+}
+
+/** Queues questions that join up a course's related lectures. */
+export async function writeLinking(courseId: string): Promise<Result> {
+  if (!usesAi((await getSettings()).mode)) return { ok: false, message: "These are written by the AI. Choose one in Settings first." };
+  const course = await prisma.course.findUnique({ where: { id: courseId }, select: { id: true } });
+  if (!course) return { ok: false, message: "That course isn't here any more." };
+  await enqueueMixed(courseId);
+  refreshAll();
+  return { ok: true, message: "Writing them now — they'll join your next exam that covers both lectures." };
 }
 
 export async function saveExamChoice(itemId: string, choice: number | null): Promise<{ ok: boolean }> {

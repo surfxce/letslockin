@@ -56,6 +56,9 @@ export const PhoneSnapshotSchema = z.object({
           markVars: z.object({ questionStem: z.string(), rubric: z.string(), concepts: z.string() }),
           /** From a past paper: asked only when the paper is sat, so never in the phone's exams. */
           fromPaper: z.boolean(),
+          /** Links lectures: every lecture it needs, this one first. Asked only in exams that
+           *  include them all, never in this lecture's sittings. */
+          linkedLectureIds: z.array(z.string()).optional(),
         }),
       ),
       /** The questions a sitting would ask now, as the computer picks them. */

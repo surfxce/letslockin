@@ -50,6 +50,11 @@ final class ExamTests: XCTestCase {
         paper.id = "paper-question-1"
         paper.fromPaper = true
         snapshot.lectures[0].questions.append(paper)
+        // A question linking both lectures is set only when both are chosen, and filed under the first.
+        var linking = lecture.questions[0]
+        linking.id = "linking-question-1"
+        linking.linkedLectureIds = [lecture.id, snapshot.lectures[1].id]
+        snapshot.lectures[0].questions.append(linking)
 
         let source = ExamSource(snapshot: snapshot, localSittings: [], pastExams: [])
         var g = SeededGenerator(state: 7)
@@ -58,6 +63,10 @@ final class ExamTests: XCTestCase {
         XCTAssertEqual(draft.mcqs.compactMap(\.mcqId), [mcq.id])
         XCTAssertFalse(draft.laqs.contains { $0.questionId == "paper-question-1" })
         XCTAssertEqual(draft.laqs.count, snapshot.lectures.flatMap(\.questions).filter { $0.fromPaper != true }.count)
+        XCTAssertEqual(draft.laqs.last?.questionId, "linking-question-1", "linking questions come last")
+        XCTAssertEqual(draft.laqs.last?.lectureId, lecture.id)
+        XCTAssertEqual(source.laqs(of: snapshot.lectures[0]).map(\.id), [lecture.questions[0].id], "a lecture's own LAQs only")
+        XCTAssertTrue(source.linking([lecture.id]).isEmpty, "not without the other lecture")
         XCTAssertEqual(draft.unanswered.mcqs, 1)
 
         draft.items[0].choice = mcq.answer

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { OWN_QUESTIONS } from "@/lib/mixed/schema";
 import { allocate, priority } from "@/lib/engines/allocation";
 import { conceptMastery, questionBudget } from "@/lib/engines/mastery";
 import { getSettings } from "@/lib/settings";
@@ -15,8 +16,8 @@ export async function pickQuestions(lectureId: string): Promise<string[]> {
   });
 
   const questions = await prisma.question.findMany({
-    // Past-paper questions wait for the paper to be sat.
-    where: { lectureId, paperItemId: null },
+    // Past-paper questions wait for the paper to be sat, and linking ones for an exam.
+    where: { lectureId, ...OWN_QUESTIONS },
     select: {
       id: true,
       concepts: { select: { conceptId: true } },

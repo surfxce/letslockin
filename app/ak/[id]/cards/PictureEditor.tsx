@@ -162,6 +162,7 @@ export function PictureEditor({
   mode,
   slides,
   start,
+  startUrl,
   onInsert,
   onDone,
   onClose,
@@ -171,6 +172,8 @@ export function PictureEditor({
   slides: { base: string; numbers: number[] };
   /** A picture to begin with — one pasted into a card, say. */
   start?: File | null;
+  /** Or one at an address, such as a slide in a summary. */
+  startUrl?: string | null;
   onInsert?: (url: string) => void;
   onDone?: (message: string) => void;
   onClose: () => void;
@@ -188,14 +191,19 @@ export function PictureEditor({
   const [extra, setExtra] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [labelNote, setLabelNote] = useState<string | null>(null);
   const draft = useRef<Shape | null>(null);
   const objectUrl = useRef<string | null>(null);
+  /** The picture as it came in, for finding its labels. */
+  const source = useRef<File | string | null>(null);
 
   const covers = shapes.filter((s) => s.kind === "cover").length;
 
   const load = useCallback((src: string | File) => {
     setError(null);
+    setLabelNote(null);
     setLoading(true);
+    source.current = src;
     if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
     objectUrl.current = null;
     const url = typeof src === "string" ? src : (objectUrl.current = URL.createObjectURL(src));
@@ -215,8 +223,43 @@ export function PictureEditor({
 
   useEffect(() => {
     // A picture handed in from outside is the starting point; loading it ends in setState.
-    if (start) queueMicrotask(() => load(start));
-  }, [start, load]);
+    const first = start ?? startUrl;
+    if (first) queueMicrotask(() => load(first));
+  }, [start, startUrl, load]);
+
+  /** Puts a cover-up box over every label text recognition finds on the picture. */
+  const findLabels = useCallback(
+    async (image: HTMLImageElement) => {
+      const src = source.current;
+      if (!src) return;
+      setLabelNote("Finding the labels…");
+      try {
+        const body = typeof src === "string" ? await (await fetch(src)).blob() : src;
+        const res = await fetch("/api/ak/labels", { method: "POST", body });
+        const json = (await res.json().catch(() => ({}))) as { labels?: Array<{ x: number; y: number; w: number; h: number }>; error?: string };
+        if (!res.ok || !json.labels) throw new Error(json.error ?? "Couldn't read the labels.");
+        const scale = Math.min(1, MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
+        const W = Math.max(1, Math.round(image.naturalWidth * scale));
+        const H = Math.max(1, Math.round(image.naturalHeight * scale));
+        const boxes: Shape[] = json.labels.map((l) => ({ kind: "cover", a: { x: l.x * W, y: l.y * H }, b: { x: (l.x + l.w) * W, y: (l.y + l.h) * H } }));
+        setShapes((all) => [...all.filter((s) => s.kind !== "cover"), ...boxes]);
+        setUndone([]);
+        setLabelNote(
+          boxes.length
+            ? `Found ${boxes.length} label${boxes.length === 1 ? "" : "s"}. Remove any you don't want to learn (Remove tool), or draw more.`
+            : "No labels found — draw a box over each part to learn.",
+        );
+      } catch (err) {
+        setLabelNote(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    // Cover-up cards start with a box over each label already.
+    if (img && mode === "occlusion") queueMicrotask(() => void findLabels(img));
+  }, [img, mode, findLabels]);
 
   useEffect(
     () => () => {
@@ -456,6 +499,11 @@ export function PictureEditor({
               >
                 Clear
               </button>
+              {mode === "occlusion" && (
+                <button type="button" className="btn sm quiet" onClick={() => img && void findLabels(img)} title="Put a box over every label again">
+                  Find labels
+                </button>
+              )}
             </div>
             <div className="pe-stage">
               <canvas
@@ -468,7 +516,9 @@ export function PictureEditor({
               />
             </div>
             <p className="small muted pe-hint">
-              {mode === "occlusion"
+              {mode === "occlusion" && labelNote
+                ? labelNote
+                : mode === "occlusion"
                 ? covers
                   ? `${covers} box${covers === 1 ? "" : "es"} — each becomes a card. The box being asked shows red with a “?”.`
                   : "Draw a box over each label or part to learn. Each box becomes a card."

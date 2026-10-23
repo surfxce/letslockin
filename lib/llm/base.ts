@@ -2,6 +2,7 @@ import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/f
 import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
+import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -125,6 +126,10 @@ export abstract class PromptProvider implements LlmProvider {
 
   generateQuestions(input: GenerateQuestionsInput) {
     return this.call("generate-questions", generateVars(input), QuestionSetSchema, { task: "questions" });
+  }
+
+  writeMixedQuestions(input: MixedInput) {
+    return this.call("mixed-questions", mixedVars(input), QuestionSetSchema, { task: "questions" });
   }
 
   mark(input: MarkInput) {

@@ -180,7 +180,7 @@ export default async function AttemptPage({ params }: { params: Promise<{ id: st
         {rows.map(({ r, fb, rubric }) => (
           <div key={r.id} className="sitting" style={{ marginBottom: 14 }}>
             <QuestionScore
-              label={r.question.paperItemId ? "Paper" : `LAQ ${numbers.get(r.questionId) ?? "?"}`}
+              label={r.question.paperItemId ? "Paper" : r.question.linkedLectureIds ? "Linking" : `LAQ ${numbers.get(r.questionId) ?? "?"}`}
               mark={r.mark}
               raw={fb.raw ?? undefined}
               feedback={fb.items}

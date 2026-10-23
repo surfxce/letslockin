@@ -17,6 +17,7 @@ import { rm } from "node:fs/promises";
 import { runAsk, type AskPayload } from "@/lib/ask";
 import { findModel } from "@/lib/llm/catalog";
 import { prisma } from "@/lib/db";
+import { OWN_QUESTIONS } from "@/lib/mixed/schema";
 import type { SortedFolder } from "@/lib/group";
 import { closeSteps, enterStage, setStageDetail, SIDE_LANES } from "@/lib/jobs";
 import { cloudProvider, getLocalProvider, isFake, type LlmProvider } from "@/lib/llm";
@@ -33,6 +34,7 @@ import type { SlideNote } from "@/lib/sources";
 import { CLOUD_ENGINE_LABEL, MODE_LABEL } from "@/lib/modes";
 import { writeMcqs } from "@/lib/mcq/service";
 import { writeMistakeCards } from "@/lib/flashcards/mistakes";
+import { writeMixedQuestions } from "@/lib/mixed/service";
 import { splitPaper } from "@/lib/papers/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
@@ -62,7 +64,7 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
       where: { id: lectureId },
       select: {
         summaryMd: true,
-        _count: { select: { questions: { where: { paperItemId: null } }, mcqs: true, concepts: { where: { mergedIntoId: null } } } },
+        _count: { select: { questions: { where: OWN_QUESTIONS }, mcqs: true, concepts: { where: { mergedIntoId: null } } } },
       },
     });
 
@@ -113,6 +115,12 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK">, Handler> =
   PAPER: async (payload, jobId, provider) => {
     await enterStage(jobId, "paper");
     return splitPaper(String(payload.paperId), provider);
+  },
+
+  /** Questions that join up a course's related lectures, for exams. */
+  MIXED: async (payload, jobId, provider) => {
+    await enterStage(jobId, "mixed");
+    return writeMixedQuestions(String(payload.courseId), provider);
   },
 
   /** The hidden exam MCQs on their own, for lectures prepared before exam mode. */

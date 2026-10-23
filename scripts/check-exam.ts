@@ -20,7 +20,7 @@ async function main() {
     await setSetting("mode", "auto");
     const course = await prisma.course.create({ data: { code: "EXAM1", title: "Exam fixture" } });
     const renal = await prisma.module.create({ data: { courseId: course.id, title: "Renal" } });
-    const lectures = [];
+    const lectures: Array<{ id: string; title: string }> = [];
     for (const [i, title] of ["IgA nephropathy", "Nephrotic syndrome", "Acid-base"].entries()) {
       const lecture = await prisma.lecture.create({
         data: {
@@ -118,6 +118,45 @@ async function main() {
     const third = await createExam({ lectureIds: lectures.map((l) => l.id), mcqs: 2, laqs: 0, timeLimitMin: null, focus: "weak" });
     const missed = exam.items.filter((i) => i.kind === "MCQ" && ![m1.id, m3.id].includes(i.id)).map((i) => i.mcqId).sort();
     assert.deepEqual((await prisma.examItem.findMany({ where: { examId: third } })).map((i) => i.mcqId).sort(), missed);
+
+    // Questions linking related lectures: written for the pair that shares most, filed under
+    // the later one, and asked only in exams that include both.
+    const { writeMixedQuestions, mixedCourses } = await import("../lib/mixed/service");
+    const { readLinked } = await import("../lib/mixed/schema");
+    const { pickQuestions } = await import("../lib/engines/attempt");
+    const summaries = [
+      "IgA deposits in the glomerular mesangium cause haematuria; heavy proteinuria means podocyte injury and a leaky glomerular filtration barrier.",
+      "Podocyte injury opens the glomerular filtration barrier: heavy proteinuria, hypoalbuminaemia and oedema follow.",
+      "Bicarbonate buffering, the anion gap and respiratory compensation for a metabolic acidosis.",
+    ];
+    for (const [i, l] of lectures.entries()) await prisma.lecture.update({ where: { id: l.id }, data: { summaryMd: `## ${l.title}\n\n${summaries[i]}` } });
+    assert.deepEqual(await writeMixedQuestions(course.id, provider), { pairs: 1, questions: 2 }, "only the related pair");
+    const linked = await prisma.question.findMany({ where: { linkedLectureIds: { not: null } }, include: { concepts: true } });
+    assert.equal(linked.length, 2);
+    assert.ok(linked.every((q) => q.lectureId === lectures[1].id), "filed under the later lecture");
+    assert.deepEqual(readLinked(linked[0].linkedLectureIds), [lectures[1].id, lectures[0].id]);
+    assert.equal(linked[0].concepts.length, 2, "a concept from each lecture");
+    const linkedIds = new Set(linked.map((q) => q.id));
+    assert.ok((await pickQuestions(lectures[1].id)).every((id) => !linkedIds.has(id)), "never in a lecture's own sitting");
+    assert.equal((await examTree())[0].modules[0].lectures[1].laqs, 2, "not counted as the lecture's own");
+    assert.equal((await examTree())[0].linking.length, 2);
+
+    const laqsOf = async (id: string) =>
+      (await prisma.examItem.findMany({ where: { examId: id }, orderBy: { position: "asc" } })).map((i) => i.questionId!);
+    const alone = await laqsOf(await createExam({ lectureIds: [lectures[1].id], mcqs: 0, laqs: 10, timeLimitMin: null, focus: "mixed" }));
+    assert.ok(alone.every((id) => !linkedIds.has(id)), "not without the other lecture");
+    const pair = [lectures[0].id, lectures[1].id];
+    const both = await laqsOf(await createExam({ lectureIds: pair, mcqs: 0, laqs: 10, timeLimitMin: null, focus: "mixed" }));
+    assert.equal(both.length, 6);
+    assert.deepEqual(new Set(both.slice(-2)), linkedIds, "asked with both, and last");
+    const off = await laqsOf(await createExam({ lectureIds: pair, mcqs: 0, laqs: 10, timeLimitMin: null, focus: "mixed", linking: false }));
+    assert.ok(off.every((id) => !linkedIds.has(id)), "left out when turned off");
+
+    // More can be written for a pair until it has enough.
+    assert.deepEqual(await writeMixedQuestions(course.id, provider), { pairs: 1, questions: 2 });
+    assert.equal((await writeMixedQuestions(course.id, provider)).pairs, 0);
+    const [summary] = await mixedCourses();
+    assert.deepEqual([summary.code, summary.questions, summary.open], ["EXAM1", 4, 0]);
 
     // Deleting results keeps the sittings with their lectures.
     await deleteExam(examId);

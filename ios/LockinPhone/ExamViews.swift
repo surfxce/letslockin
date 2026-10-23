@@ -84,7 +84,7 @@ struct ExamSetupView: View {
             let selected = chosen ?? Set(usable.map(\.id))
             let pool = (
                 mcqs: usable.filter { selected.contains($0.id) }.reduce(0) { $0 + source.mcqs(of: $1.id).count },
-                laqs: usable.filter { selected.contains($0.id) }.reduce(0) { $0 + source.laqs(of: $1).count }
+                laqs: usable.filter { selected.contains($0.id) }.reduce(0) { $0 + source.laqs(of: $1).count } + source.linking(selected).count
             )
             Form {
                 Section {

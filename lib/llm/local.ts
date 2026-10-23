@@ -2,6 +2,7 @@ import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/f
 import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
+import { mixedLectures, mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -459,6 +460,19 @@ export class LocalProvider implements LlmProvider {
       // A ceiling, not a target: a full model answer and up to eight criteria each.
       // A model that gets stuck is stopped sooner by isLooping.
       maxTokens: 2000 * Math.max(1, total) + 300,
+      temperature: 0.5,
+    });
+  }
+
+  async writeMixedQuestions(input: MixedInput) {
+    const lectures = mixedLectures(input);
+    return this.run({
+      prompt: "mixed-questions",
+      vars: (text) => mixedVars(input, text),
+      transcript: lectures,
+      schema: questionsSchema(input.lectures.flatMap((l) => l.concepts.map((c) => c.id)), "LAQ", input.count),
+      zod: QuestionSetSchema,
+      maxTokens: 2000 * Math.max(1, input.count) + 300,
       temperature: 0.5,
     });
   }

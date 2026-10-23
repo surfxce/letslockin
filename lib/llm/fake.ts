@@ -3,6 +3,7 @@ import type { FlashcardsInput, FlashcardSet } from "@/lib/flashcards/schema";
 import type { McqInput, McqSet } from "@/lib/mcq/schema";
 import type { MistakeCards, MistakeInput } from "@/lib/flashcards/mistakes";
 import type { PaperGuideInput, PaperGuides } from "@/lib/papers/schema";
+import type { MixedInput } from "@/lib/mixed/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -157,6 +158,33 @@ export class FakeProvider implements LlmProvider {
           };
         }),
       ),
+    };
+  }
+
+  async writeMixedQuestions(input: MixedInput): Promise<QuestionSet> {
+    await this.wait();
+    this.lastPromptVersion = "mixed-questions@fake";
+    const [a, b] = input.lectures;
+    const first = a.concepts[0];
+    const second = b?.concepts[0];
+    return {
+      questions: Array.from({ length: input.count }, (_, i) => ({
+        stem:
+          i === 0
+            ? `Using ${a.title} and ${b?.title ?? "the related lecture"}, explain how ${first?.name ?? "the first idea"} leads to ${second?.name ?? "the second"}.`
+            : `Compare ${first?.name ?? a.title} with ${second?.name ?? "its counterpart"}, and predict what changes when one fails.`,
+        type: "LAQ" as const,
+        conceptIds: [first?.id, second?.id].filter((id): id is string => !!id),
+        rubric: {
+          modelAnswer: `${first?.definition ?? a.title} ${second?.definition ?? ""}`.trim(),
+          criteria: [
+            { point: `Explains ${first?.name ?? a.title}`, marks: 4 },
+            { point: `Explains ${second?.name ?? "the second lecture's idea"}`, marks: 4 },
+            { point: "Links the two", marks: 2 },
+          ],
+          totalMarks: 10 as const,
+        },
+      })),
     };
   }
 

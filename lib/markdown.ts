@@ -189,10 +189,13 @@ function slideFigure(
       if (slides.print) return `<img src="${src}" alt="${caption}">`;
       const picture = `<a href="${slides.base}/${n}" target="_blank" rel="noopener"><img src="${src}" alt="${caption}" loading="lazy"></a>`;
       if (!slides.croppable || !marker) return picture;
-      const button =
-        `<button type="button" class="slide-crop" data-fig="${marker.index}" data-slide="${n}" ` +
-        `data-crop="${crop ? formatCrop(crop) : ""}" title="Crop this slide">Crop</button>`;
-      return `<span class="slide-shot">${picture}${button}</span>`;
+      const data = `data-slide="${n}" data-crop="${crop ? formatCrop(crop) : ""}"`;
+      const buttons =
+        `<span class="slide-tools">` +
+        `<button type="button" class="slide-occlude" ${data} title="Make cover-up cards from this picture">Cover-up cards</button>` +
+        `<button type="button" class="slide-crop" data-fig="${marker.index}" ${data} title="Crop this slide">Crop</button>` +
+        `</span>`;
+      return `<span class="slide-shot">${picture}${buttons}</span>`;
     })
     .join("");
   const multi = shown.length > 1 ? " multi" : "";

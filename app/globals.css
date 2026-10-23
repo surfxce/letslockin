@@ -508,9 +508,10 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .slide-fig .slide-shot { position: relative; display: block; max-width: 680px; }
 .slide-fig .slide-shot a { max-width: none; }
 .slide-fig.multi .slide-shot { max-width: none; }
-.slide-crop { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 9px; border-radius: 5px; border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow); opacity: 0; transition: opacity 0.12s; }
-.slide-shot:hover .slide-crop, .slide-crop:focus-visible { opacity: 1; }
-@media (hover: none) { .slide-crop { opacity: 0.9; } }
+.slide-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; opacity: 0; transition: opacity 0.12s; }
+.slide-crop, .slide-occlude { height: 26px; padding: 0 9px; border-radius: 5px; border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow); }
+.slide-shot:hover .slide-tools, .slide-tools:focus-within { opacity: 1; }
+@media (hover: none) { .slide-tools { opacity: 0.9; } }
 .crop-frame { position: relative; overflow: hidden; border-radius: 6px; border: 1px solid var(--rule); background: #fff; cursor: crosshair; touch-action: none; user-select: none; }
 .crop-frame img { display: block; width: 100%; height: auto; max-height: 68vh; object-fit: contain; pointer-events: none; }
 .crop-box { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(15, 15, 15, 0.5); cursor: move; }
@@ -670,3 +671,4 @@ table.db { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 8
 .phone-pair-text p { margin: 0; }
 .phone-paired { display: flex; gap: 6px; align-items: center; font-weight: 500; color: var(--t-green); }
 @media (max-width: 640px) { .phone-pair { flex-direction: column; } }
+.occlude-done { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 60; align-items: center; box-shadow: var(--shadow-pop); margin: 0; }

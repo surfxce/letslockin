@@ -2,6 +2,7 @@ import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/f
 import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
 import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
 import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
+import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -311,6 +312,10 @@ export class ClaudeCliProvider implements LlmProvider {
 
   generateQuestions(input: GenerateQuestionsInput) {
     return this.call("generate-questions", generateVars(input), QuestionSetSchema);
+  }
+
+  writeMixedQuestions(input: MixedInput) {
+    return this.call("mixed-questions", mixedVars(input), QuestionSetSchema);
   }
 
   mark(input: MarkInput) {

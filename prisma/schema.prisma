@@ -155,6 +155,10 @@ model Question {
   /// Set on a question from a past paper (the PaperItem's id). Those are asked only
   /// when the paper is sat, never in the lecture's own sittings or mixed exams.
   paperItemId   String?
+  /// Set on a question that spans several related lectures: JSON array of every
+  /// lecture's id, this one (`lectureId`, where its answers are filed) first. Asked in
+  /// exams only, never in one lecture's sittings.
+  linkedLectureIds String?
 
   lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   concepts  QuestionConcept[]

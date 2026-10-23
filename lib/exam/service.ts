@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { OWN_QUESTIONS, readLinked } from "@/lib/mixed/schema";
 import { geometricMean } from "@/lib/engines/geomean";
 import { pickExamItems, shuffle, type ExamCandidate, type ExamFocus } from "@/lib/exam/pick";
 import { enqueue } from "@/lib/jobs";
@@ -10,6 +11,8 @@ import { lectureRows } from "@/lib/views";
 
 export const MAX_EXAM_MCQS = 60;
 export const MAX_EXAM_LAQS = 20;
+/** Linking questions take turns in an exam as if they were one more lecture. */
+const LINKING = "linking";
 
 export interface ExamOptions {
   lectureIds: string[];
@@ -17,6 +20,8 @@ export interface ExamOptions {
   laqs: number;
   timeLimitMin: number | null;
   focus: ExamFocus;
+  /** Also ask questions that link lectures, where every lecture they need is chosen. */
+  linking?: boolean;
 }
 
 /** One lecture as the exam setup lists it. */
@@ -33,6 +38,8 @@ export interface ExamCourse {
   code: string;
   title: string;
   modules: Array<{ id: string | null; title: string; lectures: ExamLecture[] }>;
+  /** The lectures each of its linking questions needs. */
+  linking: string[][];
 }
 
 /** Every course, its modules and their lectures, with what each could put in an exam. */
@@ -46,7 +53,14 @@ export async function examTree(): Promise<ExamCourse[]> {
       modules: { orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, title: true } },
       lectures: {
         orderBy: [{ deliveredOn: "asc" }, { createdAt: "asc" }],
-        select: { id: true, title: true, moduleId: true, summaryMd: true, _count: { select: { questions: { where: { paperItemId: null } }, mcqs: true } } },
+        select: {
+          id: true,
+          title: true,
+          moduleId: true,
+          summaryMd: true,
+          _count: { select: { questions: { where: OWN_QUESTIONS }, mcqs: true } },
+          questions: { where: { linkedLectureIds: { not: null } }, select: { linkedLectureIds: true } },
+        },
       },
     },
   });
@@ -65,7 +79,8 @@ export async function examTree(): Promise<ExamCourse[]> {
         .filter((m) => m.lectures.length);
       const loose = c.lectures.filter((l) => !l.moduleId || !c.modules.some((m) => m.id === l.moduleId));
       if (loose.length) modules.push({ id: null, title: modules.length ? "Not in a module" : "Lectures", lectures: loose.map(lecture) });
-      return { id: c.id, code: c.code, title: c.title, modules };
+      const linking = c.lectures.flatMap((l) => l.questions.map((q) => readLinked(q.linkedLectureIds)));
+      return { id: c.id, code: c.code, title: c.title, modules, linking };
     });
 }
 
@@ -107,6 +122,7 @@ export async function createExam(opts: ExamOptions): Promise<string> {
           select: {
             id: true,
             lectureId: true,
+            linkedLectureIds: true,
             // Answered (or handed in blank) before, marked yet or not.
             responses: {
               where: { OR: [{ mark: { not: null } }, { answerText: { not: "" } }] },
@@ -127,24 +143,32 @@ export async function createExam(opts: ExamOptions): Promise<string> {
       seen: m.examItems.length,
       lastMark: m.examItems.length ? (m.examItems[0].choice === m.answer ? 10 : 0) : null,
     }));
-  const laqCandidates: ExamCandidate[] = questions.map((q) => ({
-    id: q.id,
-    lectureId: q.lectureId,
-    seen: q.responses.length,
-    lastMark: q.responses.find((r) => r.mark !== null)?.mark ?? null,
-  }));
+  const chosen = new Set(ids);
+  const laqCandidates: ExamCandidate[] = questions
+    .filter((q) => {
+      const linked = readLinked(q.linkedLectureIds);
+      return !linked.length || (opts.linking !== false && linked.every((id) => chosen.has(id)));
+    })
+    .map((q) => ({
+      id: q.id,
+      // Linking questions take turns as if they were a lecture of their own.
+      lectureId: q.linkedLectureIds ? LINKING : q.lectureId,
+      seen: q.responses.length,
+      lastMark: q.responses.find((r) => r.mark !== null)?.mark ?? null,
+    }));
   if (!mcqCandidates.length && !laqCandidates.length) {
     throw new Error("The lectures you chose have no LAQs or MCQs yet. Prepare them first.");
   }
 
   const lectureScore = new Map(rows.map((r) => [r.id, r.lastScore]));
   const pickOpts = { focus: opts.focus, lectureScore };
-  // Multiple choice in a random order; long answers in lecture order, as a paper would be.
+  // Multiple choice in a random order; long answers in lecture order, as a paper would
+  // be, with the ones linking lectures last.
   const pickedMcqs = shuffle(pickExamItems(mcqCandidates, mcqCount, pickOpts));
   const order = new Map(ids.map((id, i) => [id, i]));
   const lectureOf = new Map(laqCandidates.map((c) => [c.id, c.lectureId]));
   const pickedLaqs = pickExamItems(laqCandidates, laqCount, pickOpts).sort(
-    (a, b) => (order.get(lectureOf.get(a)!) ?? 0) - (order.get(lectureOf.get(b)!) ?? 0),
+    (a, b) => (order.get(lectureOf.get(a)!) ?? ids.length) - (order.get(lectureOf.get(b)!) ?? ids.length),
   );
   if (!pickedMcqs.length && !pickedLaqs.length) throw new Error("There was nothing to put in this exam.");
 

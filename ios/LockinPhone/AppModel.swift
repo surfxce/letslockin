@@ -313,7 +313,7 @@ final class AppModel {
         let draft = Draft(
             id: LockinID.make(prefix: "s"),
             lectureId: lecture.id,
-            questionIds: picked.isEmpty ? lecture.questions.map(\.id) : picked,
+            questionIds: picked.isEmpty ? lecture.questions.filter(\.isOwn).map(\.id) : picked,
             startedAt: Date(),
             answers: [:]
         )

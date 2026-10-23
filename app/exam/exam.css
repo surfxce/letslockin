@@ -71,3 +71,11 @@
 .exam-paper-head .spacer { flex: 1; }
 .exam-paper p { margin: 6px 0 0; }
 .exam-paper-sit { margin-top: 8px; flex-wrap: wrap; gap: 8px; }
+
+/* Linking questions */
+.exam-linking { display: flex; gap: 8px; align-items: baseline; font-size: 14px; cursor: pointer; margin-bottom: 14px; }
+.exam-linking-list { margin-top: 36px; }
+.exam-linking-rows { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+.exam-linking-row { display: flex; gap: 10px; align-items: center; padding: 10px 14px; flex-wrap: wrap; }
+.exam-linking-row + .exam-linking-row { border-top: 1px solid var(--rule); }
+.exam-linking-error { color: var(--danger); }

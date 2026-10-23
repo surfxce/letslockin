@@ -61,9 +61,14 @@ export function ExamSetup({ tree, ai, course }: { tree: ExamCourse[]; ai: boolea
   const [minutes, setMinutes] = useState<number | null>(null);
   const [mcqResult, setMcqResult] = useState<Result>(null);
   const [writing, startWriting] = useTransition();
+  const [linking, setLinking] = useState(true);
 
   const picked = all.filter((l) => chosen.has(l.id));
-  const pool = counts(picked);
+  const allLinking = tree.flatMap((c) => c.linking);
+  // A linking question can be asked when every lecture it needs is chosen.
+  const linkable = allLinking.filter((ids) => ids.every((id) => chosen.has(id))).length;
+  const own = counts(picked);
+  const pool = { mcqs: own.mcqs, laqs: own.laqs + (linking ? linkable : 0) };
   const missing = picked.filter((l) => l.mcqs === 0 && l.prepared);
   const unprepared = picked.filter((l) => !l.prepared).length;
   const shownMinutes = minutes ?? suggestedMinutes(Math.min(mcqs, pool.mcqs), Math.min(laqs, pool.laqs));
@@ -201,6 +206,16 @@ export function ExamSetup({ tree, ai, course }: { tree: ExamCourse[]; ai: boolea
             </div>
           </div>
         </div>
+        {allLinking.length > 0 && (
+          <label className="exam-linking">
+            <input type="hidden" name="linking" value={linking ? "1" : "0"} />
+            <input type="checkbox" checked={linking} onChange={(e) => setLinking(e.target.checked)} />
+            <span>
+              Include long answers that link lectures
+              <span className="small faint"> · {linkable ? `${linkable} for what's chosen` : "none for what's chosen — they need every lecture they link"}</span>
+            </span>
+          </label>
+        )}
         <fieldset className="exam-focus">
           <legend className="exam-label">Which questions</legend>
           <label>
