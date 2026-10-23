@@ -111,6 +111,26 @@ forgetting, flags problem cards, lets you suspend and tag cards, and imports Ank
 matched to the lecture it tests and given a marking guide from that lecture, then sat timed
 and marked like your LAQs. Its questions stay out of normal sittings until you sit it.
 
+**Questions that link lectures.** On the Exam tab, *Write them* pairs each course's lectures
+that share the most (as the Progress map does) and writes a couple of long answers for each
+pair that need both lectures to answer well. They're filed under the later lecture, never
+asked in its own sittings, and come last in any exam that includes every lecture they need.
+
+**Viva.** The **Viva** tab is an oral exam: the AI examiner asks one of your LAQs (read
+aloud), listens to your answer, follows up — at most twice — on anything it left out, and
+moves on. Answer out loud or type; a spoken answer is turned into text you can correct
+before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac. Each
+question's exchange is marked like a sitting answer and counts towards its lecture's drill
+score. The iPhone app holds vivas too, with Apple's on-device speech recognition.
+
+**Lecture recordings.** Add a lecture's audio or video (*.mp4 .m4a .mp3 .mov*…) on its page,
+with a new lecture, or in a folder import, and it's transcribed before the lecture is
+prepared. When Gemini is your AI (an API key or Antigravity), the sound goes straight to
+Gemini, which listens and writes the transcript. Otherwise Whisper transcribes it on the Mac
+— free and offline — and your AI then reads the transcript beside the slides' words and
+corrects the technical terms Whisper misheard. Videos are cut down to their sound (about
+15 MB an hour). Settings → Lecture recordings chooses Whisper's accurate or fast model.
+
 **Reading a summary.** The round **?** in the corner asks a question answered from the
 summary, and adds the answer under a heading of your choice. Select any text to have it
 **broken down**, then *Add to glossary*: the words are underlined wherever they appear and
@@ -181,8 +201,9 @@ calls, run the worker with `LOCKIN_PROVIDER=fake`.
 `ios/` is a companion iPhone app for studying on the go: summaries with their slides, LAQ
 sittings and AK reviews, synced straight with this computer over Wi-Fi. Pair it in
 Settings → iPhone with a QR code; there's no account and no cloud. With an API key, the
-phone marks answers itself; with Claude Code, Codex, Antigravity or an offline model, the
-computer marks them at the next sync. See [ios/README.md](ios/README.md) for pairing, and
+phone marks answers itself and asks the viva examiner itself; with Claude Code, Codex,
+Antigravity or an offline model, the computer marks them at the next sync, and a viva's
+examiner is asked on the computer over Wi-Fi. See [ios/README.md](ios/README.md) for pairing, and
 for installing it on your own phone from Xcode with a free Apple ID.
 
 ## Offline AI

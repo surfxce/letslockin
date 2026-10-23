@@ -37,3 +37,5 @@
 .viva-hint { flex: 1; }
 .viva-answer { width: 100%; font-size: 15px; line-height: 1.5; resize: vertical; }
 .viva-result { padding: 16px 0; border-bottom: 1px solid var(--rule); }
+/* The newest line scrolls into view above the answer box, not behind it. */
+.viva-end { scroll-margin-bottom: 300px; }

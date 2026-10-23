@@ -111,7 +111,8 @@ async function main() {
     await recoverViva(early);
     assert.equal((await prisma.viva.findUniqueOrThrow({ where: { id: early } })).current, 1, "moved on");
     assert.deepEqual(await runVivaTurn(early, provider), { move: "none" }, "nothing for the examiner to do");
-    await endViva(early);
+    await endViva(early, "Typed, never sent.");
+    assert.equal(readTurns((await prisma.viva.findUniqueOrThrow({ where: { id: early } })).turns).at(-2)?.text, "Typed, never sent.", "kept as the last answer");
     const ended = await prisma.viva.findUniqueOrThrow({ where: { id: early } });
     assert.equal(ended.waitingOn, "done");
     assert.equal(readPlan(ended.plan).length, 2, "the unasked question is left out");

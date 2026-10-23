@@ -135,12 +135,16 @@ export async function skipVivaQuestion(vivaId: string) {
   if (count) await advance(viva, readTurns(viva.turns), "Alright, let's move on.");
 }
 
-/** Ends it early: what was asked is marked; what wasn't is left out. */
-export async function endViva(vivaId: string) {
+/** Ends it early: what was asked is marked; what wasn't is left out. An answer typed
+ *  and not yet sent counts as the last thing said. */
+export async function endViva(vivaId: string, lastWords = "") {
   const viva = await prisma.viva.findUnique({ where: { id: vivaId } });
   if (!viva || viva.waitingOn === "done") return;
   const plan = readPlan(viva.plan).slice(0, viva.current + 1);
   const turns = readTurns(viva.turns);
+  const said = lastWords.trim().slice(0, 8000);
+  const item = plan[viva.current];
+  if (said && item && viva.waitingOn === "student") turns.push({ role: "student", text: said, questionId: item.questionId, at: now() });
   turns.push({ role: "examiner", text: "We'll stop there. Thank you — your answers are being marked.", questionId: "", at: now() });
   const { count } = await prisma.viva.updateMany({
     where: { id: vivaId, waitingOn: { not: "done" } },

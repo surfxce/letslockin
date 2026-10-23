@@ -245,7 +245,8 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
             className="btn sm quiet"
             onClick={async () => {
               if (!confirm("End the viva now? What you've answered is marked.")) return;
-              await stopViva(vivaId);
+              await stopViva(vivaId, state.waitingOn === "student" ? answer : "");
+              setAnswer("");
               await refresh();
             }}
           >
@@ -279,7 +280,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
           </div>
         )}
         {state.error && thinking && <p className="small error-text">The examiner couldn&apos;t answer: {state.error}</p>}
-        <div ref={end} />
+        <div ref={end} className="viva-end" />
       </div>
 
       {done ? (

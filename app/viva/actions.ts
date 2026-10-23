@@ -29,8 +29,8 @@ export async function skipQuestion(vivaId: string) {
   await skipVivaQuestion(vivaId);
 }
 
-export async function stopViva(vivaId: string) {
-  await endViva(vivaId);
+export async function stopViva(vivaId: string, lastWords = "") {
+  await endViva(vivaId, lastWords);
   revalidatePath("/", "layout");
 }
 
