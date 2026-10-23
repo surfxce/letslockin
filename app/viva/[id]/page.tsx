@@ -8,7 +8,10 @@ import { DeckRefresh } from "@/app/ak/DeckControls";
 import { Tag } from "@/app/ui/bits";
 import { prisma } from "@/lib/db";
 import { formatScore, scoreTone, shortDate } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
 import { speechVia } from "@/lib/viva/listen";
+import { readChoice } from "@/lib/voice/choice";
+import { naturalVoiceReady } from "@/lib/voice/natural";
 import { readPlan, readTurns } from "@/lib/viva/schema";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +39,8 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
           title={viva.title}
           initial={{ waitingOn: viva.waitingOn, current: viva.current, total: plan.length, turns, error: null }}
           speech={await speechVia()}
+          voice={readChoice((await getSettings()).vivaVoice)}
+          natural={naturalVoiceReady()}
         />
       </main>
     );

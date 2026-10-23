@@ -110,46 +110,50 @@ export function LectureMap({
           </p>
         )}
       </div>
+      {/* Sized by the map, not its contents: a list changing length on hover would change
+          the page's height, shift the scroll and move the dot out from under the mouse. */}
       <aside className="pg-side">
-        {selected ? (
-          <>
-            <h3>{selected.title}</h3>
-            <div className="small muted">
-              {label(selected)}
-              {selected.score === null ? " · not drilled yet" : ` · drill score ${selected.score.toFixed(1)}`} ·{" "}
-              <Link href={`/lectures/${selected.id}`} className="link">
-                Open
-              </Link>
-            </div>
-            {neighbours.length ? (
+        <div className="pg-side-scroll">
+          {selected ? (
+            <>
+              <h3>{selected.title}</h3>
+              <div className="small muted">
+                {label(selected)}
+                {selected.score === null ? " · not drilled yet" : ` · drill score ${selected.score.toFixed(1)}`} ·{" "}
+                <Link href={`/lectures/${selected.id}`} className="link">
+                  Open
+                </Link>
+              </div>
+              {neighbours.length ? (
+                <ol>
+                  {neighbours.map((n) => (
+                    <li key={n.node.id}>
+                      <Link href={`/lectures/${n.node.id}`}>{n.node.title}</Link>
+                      <span className="why">Shares: {n.shared.join(", ")}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="small muted">Nothing distinctive in common with your other lectures.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <h3>Closest lectures</h3>
+              <p className="small muted" style={{ margin: 0 }}>
+                Hover or tap a dot to see what it shares. Revising a weak lecture? Its neighbours are worth a look too.
+              </p>
               <ol>
-                {neighbours.map((n) => (
-                  <li key={n.node.id}>
-                    <Link href={`/lectures/${n.node.id}`}>{n.node.title}</Link>
-                    <span className="why">Shares: {n.shared.join(", ")}</span>
+                {links.slice(0, 6).map((l) => (
+                  <li key={`${l.a}|${l.b}`}>
+                    <b>{byId.get(l.a)?.title}</b> and <b>{byId.get(l.b)?.title}</b>
+                    <span className="why">Shares: {l.shared.join(", ")}</span>
                   </li>
                 ))}
               </ol>
-            ) : (
-              <p className="small muted">Nothing distinctive in common with your other lectures.</p>
-            )}
-          </>
-        ) : (
-          <>
-            <h3>Closest lectures</h3>
-            <p className="small muted" style={{ margin: 0 }}>
-              Hover or tap a dot to see what it shares. Revising a weak lecture? Its neighbours are worth a look too.
-            </p>
-            <ol>
-              {links.slice(0, 6).map((l) => (
-                <li key={`${l.a}|${l.b}`}>
-                  <b>{byId.get(l.a)?.title}</b> and <b>{byId.get(l.b)?.title}</b>
-                  <span className="why">Shares: {l.shared.join(", ")}</span>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </aside>
     </div>
   );

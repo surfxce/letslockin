@@ -55,6 +55,8 @@ export interface Settings {
   dailyMinutes: number;
   /** Which Whisper model transcribes recordings when Gemini isn't the AI. */
   whisperModel: WhisperChoice;
+  /** The voice that reads the viva examiner's lines (lib/voice/choice.ts). */
+  vivaVoice: string;
 }
 
 const DEFAULTS: Settings = {
@@ -78,6 +80,7 @@ const DEFAULTS: Settings = {
   apiVision: true,
   dailyMinutes: 60,
   whisperModel: "accurate",
+  vivaVoice: "auto",
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -106,6 +109,7 @@ export async function getSettings(): Promise<Settings> {
   out.apiVision = out.apiVision !== false;
   if (typeof out.slideReader !== "string") out.slideReader = null;
   if (out.whisperModel !== "fast") out.whisperModel = "accurate";
+  if (typeof out.vivaVoice !== "string" || !out.vivaVoice) out.vivaVoice = "auto";
   out.dailyMinutes = Number.isFinite(out.dailyMinutes) ? Math.min(600, Math.max(10, Math.round(out.dailyMinutes))) : DEFAULTS.dailyMinutes;
   return out;
 }

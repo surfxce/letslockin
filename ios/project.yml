@@ -33,6 +33,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSCameraUsageDescription: Scan the pairing code shown in Lockin's Settings on your computer.
+        # Summaries keep reading aloud with the screen locked.
+        UIBackgroundModes: [audio]
         # A viva is answered out loud.
         NSMicrophoneUsageDescription: Lockin listens when you answer a viva out loud.
         NSSpeechRecognitionUsageDescription: Lockin turns what you say in a viva into text, on your iPhone where it can.

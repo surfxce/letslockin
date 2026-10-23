@@ -50,6 +50,8 @@ final class AppModel {
     private(set) var coursePhotos: [String: UIImage] = [:]
 
     let images = ImageStore()
+    /// Reads summaries and the viva examiner aloud; it keeps going between screens.
+    let reader = Reader()
     @ObservationIgnored private var client: SyncClient?
     @ObservationIgnored private var draftSave: Task<Void, Never>?
     @ObservationIgnored private var examSave: Task<Void, Never>?

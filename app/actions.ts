@@ -28,6 +28,7 @@ import { describeForSort } from "@/lib/sortfiles";
 import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
 import { usesAi, type WhisperChoice } from "@/lib/modes";
+import { readChoice } from "@/lib/voice/choice";
 import { questionNumbers } from "@/lib/views";
 
 /** Who wrote a summary or LAQ that was pasted in, as shown on the lecture page. */
@@ -788,6 +789,11 @@ export async function deleteLocalModel(modelId: string) {
 
 export async function setWhisperModel(model: WhisperChoice) {
   await setSetting("whisperModel", model === "fast" ? "fast" : "accurate");
+  refreshAll();
+}
+
+export async function setVivaVoice(choice: string) {
+  await setSetting("vivaVoice", readChoice(choice));
   refreshAll();
 }
 

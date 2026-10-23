@@ -103,6 +103,7 @@ struct LectureView: View {
                 case .summary:
                     if let html = lecture.summaryHtml {
                         HTMLView(html: html, images: model.images)
+                        if model.reader.source == lecture.id { ListenBar() }
                     } else {
                         ContentUnavailableView("No summary yet", systemImage: "doc.text",
                                                description: Text("Prepare this lecture on your computer, then sync."))
@@ -115,6 +116,17 @@ struct LectureView: View {
             }
             .navigationTitle("L\(lecture.ordinal) · \(lecture.title)")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if tab == .summary, let html = lecture.summaryHtml {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            model.reader.read(readableSections(html: html, title: lecture.title), title: lecture.title, source: lecture.id)
+                        } label: {
+                            Label("Listen", systemImage: "headphones")
+                        }
+                    }
+                }
+            }
         } else {
             ContentUnavailableView("This lecture isn't here any more", systemImage: "questionmark.folder")
         }

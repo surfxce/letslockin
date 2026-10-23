@@ -7,6 +7,8 @@ import "@/app/ui/desktop";
 import { Icon } from "@/app/ui/Icon";
 import { sayAnswer, skipQuestion, stopViva } from "@/app/viva/actions";
 import type { VivaTurn } from "@/lib/viva/schema";
+import type { VoiceChoice } from "@/lib/voice/choice";
+import { say, stopSaying } from "@/lib/voice/say";
 import { downsample, encodeWav, joinChunks } from "@/lib/viva/wav";
 
 interface State {
@@ -19,16 +21,6 @@ interface State {
 
 const READ_ALOUD = "lockin.viva.readAloud";
 
-function speak(text: string) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
-  const voice = voices.find((v) => v.lang.startsWith("en") && v.localService && v.default) ?? voices.find((v) => v.lang.startsWith("en"));
-  if (voice) utterance.voice = voice;
-  utterance.rate = 1;
-  window.speechSynthesis.speak(utterance);
-}
 
 /** Records from the microphone as plain samples, so the answer can go out as WAV. */
 function useRecorder() {
@@ -76,7 +68,24 @@ function useRecorder() {
 }
 
 /** The viva itself: the examiner's lines, read aloud, and your answers, spoken or typed. */
-export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; title: string; initial: State; speech: string | null }) {
+export function VivaRoom({
+  vivaId,
+  title,
+  initial,
+  speech,
+  voice,
+  natural,
+}: {
+  vivaId: string;
+  title: string;
+  initial: State;
+  speech: string | null;
+  /** Who reads the examiner's lines (Settings → Viva voice). */
+  voice: VoiceChoice;
+  /** The natural voice is downloaded. */
+  natural: boolean;
+}) {
+  const speak = useCallback((text: string) => void say(text, voice, natural), [voice, natural]);
   const router = useRouter();
   const [state, setState] = useState(initial);
   const [answer, setAnswer] = useState("");
@@ -99,7 +108,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
     }
     return () => {
       window.__lockinHoldRefresh = false;
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      stopSaying();
     };
   }, []);
 
@@ -112,7 +121,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
       if (readAloud) speak(turn.text);
     }
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [state.turns, readAloud]);
+  }, [state.turns, readAloud, speak]);
 
   // Read the first question once the page is open.
   useEffect(() => {
@@ -128,7 +137,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [initial]);
+  }, [initial, speak]);
 
   // While the examiner thinks, keep looking.
   useEffect(() => {
@@ -187,7 +196,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
       setAnswer((prev) => (prev.trim() ? `${prev.trim()} ${body.text}` : body.text!));
       return;
     }
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopSaying();
     if (window.lockin?.microphone) {
       const access = await window.lockin.microphone();
       if (access === "unavailable") {
@@ -229,7 +238,7 @@ export function VivaRoom({ vivaId, title, initial, speech }: { vivaId: string; t
           onClick={() => {
             const next = !readAloud;
             setReadAloud(next);
-            if (!next && "speechSynthesis" in window) window.speechSynthesis.cancel();
+            if (!next) stopSaying();
             try {
               localStorage.setItem(READ_ALOUD, next ? "on" : "off");
             } catch {

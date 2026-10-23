@@ -97,23 +97,6 @@ final class Dictation {
     }
 }
 
-/// Reads the examiner's lines aloud.
-@MainActor
-final class ExaminerVoice {
-    private let synthesizer = AVSpeechSynthesizer()
-
-    func say(_ text: String) {
-        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .duckOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
-        synthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-GB")
-        synthesizer.speak(utterance)
-    }
-
-    func stop() { synthesizer.stopSpeaking(at: .immediate) }
-}
-
 /// Choosing which lectures a viva asks about, and how many questions.
 struct VivaSetupView: View {
     @Environment(AppModel.self) private var model
@@ -227,7 +210,6 @@ struct VivaRoomView: View {
     @State private var answer = ""
     @State private var before = ""
     @State private var dictation = Dictation()
-    @State private var voice = ExaminerVoice()
     @AppStorage("vivaReadAloud") private var readAloud = true
     @State private var finished: String?
     @State private var confirmingEnd = false
@@ -248,7 +230,7 @@ struct VivaRoomView: View {
             if let old, new == nil, model.pastViva(old) != nil { finished = old }
         }
         .onDisappear {
-            voice.stop()
+            model.reader.stop()
             dictation.stop()
         }
     }
@@ -266,7 +248,7 @@ struct VivaRoomView: View {
     private func speakNew(_ draft: VivaDraft) {
         defer { spoken = draft.turns.count }
         guard readAloud, draft.turns.count > spoken, let last = draft.turns.last, last.role == "examiner" else { return }
-        voice.say(last.text)
+        model.reader.say(last.text)
     }
 
     private func room(_ draft: VivaDraft) -> some View {
@@ -275,7 +257,7 @@ struct VivaRoomView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(Array(draft.turns.enumerated()), id: \.offset) { _, line in
-                            VivaBubble(line: line) { voice.say($0) }
+                            VivaBubble(line: line) { model.reader.say($0) }
                         }
                         if model.examinerThinking {
                             HStack(spacing: 8) {
@@ -315,7 +297,7 @@ struct VivaRoomView: View {
                         if dictation.listening {
                             dictation.stop()
                         } else {
-                            voice.stop()
+                            model.reader.stop()
                             typing = false
                             before = answer
                             Task { await dictation.start(hints: hints(draft)) }
@@ -359,25 +341,28 @@ struct VivaRoomView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     readAloud.toggle()
-                    if !readAloud { voice.stop() }
+                    if !readAloud { model.reader.stop() }
                 } label: {
                     Image(systemName: readAloud ? "speaker.wave.2.fill" : "speaker.slash")
                 }
                 .accessibilityLabel(readAloud ? "Reading aloud" : "Not reading aloud")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("End") { confirmingEnd = true }
+                HStack {
+                    VoiceMenu().labelStyle(.iconOnly)
+                    Button("End") { confirmingEnd = true }
+                }
             }
         }
         .confirmationDialog("End the viva now?", isPresented: $confirmingEnd, titleVisibility: .visible) {
             Button("End and mark what I answered") {
                 dictation.stop()
-                voice.stop()
+                model.reader.stop()
                 model.endViva()
             }
             Button("Discard it", role: .destructive) {
                 dictation.stop()
-                voice.stop()
+                model.reader.stop()
                 model.discardViva()
             }
         }

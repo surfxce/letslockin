@@ -6,6 +6,7 @@ import { PhoneLink } from "@/app/settings/PhoneLink";
 import { phoneStatus } from "@/app/settings/phone-actions";
 import { CloudSettings } from "@/app/settings/CloudSettings";
 import { RecordingSettings } from "@/app/settings/Recordings";
+import { VoicePicker } from "@/app/settings/VoicePicker";
 import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
 import { Tag } from "@/app/ui/bits";
 import { Icon } from "@/app/ui/Icon";
@@ -18,6 +19,7 @@ import { API_SERVICES, CLOUD_ENGINE_LABEL, CLOUD_MODEL_LABEL, usesAi } from "@/l
 import { modelsPayload } from "@/lib/payloads";
 import { geminiListener, listenerLabel } from "@/lib/recordings/gemini";
 import { whisperHelper } from "@/lib/recordings/helper";
+import { naturalStatus } from "@/lib/voice/natural";
 import { getApiKey, getSettings, readHeartbeat } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +111,9 @@ export default async function SettingsPage() {
 
       <h2 id="recordings">Lecture recordings</h2>
       <RecordingSettings model={settings.whisperModel} gemini={gemini ? listenerLabel(gemini) : null} helper={!!whisperHelper()} />
+
+      <h2 id="voice">Viva voice</h2>
+      <VoicePicker initial={settings.vivaVoice} status={naturalStatus()} />
 
       <h2 id="ak">AK · Anki Killer</h2>
       <AutoFlashcardsToggle enabled={settings.autoFlashcards} />
