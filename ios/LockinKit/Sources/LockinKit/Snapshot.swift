@@ -51,6 +51,10 @@ public struct Lecture: Codable, Hashable, Identifiable, Sendable {
     public var questions: [Question]
     /// The questions a sitting asks now, as the computer picks them.
     public var nextSitting: [String]
+    /// As the computer's lecture table shows them (absent from older computers).
+    public var drillScore: Double?
+    public var sittingCount: Int?
+    public var dueAt: Date?
 }
 
 public struct Question: Codable, Hashable, Identifiable, Sendable {

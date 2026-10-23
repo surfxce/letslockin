@@ -9,19 +9,45 @@
     "prompt": "## Question\n{{questionStem}}\n\n## Rubric\n{{rubric}}\n\n## Answer\n{{answerText}}\n\n## Concepts\n{{concepts}}\n",
     "request": {
       "url": "https://api.anthropic.com/v1/messages",
-      "headers": { "content-type": "application/json", "x-api-key": "sk-test", "anthropic-version": "2023-06-01" },
+      "headers": {
+        "content-type": "application/json",
+        "x-api-key": "sk-test",
+        "anthropic-version": "2023-06-01"
+      },
       "body": {
         "model": "claude-sonnet-5-5",
         "max_tokens": 16000,
-        "output_config": { "effort": "medium" },
-        "messages": [{ "role": "user", "content": [{ "type": "text", "text": "{{LOCKIN_PROMPT}}" }] }]
+        "output_config": {
+          "effort": "medium"
+        },
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "{{LOCKIN_PROMPT}}"
+              }
+            ]
+          }
+        ]
       }
     }
   },
   "computerMarker": "API key",
   "courses": [
-    { "id": "ccourse0000000000000000001", "code": "BIOM3015", "title": "Renal physiology", "examDate": "2026-11-20T00:00:00.000Z" },
-    { "id": "ccourse0000000000000000002", "code": "PHYS1001", "title": "Physics", "examDate": null }
+    {
+      "id": "ccourse0000000000000000001",
+      "code": "BIOM3015",
+      "title": "Renal physiology",
+      "examDate": "2026-11-20T00:00:00.000Z"
+    },
+    {
+      "id": "ccourse0000000000000000002",
+      "code": "PHYS1001",
+      "title": "Physics",
+      "examDate": null
+    }
   ],
   "lectures": [
     {
@@ -33,14 +59,26 @@
       "deliveredOn": "2026-10-01T00:00:00.000Z",
       "summaryHtml": "<h2>Mechanism</h2>\n<p>Galactose-deficient IgA1 forms immune complexes.</p>\n<figure class=\"slide-fig\"><img src=\"lockin-slide://clecture000000000000000001/3?crop=0.1,0.2,0.5,0.4\" alt=\"Mesangial deposits\"><figcaption>Mesangial deposits <span>· slide 3</span></figcaption></figure>",
       "summaryModel": "Claude Code · claude-sonnet-5-5",
-      "images": ["3?crop=0.1,0.2,0.5,0.4", "5"],
+      "images": [
+        "3?crop=0.1,0.2,0.5,0.4",
+        "5"
+      ],
       "questions": [
         {
           "id": "cquestion00000000000000001",
           "stem": "Explain how galactose-deficient IgA1 leads to mesangial injury.",
           "type": "LAQ",
           "modelAnswer": "Gd-IgA1 is recognised by autoantibodies…",
-          "criteria": [{ "point": "Names Gd-IgA1", "marks": 2 }, { "point": "Immune complexes deposit in mesangium", "marks": 3 }],
+          "criteria": [
+            {
+              "point": "Names Gd-IgA1",
+              "marks": 2
+            },
+            {
+              "point": "Immune complexes deposit in mesangium",
+              "marks": 3
+            }
+          ],
           "markVars": {
             "questionStem": "Explain how galactose-deficient IgA1 leads to mesangial injury.",
             "rubric": "{\n  \"modelAnswer\": \"Gd-IgA1 is recognised by autoantibodies…\"\n}",
@@ -48,7 +86,12 @@
           }
         }
       ],
-      "nextSitting": ["cquestion00000000000000001"]
+      "nextSitting": [
+        "cquestion00000000000000001"
+      ],
+      "drillScore": 6.5,
+      "sittingCount": 1,
+      "dueAt": "2026-10-27T00:00:00.000Z"
     },
     {
       "id": "clecture000000000000000002",
@@ -61,7 +104,10 @@
       "summaryModel": null,
       "images": [],
       "questions": [],
-      "nextSitting": []
+      "nextSitting": [],
+      "drillScore": null,
+      "sittingCount": 0,
+      "dueAt": null
     }
   ],
   "sittings": [
@@ -78,7 +124,16 @@
           "answerText": "IgA1 lacks galactose so antibodies bind it…",
           "mark": 6.5,
           "pending": false,
-          "feedback": [{ "kind": "good", "text": "Names Gd-IgA1" }, { "kind": "missed", "text": "Complexes activate mesangial cells to proliferate." }]
+          "feedback": [
+            {
+              "kind": "good",
+              "text": "Names Gd-IgA1"
+            },
+            {
+              "kind": "missed",
+              "text": "Complexes activate mesangial cells to proliferate."
+            }
+          ]
         }
       ]
     }

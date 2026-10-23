@@ -39,8 +39,14 @@ struct HTMLView: UIViewRepresentable {
         """
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>\(css)</style></head><body>\(body)</body></html>
+        <style>\(css)</style></head><body>\(wrapTables(body))</body></html>
         """
+    }
+
+    /// Each table in a box of its own that scrolls sideways, so a wide one doesn't widen the page.
+    static func wrapTables(_ html: String) -> String {
+        html.replacingOccurrences(of: "<table", with: "<div class=\"table-scroll\"><table")
+            .replacingOccurrences(of: "</table>", with: "</table></div>")
     }
 
     @MainActor
@@ -74,8 +80,11 @@ struct HTMLView: UIViewRepresentable {
     blockquote { border-left: 3px solid var(--rule); padding-left: .8em; color: var(--soft); }
     code { font: .88em ui-monospace, Menlo, monospace; background: var(--code); padding: .1em .3em; border-radius: 4px; }
     pre { overflow-x: auto; background: var(--code); padding: 10px; border-radius: 8px; } pre code { background: none; padding: 0; }
-    table { border-collapse: collapse; display: block; overflow-x: auto; font-size: .92em; }
-    th, td { border: 1px solid var(--rule); padding: 5px 8px; text-align: left; vertical-align: top; }
+    /* Tables keep their words whole and scroll sideways, not squash into a column of letters. */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: .55em -18px; padding: 0 18px; }
+    table { border-collapse: collapse; font-size: .92em; width: max-content; min-width: 100%; }
+    th, td { border: 1px solid var(--rule); padding: 6px 9px; text-align: left; vertical-align: top;
+             overflow-wrap: normal; word-break: normal; min-width: 5.5em; max-width: 17em; }
     th { font-weight: 600; }
     figure.slide-fig { margin: 16px 0; }
     figure.slide-fig img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--rule); background: #fff; margin: 0 0 8px; }

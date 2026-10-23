@@ -30,6 +30,8 @@ final class AppModel {
     private(set) var pictures: (done: Int, total: Int)?
     /// Sittings being marked on the phone right now.
     private(set) var marking: Set<String> = []
+    /// Cover pictures chosen for courses on this phone.
+    private(set) var coursePhotos: [String: UIImage] = [:]
 
     let images = ImageStore()
     @ObservationIgnored private var client: SyncClient?
@@ -37,6 +39,7 @@ final class AppModel {
 
     init() {
         load()
+        loadCoursePhotos()
     }
 
     // MARK: - What the screens read
@@ -64,6 +67,58 @@ final class AppModel {
     }
 
     func draft(for lectureId: String) -> Draft? { drafts.first { $0.lectureId == lectureId } }
+
+    /// A lecture's LAQ score and sittings, as the computer's lecture table has them, plus
+    /// any sittings answered here since the last sync.
+    func standing(of lecture: Lecture) -> LectureStanding {
+        let records = sittings(for: lecture.id)
+        let unsent = records.filter { !$0.synced }
+        let newestUnsentScore = unsent.first(where: { $0.score != nil })?.score
+        let score = newestUnsentScore ?? lecture.drillScore ?? records.first(where: { $0.score != nil })?.score
+        let fromComputer = lecture.sittingCount ?? records.filter { $0.synced && $0.score != nil }.count
+        return LectureStanding(score: score, drills: fromComputer + unsent.filter { $0.score != nil }.count)
+    }
+
+    // MARK: - Course photos
+
+    func coursePhoto(_ courseId: String) -> UIImage? { coursePhotos[courseId] }
+
+    /// A cover picture for a course's card, kept on this phone, shrunk to card size.
+    func setCoursePhoto(_ courseId: String, data: Data) {
+        guard let image = UIImage(data: data) else { return }
+        let side: CGFloat = 900
+        let scale = min(1, side / max(image.size.width, image.size.height))
+        let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let small = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard let jpeg = small.jpegData(compressionQuality: 0.85) else { return }
+        try? jpeg.write(to: photoFile(courseId), options: .atomic)
+        coursePhotos[courseId] = small
+    }
+
+    func removeCoursePhoto(_ courseId: String) {
+        try? FileManager.default.removeItem(at: photoFile(courseId))
+        coursePhotos[courseId] = nil
+    }
+
+    private var photoFolder: URL {
+        let url = folder.appendingPathComponent("CoursePhotos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func photoFile(_ courseId: String) -> URL {
+        photoFolder.appendingPathComponent(String(courseId.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" }) + ".jpg")
+    }
+
+    private func loadCoursePhotos() {
+        for course in snapshot?.courses ?? [] {
+            if let image = UIImage(contentsOfFile: photoFile(course.id).path) { coursePhotos[course.id] = image }
+        }
+    }
 
     func draft(id: String) -> Draft? { drafts.first { $0.id == id } }
 
@@ -120,6 +175,8 @@ final class AppModel {
         Keychain.delete("pairing")
         Keychain.delete("marking")
         images.removeAll()
+        try? FileManager.default.removeItem(at: photoFolder)
+        coursePhotos = [:]
         saveState()
         saveOutbox()
         saveDrafts()

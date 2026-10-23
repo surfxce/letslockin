@@ -21,6 +21,8 @@ extension Color {
 
 /// Where a tap goes.
 enum Route: Hashable {
+    /// A course's lectures.
+    case course(String)
     case lecture(String)
     /// Answering a sitting of this lecture: the open one, or a new one.
     case sitting(lectureId: String)
@@ -41,8 +43,8 @@ struct RootView: View {
                 WelcomeView()
             } else {
                 TabView {
-                    LecturesTab()
-                        .tabItem { Label("Lectures", systemImage: "book.closed") }
+                    CoursesTab()
+                        .tabItem { Label("Courses", systemImage: "square.grid.2x2") }
                     DecksTab()
                         .tabItem { Label("AK", systemImage: "rectangle.on.rectangle.angled") }
                         .badge(model.dueCount())
@@ -74,6 +76,7 @@ struct RouteDestination: ViewModifier {
     func body(content: Content) -> some View {
         content.navigationDestination(for: Route.self) { route in
             switch route {
+            case .course(let id): CourseView(courseId: id)
             case .lecture(let id): LectureView(lectureId: id)
             case .sitting(let lectureId): SittingView(lectureId: lectureId)
             case .result(let lectureId, let sittingId): SittingResultView(lectureId: lectureId, sittingId: sittingId)

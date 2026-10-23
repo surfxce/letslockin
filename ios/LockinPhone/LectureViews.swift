@@ -1,58 +1,13 @@
 import LockinKit
 import SwiftUI
 
-/// Every lecture, by course, newest first.
-struct LecturesTab: View {
-    @Environment(AppModel.self) private var model
-    @State private var search = ""
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if model.snapshot == nil {
-                    Section {
-                        if model.syncing {
-                            ProgressView(model.syncStatus ?? "Syncing…")
-                        } else {
-                            Text(model.syncError ?? "Pull down to sync with \(model.pairing?.computer ?? "your computer").")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                ForEach(model.courses) { course in
-                    let lectures = model.lectures(in: course.id).filter(matches)
-                    if !lectures.isEmpty {
-                        Section {
-                            ForEach(lectures) { lecture in
-                                NavigationLink(value: Route.lecture(lecture.id)) { LectureRow(lecture: lecture) }
-                            }
-                        } header: {
-                            Text("\(course.code) · \(course.title)")
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Lectures")
-            .searchable(text: $search, prompt: "Search lectures")
-            .refreshable { await model.sync() }
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { SyncBadge() } }
-            .lockinRoutes()
-        }
-    }
-
-    private func matches(_ lecture: Lecture) -> Bool {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty || lecture.title.localizedCaseInsensitiveContains(q)
-            || (lecture.module?.localizedCaseInsensitiveContains(q) ?? false)
-    }
-}
-
 struct LectureRow: View {
     @Environment(AppModel.self) private var model
     let lecture: Lecture
 
     var body: some View {
-        let latest = model.sittings(for: lecture.id).first
+        let standing = model.standing(of: lecture)
+        let waiting = model.sittings(for: lecture.id).first.map { $0.waiting > 0 } ?? false
         let due = model.dueCount(for: lecture.id)
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text("L\(lecture.ordinal)")
@@ -64,15 +19,16 @@ struct LectureRow: View {
                 HStack(spacing: 8) {
                     if let module = lecture.module { Text(module).lineLimit(1) }
                     if lecture.summaryHtml == nil { Text("No summary yet") }
+                    if standing.drills > 0 { Text("\(standing.drills)× drilled") }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 4) {
-                if let score = latest?.score {
+                if let score = standing.score {
                     ScorePill(score: score)
-                } else if latest != nil {
+                } else if waiting {
                     Image(systemName: "hourglass").font(.caption).foregroundStyle(.secondary)
                 }
                 if due > 0 {
