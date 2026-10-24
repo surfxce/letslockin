@@ -39,3 +39,6 @@
 .viva-result { padding: 16px 0; border-bottom: 1px solid var(--rule); }
 /* The newest line scrolls into view above the answer box, not behind it. */
 .viva-end { scroll-margin-bottom: 300px; }
+/* A spoken answer's words as Whisper hears them; the end may still change. */
+.viva-live { min-height: 3em; padding: 10px 12px; border: 1px dashed var(--rule-strong); border-radius: 8px; font-size: 15px; line-height: 1.5; }
+.viva-live-tentative { color: var(--text-faint); }

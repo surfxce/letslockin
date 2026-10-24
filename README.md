@@ -119,7 +119,9 @@ asked in its own sittings, and come last in any exam that includes every lecture
 **Viva.** The **Viva** tab is an oral exam: the AI examiner asks one of your LAQs (read
 aloud), listens to your answer, follows up — at most twice — on anything it left out, and
 moves on. Answer out loud or type; a spoken answer is turned into text you can correct
-before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac. Each
+before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac — which
+hears it while you speak, so your words appear as you go (the last few still settling)
+and only the final second or two is left to hear when you stop. Each
 question's exchange is marked like a sitting answer and counts towards its lecture's drill
 score. The iPhone app holds vivas too, with Apple's on-device speech recognition. The
 examiner speaks in a Qwen3-TTS voice, run on the Mac (TTSKit, in the Mac app): in

@@ -17,6 +17,46 @@ export function downsample(samples: Float32Array, from: number, to = SPEECH_RATE
   return out;
 }
 
+/**
+ * downsample(), a piece at a time as the microphone gives them: the same samples as
+ * downsampling the whole recording at once, so nothing slips at the joins.
+ */
+export function streamDownsampler(from: number, to = SPEECH_RATE): (piece: Float32Array) => Float32Array {
+  if (from <= to) return (piece) => piece;
+  const ratio = from / to;
+  // Sound not used up yet, which starts `base` samples into the recording.
+  let rest = new Float32Array(0);
+  let base = 0;
+  let made = 0;
+  return (piece) => {
+    const input = joinChunks([rest, piece]);
+    const total = base + input.length;
+    const out: number[] = [];
+    while (Math.floor((made + 1) * ratio) <= total) {
+      const start = Math.floor(made * ratio) - base;
+      const end = Math.floor((made + 1) * ratio) - base;
+      let sum = 0;
+      for (let j = start; j < end; j++) sum += input[j];
+      out.push(sum / Math.max(1, end - start));
+      made++;
+    }
+    const used = Math.floor(made * ratio) - base;
+    rest = input.slice(used);
+    base += used;
+    return Float32Array.from(out);
+  };
+}
+
+/** 16-bit little-endian PCM with no header: how sound goes to be heard live. */
+export function pcm16(samples: Float32Array): ArrayBuffer {
+  const view = new DataView(new ArrayBuffer(samples.length * 2));
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return view.buffer;
+}
+
 /** 16-bit mono PCM in a WAV container. */
 export function encodeWav(samples: Float32Array, rate = SPEECH_RATE): ArrayBuffer {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -35,10 +75,7 @@ export function encodeWav(samples: Float32Array, rate = SPEECH_RATE): ArrayBuffe
   view.setUint16(34, 16, true);
   text(36, "data");
   view.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
+  new Uint8Array(buffer).set(new Uint8Array(pcm16(samples)), 44);
   return buffer;
 }
 

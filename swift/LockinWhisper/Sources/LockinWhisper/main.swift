@@ -13,6 +13,9 @@ import WhisperKit
 //   lockin-whisper transcribe <recording> --model <variant> --models <dir> [--prompt <words>] [--language en]
 //     What was said, with times: {"segments":[{"start":…,"end":…,"text":…}],"duration":…,"model":…}
 //
+//   lockin-whisper listen --model <variant> --models <dir> [--language en]
+//     Stays running and hears a spoken answer while it's said: see LiveListen.swift.
+//
 //   lockin-whisper voice-download --models <dir> [--variant 0.6b|1.7b]
 //     Downloads a natural voice (Qwen3-TTS CustomVoice: 0.6B about 1 GB, 1.7B about
 //     2.2 GB) and its tokenizer once: {"folder":…}
@@ -209,11 +212,7 @@ func transcribe(_ input: URL, variant: String, models: URL, prompt: String?, lan
     var options = DecodingOptions()
     options.language = language
     options.chunkingStrategy = .vad
-    // A few words from the slides help it spell the technical ones.
-    if let prompt, !prompt.isEmpty, let tokenizer = whisper.tokenizer {
-        let tokens = tokenizer.encode(text: " " + prompt).filter { $0 < tokenizer.specialTokens.specialTokenBegin }
-        if !tokens.isEmpty { options.promptTokens = Array(tokens.suffix(120)) }
-    }
+    options.promptTokens = promptTokens(prompt, whisper)
 
     // Five minutes at a time, cut where it's quiet, so progress can be told as it goes.
     let starts = cuts(samples, every: 300)
@@ -233,6 +232,13 @@ func transcribe(_ input: URL, variant: String, models: URL, prompt: String?, lan
         progress("transcribe", Double(end) / Double(samples.count))
     }
     emit(["segments": segments, "duration": Double(samples.count) / Double(rate), "model": variant])
+}
+
+/// A few words from the slides, as Whisper's prompt: they help it spell the technical ones.
+func promptTokens(_ prompt: String?, _ whisper: WhisperKit) -> [Int]? {
+    guard let prompt, !prompt.isEmpty, let tokenizer = whisper.tokenizer else { return nil }
+    let tokens = tokenizer.encode(text: " " + prompt).filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+    return tokens.isEmpty ? nil : Array(tokens.suffix(120))
 }
 
 /// Whisper's own markers ("<|0.00|>", "[BLANK_AUDIO]") are not speech.
@@ -346,6 +352,11 @@ do {
         }
         try await transcribe(URL(fileURLWithPath: args[1]), variant: variant, models: URL(fileURLWithPath: models),
                              prompt: option(args, "--prompt"), language: option(args, "--language") ?? "en")
+    case "listen":
+        guard let variant = option(args, "--model"), let models = option(args, "--models") else {
+            throw Failure("listen needs --model and --models")
+        }
+        try await listenServer(variant: variant, models: URL(fileURLWithPath: models), language: option(args, "--language") ?? "en")
     case "voice-download":
         guard let models = option(args, "--models") else { throw Failure("voice-download needs --models") }
         try await voiceDownload(URL(fileURLWithPath: models), voiceVariant(args))
@@ -353,7 +364,7 @@ do {
         guard let models = option(args, "--models") else { throw Failure("speak needs --models") }
         try await speakServer(URL(fileURLWithPath: models), voiceVariant(args))
     case "version":
-        emit(["version": 4, "voice": true, "variants": ["0.6b", "1.7b"], "steady": true])
+        emit(["version": 5, "voice": true, "variants": ["0.6b", "1.7b"], "steady": true, "live": true])
     default:
         throw Failure("usage: lockin-whisper audio <recording> <out-dir> | transcribe <recording> --model <variant> --models <dir>")
     }

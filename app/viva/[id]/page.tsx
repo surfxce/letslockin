@@ -9,7 +9,7 @@ import { Tag } from "@/app/ui/bits";
 import { prisma } from "@/lib/db";
 import { formatScore, scoreTone, shortDate } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
-import { speechVia } from "@/lib/viva/listen";
+import { hearsLive, speechVia } from "@/lib/viva/listen";
 import { usableModel } from "@/lib/voice/choice";
 import { naturalStatus } from "@/lib/voice/natural";
 import { readPlan, readTurns } from "@/lib/viva/schema";
@@ -45,6 +45,7 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
           title={viva.title}
           initial={{ waitingOn: viva.waitingOn, current: viva.current, total: plan.length, turns, error: null }}
           speech={await speechVia()}
+          hearsLive={await hearsLive()}
           canSpeak={!!usableModel((await getSettings()).voiceModel, naturalStatus().ready)}
           stageLabels={stageLabels}
         />

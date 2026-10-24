@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "@/app/ui/desktop";
 import { Icon } from "@/app/ui/Icon";
 import { sayAnswer, skipQuestion, stopViva } from "@/app/viva/actions";
+import { LiveAnswer, type LiveText } from "@/lib/viva/hear-live";
 import type { VivaTurn } from "@/lib/viva/schema";
 import { say, stopSaying } from "@/lib/voice/say";
 import { downsample, encodeWav, joinChunks } from "@/lib/viva/wav";
@@ -21,14 +22,17 @@ interface State {
 const READ_ALOUD = "lockin.viva.readAloud";
 
 
-/** Records from the microphone as plain samples, so the answer can go out as WAV. */
+/**
+ * Records from the microphone as plain samples, so the answer can go out as WAV; each
+ * piece is also handed to `onSound` as it comes, for hearing it live.
+ */
 function useRecorder() {
   const parts = useRef<{ stream: MediaStream; context: AudioContext; node: ScriptProcessorNode; chunks: Float32Array[] } | null>(null);
   const [level, setLevel] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const started = useRef(0);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (onSound?: (piece: Float32Array, rate: number) => void) => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
     const context = new AudioContext();
     const source = context.createMediaStreamSource(stream);
@@ -36,7 +40,9 @@ function useRecorder() {
     const chunks: Float32Array[] = [];
     node.onaudioprocess = (e) => {
       const data = e.inputBuffer.getChannelData(0);
-      chunks.push(new Float32Array(data));
+      const piece = new Float32Array(data);
+      chunks.push(piece);
+      onSound?.(piece, context.sampleRate);
       let sum = 0;
       for (let i = 0; i < data.length; i += 16) sum += data[i] * data[i];
       setLevel(Math.min(1, Math.sqrt(sum / (data.length / 16)) * 6));
@@ -72,6 +78,7 @@ export function VivaRoom({
   title,
   initial,
   speech,
+  hearsLive,
   canSpeak,
   stageLabels,
 }: {
@@ -81,6 +88,8 @@ export function VivaRoom({
   stageLabels?: string[];
   initial: State;
   speech: string | null;
+  /** Whisper hears a spoken answer while it's said, and the words show as they come. */
+  hearsLive: boolean;
   /** A Qwen voice is downloaded to read the examiner's lines (Settings → Viva voice). */
   canSpeak: boolean;
 }) {
@@ -106,6 +115,8 @@ export function VivaRoom({
   const [note, setNote] = useState<string | null>(null);
   const [readAloud, setReadAloud] = useState(true);
   const recorder = useRecorder();
+  const hearing = useRef<LiveAnswer | null>(null);
+  const [heard, setHeard] = useState<LiveText | null>(null);
   const spoken = useRef(initial.turns.length - 1);
   const end = useRef<HTMLDivElement>(null);
 
@@ -121,6 +132,7 @@ export function VivaRoom({
     return () => {
       window.__lockinHoldRefresh = false;
       stopSaying();
+      hearing.current?.cancel();
     };
   }, []);
 
@@ -195,20 +207,35 @@ export function VivaRoom({
     setNote(null);
     if (recording) {
       setRecording(false);
+      const live = hearing.current;
+      hearing.current = null;
       const wav = await recorder.stop();
       if (!wav) {
+        live?.cancel();
+        setHeard(null);
         setNote("That was too short to hear — try again.");
         return;
       }
       setBusy("hearing");
-      const res = await fetch(`/api/viva/${vivaId}/listen`, { method: "POST", body: wav }).catch(() => null);
-      const body = (await res?.json().catch(() => ({}))) as { text?: string; error?: string };
+      let text: string | null = null;
+      let error: string | null = null;
+      // Heard live, only the last words are left; if that went wrong, the whole recording
+      // is heard instead.
+      if (live) text = await live.finish().catch(() => null);
+      if (text === null) {
+        const res = await fetch(`/api/viva/${vivaId}/listen`, { method: "POST", body: wav }).catch(() => null);
+        const body = (await res?.json().catch(() => ({}))) as { text?: string; error?: string };
+        text = res?.ok ? (body.text ?? "") : "";
+        error = body.error ?? null;
+      }
       setBusy(null);
-      if (!res?.ok || !body.text) {
-        setNote(body.error ?? "Nothing was heard — try again, or type it.");
+      setHeard(null);
+      if (!text) {
+        setNote(error ?? "Nothing was heard — try again, or type it.");
         return;
       }
-      setAnswer((prev) => (prev.trim() ? `${prev.trim()} ${body.text}` : body.text!));
+      const said = text;
+      setAnswer((prev) => (prev.trim() ? `${prev.trim()} ${said}` : said));
       return;
     }
     stopSaying();
@@ -223,10 +250,14 @@ export function VivaRoom({
         return;
       }
     }
+    const live = speech && hearsLive ? new LiveAnswer(vivaId, setHeard) : null;
     try {
-      await recorder.start();
+      await recorder.start(live ? (piece, rate) => live.add(piece, rate) : undefined);
+      hearing.current = live;
+      setHeard(live ? { confirmed: "", tentative: "", preparing: null, stalled: null } : null);
       setRecording(true);
     } catch {
+      live?.cancel();
       setNote("The microphone couldn't be opened. You can type your answer instead.");
     }
   }
@@ -339,7 +370,9 @@ export function VivaRoom({
               {recording
                 ? `Listening… ${recorder.seconds}s — press again when you're done`
                 : busy === "hearing"
-                  ? `Turning what you said into text (${speech})…`
+                  ? heard
+                    ? "Catching your last words…"
+                    : `Turning what you said into text (${speech})…`
                   : thinking
                     ? "The examiner is thinking…"
                     : speech
@@ -347,6 +380,19 @@ export function VivaRoom({
                       : "Type your answer. (Answering out loud needs Whisper, which comes with the latest Lockin.dmg, or Gemini as your AI.)"}
             </div>
           </div>
+          {heard && (
+            <div className="viva-live" aria-live="polite">
+              {heard.stalled ? (
+                <span className="faint">Your words stopped showing ({heard.stalled}) — all of it is heard when you press stop.</span>
+              ) : heard.confirmed || heard.tentative ? (
+                <>
+                  {heard.confirmed} <span className="viva-live-tentative">{heard.tentative}</span>
+                </>
+              ) : (
+                <span className="faint">{heard.preparing ?? "Your words appear here as you speak…"}</span>
+              )}
+            </div>
+          )}
           <textarea
             className="viva-answer"
             rows={4}

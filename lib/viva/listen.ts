@@ -7,12 +7,19 @@ import { geminiListener, listen, listenerLabel } from "@/lib/recordings/gemini";
 import { whisper, whisperHelper } from "@/lib/recordings/helper";
 import { wordsFor } from "@/lib/recordings/service";
 import { getSettings } from "@/lib/settings";
+import { canHearLive } from "@/lib/viva/live";
 
 /** How a spoken answer would be heard here, or null when only typing works. */
 export async function speechVia(): Promise<string | null> {
   const gemini = await geminiListener().catch(() => null);
   if (gemini) return listenerLabel(gemini);
   return whisperHelper() ? "Whisper on this Mac" : null;
+}
+
+/** Whether a spoken answer is heard while it's said: when Whisper hears it, and the helper can. */
+export async function hearsLive(): Promise<boolean> {
+  if (await geminiListener().catch(() => null)) return false;
+  return canHearLive();
 }
 
 /**

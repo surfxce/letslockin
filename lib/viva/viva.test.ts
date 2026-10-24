@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { readPlan, readTurns, vivaAnswerText } from "@/lib/viva/schema";
-import { downsample, encodeWav, joinChunks, looksLikeWav } from "@/lib/viva/wav";
+import { downsample, encodeWav, joinChunks, looksLikeWav, pcm16, streamDownsampler } from "@/lib/viva/wav";
 
 describe("viva", () => {
   it("marks everything the student said, with the follow-ups between", () => {
@@ -37,5 +37,24 @@ describe("viva", () => {
     expect(view.getUint32(24, true)).toBe(16_000);
     expect(view.getInt16(44, true)).toBe(Math.floor(0.5 * 0x7fff));
     expect(looksLikeWav(new Uint8Array(100))).toBe(false);
+  });
+
+  it("downsamples the microphone a piece at a time exactly as all at once", () => {
+    for (const rate of [44_100, 48_000, 16_000]) {
+      const sound = Float32Array.from({ length: 50_000 }, (_, i) => Math.sin(i / 7) * ((i % 13) / 13));
+      const whole = downsample(sound, rate);
+      const piecewise = streamDownsampler(rate);
+      const pieces: Float32Array[] = [];
+      for (let at = 0, n = 1; at < sound.length; at += n, n = (n * 7919) % 5000 || 1) pieces.push(piecewise(sound.slice(at, at + n)));
+      const joined = joinChunks(pieces);
+      expect(joined.length).toBe(whole.length);
+      expect(joined.every((v, i) => Math.abs(v - whole[i]) < 1e-6)).toBe(true);
+    }
+  });
+
+  it("sends live sound as bare 16-bit PCM", () => {
+    const view = new DataView(pcm16(Float32Array.from([0, 1, -1, 2])));
+    expect(view.byteLength).toBe(8);
+    expect([0, 2, 4, 6].map((o) => view.getInt16(o, true))).toEqual([0, 0x7fff, -0x8000, 0x7fff]);
   });
 });
