@@ -13,12 +13,14 @@ import WhisperKit
 //   lockin-whisper transcribe <recording> --model <variant> --models <dir> [--prompt <words>] [--language en]
 //     What was said, with times: {"segments":[{"start":…,"end":…,"text":…}],"duration":…,"model":…}
 //
-//   lockin-whisper voice-download --models <dir>
-//     Downloads the natural voice (Qwen3-TTS, about 1 GB) once: {"folder":…}
+//   lockin-whisper voice-download --models <dir> [--variant 0.6b|1.7b]
+//     Downloads a natural voice (Qwen3-TTS CustomVoice: 0.6B about 1 GB, 1.7B about
+//     2.2 GB) and its tokenizer once: {"folder":…}
 //
-//   lockin-whisper speak --models <dir>
-//     Stays running: each line in, {"id":…,"text":…,"voice":"aiden"}, is spoken into a WAV
-//     file: {"id":…,"path":…,"duration":…} or {"id":…,"error":…}. Says {"ready":true} first.
+//   lockin-whisper speak --models <dir> [--variant 0.6b|1.7b]
+//     Stays running: each line in, {"id":…,"text":…,"voice":"aiden","instruction":…}, is
+//     spoken into a WAV file: {"id":…,"path":…,"duration":…} or {"id":…,"error":…}. Says
+//     {"ready":true} first. Only the 1.7B model follows a speaking-style instruction.
 //
 // Along the way: {"stage":"download"|"load"|"read"|"transcribe","progress":0…1}.
 // On failure: {"error":"…"} and exit code 1.
@@ -240,30 +242,68 @@ func cleanSegment(_ text: String) -> String {
     return out.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-/// Where the natural voice's model went, once downloaded.
-func voiceMarker(_ models: URL) -> URL { models.appendingPathComponent("ready.json") }
+/// Which Qwen3-TTS model: 0.6B unless 1.7B is asked for.
+func voiceVariant(_ args: [String]) -> TTSModelVariant {
+    option(args, "--variant") == "1.7b" ? .qwen3TTS_1_7b : .qwen3TTS_0_6b
+}
 
-func voiceDownload(_ models: URL) async throws {
+/// Where a natural voice's model went, once downloaded: the 0.6B keeps the name it
+/// always had, so a voice downloaded before still counts.
+func voiceMarker(_ models: URL, _ variant: TTSModelVariant) -> URL {
+    models.appendingPathComponent(variant == .qwen3TTS_0_6b ? "ready.json" : "ready-\(variant.rawValue).json")
+}
+
+/// The voice model's tokenizer, kept beside it. TTSKit looks for tokenizer.json in the
+/// folder it's given; without one it takes the folder for a Hugging Face repo name and
+/// fails, so the files are fetched here once instead.
+func ensureTokenizer(_ models: URL) async throws -> URL {
+    let folder = models.appendingPathComponent("tokenizer", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    for name in ["tokenizer.json", "tokenizer_config.json", "config.json"] {
+        let file = folder.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: file.path) { continue }
+        guard let url = URL(string: "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/main/\(name)") else { continue }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else {
+            throw Failure("Couldn't download the natural voice's \(name) (\((response as? HTTPURLResponse)?.statusCode ?? 0)).")
+        }
+        try data.write(to: file, options: .atomic)
+    }
+    return folder
+}
+
+func voiceDownload(_ models: URL, _ variant: TTSModelVariant) async throws {
     try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
     progress("download", 0)
-    let folder = try await TTSKit.download(variant: .qwen3TTS_0_6b, downloadBase: models) { p in
-        progress("download", p.fractionCompleted)
+    let folder = try await TTSKit.download(variant: variant, downloadBase: models) { p in
+        progress("download", p.fractionCompleted * 0.98)
     }
-    let marker = try JSONSerialization.data(withJSONObject: ["folder": folder.path])
-    try marker.write(to: voiceMarker(models), options: .atomic)
+    let tokenizer = try await ensureTokenizer(models)
+    progress("download", 1)
+    let marker = try JSONSerialization.data(withJSONObject: ["folder": folder.path, "tokenizer": tokenizer.path])
+    try marker.write(to: voiceMarker(models, variant), options: .atomic)
     emit(["folder": folder.path])
 }
 
-func speakServer(_ models: URL) async throws {
-    guard #available(macOS 15.0, *) else { throw Failure("The natural voice needs macOS 15 or later.") }
-    guard let data = try? Data(contentsOf: voiceMarker(models)),
+func speakServer(_ models: URL, _ variant: TTSModelVariant) async throws {
+    guard let data = try? Data(contentsOf: voiceMarker(models, variant)),
           let marker = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let path = marker["folder"] as? String
     else { throw Failure("The natural voice hasn't been downloaded yet.") }
+    guard FileManager.default.fileExists(atPath: path) else {
+        throw Failure("The natural voice's files are missing — download it again in Settings → Viva voice.")
+    }
     progress("load", 0)
-    let config = TTSKitConfig(model: .qwen3TTS_0_6b, modelFolder: URL(fileURLWithPath: path), downloadBase: models,
-                              tokenizerFolder: models, verbose: false, logLevel: .error, download: false)
-    let tts = try await TTSKit(config)
+    // A voice downloaded before the tokenizer was kept with it fetches it now, once.
+    let tokenizer = try await ensureTokenizer(models)
+    let config = TTSKitConfig(model: variant, modelFolder: URL(fileURLWithPath: path), downloadBase: models,
+                              tokenizerFolder: tokenizer, verbose: false, logLevel: .error, download: false)
+    let tts: TTSKit
+    do {
+        tts = try await TTSKit(config)
+    } catch {
+        throw Failure("The natural voice couldn't load: \(error.localizedDescription)")
+    }
     // A first, short line warms it up, so the examiner's first question isn't slow.
     _ = try? await tts.generate(text: "Ready.", speaker: .aiden, language: .english)
     progress("load", 1)
@@ -275,8 +315,12 @@ func speakServer(_ models: URL) async throws {
               let id = request["id"] as? String, let text = request["text"] as? String
         else { continue }
         let speaker = Qwen3Speaker(rawValue: (request["voice"] as? String) ?? "aiden") ?? .aiden
+        var options = GenerationOptions()
+        if variant.supportsVoiceDirection, let style = request["instruction"] as? String, !style.isEmpty {
+            options.instruction = String(style.prefix(300))
+        }
         do {
-            let result = try await tts.generate(text: String(text.prefix(2000)), speaker: speaker, language: .english)
+            let result = try await tts.generate(text: String(text.prefix(2000)), speaker: speaker, language: .english, options: options)
             let file = try await AudioOutput.saveAudio(result.audio, toFolder: out, filename: "say-\(id)", sampleRate: result.sampleRate, format: .wav)
             emit(["id": id, "path": file.path, "duration": result.audioDuration])
         } catch {
@@ -304,12 +348,12 @@ do {
                              prompt: option(args, "--prompt"), language: option(args, "--language") ?? "en")
     case "voice-download":
         guard let models = option(args, "--models") else { throw Failure("voice-download needs --models") }
-        try await voiceDownload(URL(fileURLWithPath: models))
+        try await voiceDownload(URL(fileURLWithPath: models), voiceVariant(args))
     case "speak":
         guard let models = option(args, "--models") else { throw Failure("speak needs --models") }
-        try await speakServer(URL(fileURLWithPath: models))
+        try await speakServer(URL(fileURLWithPath: models), voiceVariant(args))
     case "version":
-        emit(["version": 2, "voice": true])
+        emit(["version": 3, "voice": true, "variants": ["0.6b", "1.7b"]])
     default:
         throw Failure("usage: lockin-whisper audio <recording> <out-dir> | transcribe <recording> --model <variant> --models <dir>")
     }

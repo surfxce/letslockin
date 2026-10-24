@@ -10,8 +10,8 @@ import { prisma } from "@/lib/db";
 import { formatScore, scoreTone, shortDate } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { speechVia } from "@/lib/viva/listen";
-import { readChoice } from "@/lib/voice/choice";
-import { naturalVoiceReady } from "@/lib/voice/natural";
+import { usableModel } from "@/lib/voice/choice";
+import { naturalStatus } from "@/lib/voice/natural";
 import { readPlan, readTurns } from "@/lib/viva/schema";
 import { caseStages } from "@/lib/cases/service";
 import { STAGE_LABEL } from "@/lib/cases/schema";
@@ -45,8 +45,7 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
           title={viva.title}
           initial={{ waitingOn: viva.waitingOn, current: viva.current, total: plan.length, turns, error: null }}
           speech={await speechVia()}
-          voice={readChoice((await getSettings()).vivaVoice)}
-          natural={naturalVoiceReady()}
+          canSpeak={!!usableModel((await getSettings()).voiceModel, naturalStatus().ready)}
           stageLabels={stageLabels}
         />
       </main>

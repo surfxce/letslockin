@@ -7,7 +7,6 @@ import "@/app/ui/desktop";
 import { Icon } from "@/app/ui/Icon";
 import { sayAnswer, skipQuestion, stopViva } from "@/app/viva/actions";
 import type { VivaTurn } from "@/lib/viva/schema";
-import type { VoiceChoice } from "@/lib/voice/choice";
 import { say, stopSaying } from "@/lib/voice/say";
 import { downsample, encodeWav, joinChunks } from "@/lib/viva/wav";
 
@@ -73,8 +72,7 @@ export function VivaRoom({
   title,
   initial,
   speech,
-  voice,
-  natural,
+  canSpeak,
   stageLabels,
 }: {
   vivaId: string;
@@ -83,12 +81,23 @@ export function VivaRoom({
   stageLabels?: string[];
   initial: State;
   speech: string | null;
-  /** Who reads the examiner's lines (Settings → Viva voice). */
-  voice: VoiceChoice;
-  /** The natural voice is downloaded. */
-  natural: boolean;
+  /** A Qwen voice is downloaded to read the examiner's lines (Settings → Viva voice). */
+  canSpeak: boolean;
 }) {
-  const speak = useCallback((text: string) => void say(text, voice, natural), [voice, natural]);
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  // Said in the Qwen voice from Settings; if it can't, why is shown once — there's no other voice.
+  const speak = useCallback(
+    (text: string) => {
+      if (!canSpeak) {
+        setVoiceNote((before) => before ?? "no Qwen voice is downloaded yet — get one in Settings → Viva voice.");
+        return;
+      }
+      void say(text).then((failed) => {
+        if (failed) setVoiceNote((before) => before ?? failed);
+      });
+    },
+    [canSpeak],
+  );
   const router = useRouter();
   const [state, setState] = useState(initial);
   const [answer, setAnswer] = useState("");
@@ -275,6 +284,11 @@ export function VivaRoom({
           </button>
         )}
       </div>
+      {voiceNote && (
+        <p className="small muted" role="status" style={{ margin: "-6px 0 0" }}>
+          The examiner can&apos;t be read aloud: {voiceNote}
+        </p>
+      )}
 
       <div className="viva-turns">
         {state.turns.map((t, i) => (

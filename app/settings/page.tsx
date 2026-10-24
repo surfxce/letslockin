@@ -113,7 +113,7 @@ export default async function SettingsPage() {
       <RecordingSettings model={settings.whisperModel} gemini={gemini ? listenerLabel(gemini) : null} helper={!!whisperHelper()} />
 
       <h2 id="voice">Viva voice</h2>
-      <VoicePicker initial={settings.vivaVoice} status={naturalStatus()} />
+      <VoicePicker initial={{ voice: settings.vivaVoice, model: settings.voiceModel, style: settings.voiceStyle }} status={naturalStatus()} />
 
       <h2 id="ak">AK · Anki Killer</h2>
       <AutoFlashcardsToggle enabled={settings.autoFlashcards} />

@@ -1,3 +1,4 @@
+import { DEFAULT_STYLE, readModel, readStyle, readVoice, type QwenModel, type QwenVoice } from "@/lib/voice/choice";
 import { prisma } from "@/lib/db";
 import {
   API_SERVICE_LIST,
@@ -55,8 +56,12 @@ export interface Settings {
   dailyMinutes: number;
   /** Which Whisper model transcribes recordings when Gemini isn't the AI. */
   whisperModel: WhisperChoice;
-  /** The voice that reads the viva examiner's lines (lib/voice/choice.ts). */
-  vivaVoice: string;
+  /** The Qwen voice that reads the viva examiner's lines (lib/voice/choice.ts). */
+  vivaVoice: QwenVoice;
+  /** Which Qwen3-TTS model says them. */
+  voiceModel: QwenModel;
+  /** How the 1.7B model says them: a speaking style in plain words. */
+  voiceStyle: string;
 }
 
 const DEFAULTS: Settings = {
@@ -80,7 +85,9 @@ const DEFAULTS: Settings = {
   apiVision: true,
   dailyMinutes: 60,
   whisperModel: "accurate",
-  vivaVoice: "auto",
+  vivaVoice: "aiden",
+  voiceModel: "1.7b",
+  voiceStyle: DEFAULT_STYLE,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -109,7 +116,9 @@ export async function getSettings(): Promise<Settings> {
   out.apiVision = out.apiVision !== false;
   if (typeof out.slideReader !== "string") out.slideReader = null;
   if (out.whisperModel !== "fast") out.whisperModel = "accurate";
-  if (typeof out.vivaVoice !== "string" || !out.vivaVoice) out.vivaVoice = "auto";
+  out.vivaVoice = readVoice(out.vivaVoice);
+  out.voiceModel = readModel(out.voiceModel);
+  out.voiceStyle = readStyle(out.voiceStyle);
   out.dailyMinutes = Number.isFinite(out.dailyMinutes) ? Math.min(600, Math.max(10, Math.round(out.dailyMinutes))) : DEFAULTS.dailyMinutes;
   return out;
 }

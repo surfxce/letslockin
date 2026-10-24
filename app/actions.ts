@@ -28,7 +28,7 @@ import { describeForSort } from "@/lib/sortfiles";
 import { getSettings, setSetting, type Mode } from "@/lib/settings";
 import type { MaterialKind } from "@/lib/types";
 import { usesAi, type WhisperChoice } from "@/lib/modes";
-import { readChoice } from "@/lib/voice/choice";
+import { readModel, readStyle, readVoice } from "@/lib/voice/choice";
 import { questionNumbers } from "@/lib/views";
 
 /** Who wrote a summary or LAQ that was pasted in, as shown on the lecture page. */
@@ -792,8 +792,18 @@ export async function setWhisperModel(model: WhisperChoice) {
   refreshAll();
 }
 
-export async function setVivaVoice(choice: string) {
-  await setSetting("vivaVoice", readChoice(choice));
+export async function setVivaVoice(voice: string) {
+  await setSetting("vivaVoice", readVoice(voice));
+  refreshAll();
+}
+
+export async function setVoiceModel(model: string) {
+  await setSetting("voiceModel", readModel(model));
+  refreshAll();
+}
+
+export async function setVoiceStyle(style: string) {
+  await setSetting("voiceStyle", readStyle(style));
   refreshAll();
 }
 

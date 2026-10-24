@@ -1,55 +1,57 @@
 /**
- * Which voice reads the viva examiner's lines. Client-safe.
- *
- * "auto" uses the natural voice when it's downloaded, otherwise the best of this
- * computer's own voices — never one of the Mac's novelty voices ("Bad News", "Albert",
- * "Zarvox"…), which is what made the examiner sound possessed.
+ * Who reads the viva examiner's lines: a Qwen3-TTS voice, run on this Mac (through the
+ * speech helper, TTSKit). Nothing else — the Mac's own voices are never used. Client-safe.
  */
-export type VoiceChoice = "auto" | `natural:${string}` | `system:${string}`;
 
-/** The natural voices that speak English natively (Qwen3-TTS). */
-export const NATURAL_VOICES = [
-  { id: "aiden", label: "Aiden", about: "warm, clear, American" },
-  { id: "ryan", label: "Ryan", about: "lively, energetic" },
+/** Qwen3-TTS CustomVoice's speakers. Aiden and Ryan are native English speakers; the
+ *  others speak English with their own accent. */
+export const QWEN_VOICES = [
+  { id: "aiden", label: "Aiden", about: "sunny, clear American man" },
+  { id: "ryan", label: "Ryan", about: "lively man with a strong rhythm" },
+  { id: "serena", label: "Serena", about: "warm, gentle woman" },
+  { id: "vivian", label: "Vivian", about: "bright young woman" },
+  { id: "sohee", label: "Sohee", about: "warm woman, full of feeling" },
+  { id: "ono-anna", label: "Ono Anna", about: "playful, light woman" },
+  { id: "eric", label: "Eric", about: "lively man, slightly husky" },
+  { id: "dylan", label: "Dylan", about: "young man, clear and natural" },
+  { id: "uncle-fu", label: "Uncle Fu", about: "older man, low and mellow" },
 ] as const;
+export type QwenVoice = (typeof QWEN_VOICES)[number]["id"];
 
-/** macOS novelty and old-synthesiser voices: never chosen automatically, hidden from the list. */
-const NOVELTY = new Set(
-  [
-    "Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos", "Deranged", "Good News", "Hysterical", "Jester",
-    "Organ", "Pipe Organ", "Superstar", "Trinoids", "Whisper", "Wobble", "Zarvox", "Fred", "Junior", "Kathy", "Ralph",
-    "Agnes", "Bruce", "Princess", "Vicki", "Victoria", "Eddy", "Flo", "Grandma", "Grandpa", "Reed", "Rocko", "Sandy", "Shelley",
-  ].map((n) => n.toLowerCase()),
-);
+/** The two sizes of Qwen3-TTS CustomVoice the helper runs. */
+export const QWEN_MODELS = [
+  {
+    id: "1.7b",
+    label: "Qwen3-TTS 1.7B",
+    size: "about 2.2 GB",
+    about: "The most natural, and speaks in the style you describe. Takes a moment longer per line.",
+  },
+  { id: "0.6b", label: "Qwen3-TTS 0.6B", size: "about 1 GB", about: "Quicker, a little less expressive. No speaking style." },
+] as const;
+export type QwenModel = (typeof QWEN_MODELS)[number]["id"];
 
-const baseName = (name: string) => name.replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
+export const DEFAULT_STYLE = "Calm, clear and friendly, like a kind examiner, at an unhurried pace.";
 
-export function isNovelty(voice: { name: string }): boolean {
-  return NOVELTY.has(baseName(voice.name));
+export function readVoice(raw: unknown): QwenVoice {
+  // Before only Qwen was offered, choices were stored as "natural:<id>", "system:…" or "auto".
+  const id = typeof raw === "string" ? raw.replace(/^natural:/, "") : "";
+  return QWEN_VOICES.find((v) => v.id === id)?.id ?? "aiden";
 }
 
-/** How natural a system voice is likely to sound: higher is better. */
-export function voiceScore(voice: { name: string; lang: string; localService?: boolean; default?: boolean }, locale = "en-GB"): number {
-  if (!voice.lang.toLowerCase().startsWith("en") || isNovelty(voice)) return -1;
-  let score = 0;
-  if (/premium/i.test(voice.name)) score += 40;
-  else if (/enhanced/i.test(voice.name)) score += 25;
-  if (/google/i.test(voice.name)) score += 10;
-  if (voice.lang.replace("_", "-").toLowerCase() === locale.toLowerCase()) score += 6;
-  if (voice.default) score += 3;
-  if (voice.localService) score += 1;
-  return score;
+export function readModel(raw: unknown): QwenModel {
+  return raw === "0.6b" ? "0.6b" : "1.7b";
 }
 
-/** English system voices worth offering, best first. */
-export function goodVoices<T extends { name: string; lang: string; localService?: boolean; default?: boolean }>(voices: T[], locale?: string): T[] {
-  return voices
-    .map((v) => ({ v, s: voiceScore(v, locale) }))
-    .filter((x) => x.s >= 0)
-    .sort((a, b) => b.s - a.s || a.v.name.localeCompare(b.v.name))
-    .map((x) => x.v);
+export function readStyle(raw: unknown): string {
+  const style = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  return style || DEFAULT_STYLE;
 }
 
-export function readChoice(raw: unknown): VoiceChoice {
-  return typeof raw === "string" && (raw === "auto" || /^(natural|system):.+/.test(raw)) ? (raw as VoiceChoice) : "auto";
+/**
+ * The model a line is said with: the one chosen when it's downloaded, else the other
+ * one if that is, else none.
+ */
+export function usableModel(chosen: QwenModel, ready: Record<QwenModel, boolean>): QwenModel | null {
+  if (ready[chosen]) return chosen;
+  return QWEN_MODELS.find((m) => ready[m.id])?.id ?? null;
 }

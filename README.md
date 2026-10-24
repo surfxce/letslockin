@@ -122,9 +122,10 @@ moves on. Answer out loud or type; a spoken answer is turned into text you can c
 before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac. Each
 question's exchange is marked like a sitting answer and counts towards its lecture's drill
 score. The iPhone app holds vivas too, with Apple's on-device speech recognition. The
-examiner speaks in the best voice installed (Premium and Enhanced first, never the Mac's
-novelty voices), or pick one in Settings → Viva voice — where a natural neural voice can
-also be downloaded once (about 1 GB, macOS 15 or later, in the Mac app).
+examiner speaks in a Qwen3-TTS voice, run on the Mac (TTSKit, in the Mac app): in
+Settings → Viva voice, download the 1.7B CustomVoice model (about 2.2 GB, the most
+natural, and it follows a speaking style you describe) or the quicker 0.6B (about 1 GB),
+and pick one of its nine voices. The Mac's own voices are never used.
 
 **Clinical cases.** Beside Viva, *Clinical cases* are OSCE-style: tick a lecture, or up
 to four that belong together, and the AI writes a patient around them. The examiner
