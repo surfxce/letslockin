@@ -132,6 +132,7 @@ presents the patient, then asks a stage at a time — what you'd ask, what you'd
 which investigations, the diagnosis, the management — following up like a viva and
 telling you what each stage found before the next. Each stage is marked like an LAQ, so
 what you miss feeds weak spots and mini-lessons; stages are never asked anywhere else.
+Cases sync to the iPhone too, under Exam → Clinical cases.
 
 **Handwritten answers.** Exams on paper? Write the answer by hand, then *Add photos of a
 handwritten answer* under its box (in a sitting or an exam). Your AI — Claude, Gemini,

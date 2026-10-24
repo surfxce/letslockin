@@ -12,6 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { lectureDecks, pictured } from "@/lib/slides";
 import { lectureRows } from "@/lib/views";
 import { readOptions } from "@/lib/mcq/service";
+import { readStages } from "@/lib/cases/schema";
 
 /** Pictures in the phone's copy point here; the app serves them from its own cache. */
 export const SLIDE_SCHEME = "lockin-slide";
@@ -38,6 +39,53 @@ function iso(d: Date | null | undefined): string | null {
   return d ? d.toISOString() : null;
 }
 
+type QuestionRow = {
+  id: string;
+  stem: string;
+  type: string;
+  rubric: string;
+  paperItemId: string | null;
+  linkedLectureIds: string | null;
+  concepts: Array<{ concept: { id: string; name: string; definition: string } }>;
+};
+
+const QUESTION_SELECT = {
+  id: true,
+  stem: true,
+  type: true,
+  rubric: true,
+  paperItemId: true,
+  linkedLectureIds: true,
+  concepts: { select: { concept: { select: { id: true, name: true, definition: true } } } },
+} as const;
+
+/** A question as the phone asks it, with what it needs to mark it the computer's way. */
+function phoneQuestion(q: QuestionRow) {
+  const rubric = readRubric(q.rubric);
+  let rubricValue: unknown = {};
+  try {
+    rubricValue = JSON.parse(q.rubric);
+  } catch {
+    // Shown without one; marking on the computer reports the problem.
+  }
+  const vars = markVars({
+    questionStem: q.stem,
+    rubric: rubricValue as Parameters<typeof markVars>[0]["rubric"],
+    answerText: "",
+    concepts: q.concepts.map((qc) => qc.concept),
+  });
+  return {
+    id: q.id,
+    stem: q.stem,
+    type: q.type,
+    modelAnswer: rubric.modelAnswer,
+    criteria: rubric.criteria,
+    markVars: { questionStem: vars.questionStem, rubric: vars.rubric, concepts: vars.concepts },
+    fromPaper: q.paperItemId !== null,
+    ...(q.linkedLectureIds ? { linkedLectureIds: readLinked(q.linkedLectureIds) } : {}),
+  };
+}
+
 /** Everything the phone shows, rendered the way the computer renders it. */
 export async function buildSnapshot(): Promise<PhoneSnapshot> {
   const settings = await getSettings();
@@ -54,18 +102,10 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
         summaryModel: true,
         module: { select: { title: true } },
         questions: {
-          // A clinical case's stages are asked only in the case, on the computer.
+          // A clinical case's stages come with the case, never as the lecture's questions.
           where: { caseId: null },
           orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            stem: true,
-            type: true,
-            rubric: true,
-            paperItemId: true,
-            linkedLectureIds: true,
-            concepts: { select: { concept: { select: { id: true, name: true, definition: true } } } },
-          },
+          select: QUESTION_SELECT,
         },
       },
     }),
@@ -99,6 +139,11 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
   const rowOf = new Map(rows.map((r) => [r.id, r]));
   const viva = await phoneVivaTemplate();
   const handwriting = await phoneHandwritingTemplate();
+  const cases = await prisma.clinicalCase.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: { questions: { select: { ...QUESTION_SELECT, lectureId: true } } },
+  });
 
   const waiting = new Set<string>();
   for (const job of markJobs) {
@@ -170,31 +215,7 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
       summaryHtml,
       summaryModel: l.summaryModel,
       images: [...new Set(images)],
-      questions: l.questions.map((q) => {
-        const rubric = readRubric(q.rubric);
-        let rubricValue: unknown = {};
-        try {
-          rubricValue = JSON.parse(q.rubric);
-        } catch {
-          // Shown without one; marking on the computer reports the problem.
-        }
-        const vars = markVars({
-          questionStem: q.stem,
-          rubric: rubricValue as Parameters<typeof markVars>[0]["rubric"],
-          answerText: "",
-          concepts: q.concepts.map((qc) => qc.concept),
-        });
-        return {
-          id: q.id,
-          stem: q.stem,
-          type: q.type,
-          modelAnswer: rubric.modelAnswer,
-          criteria: rubric.criteria,
-          markVars: { questionStem: vars.questionStem, rubric: vars.rubric, concepts: vars.concepts },
-          fromPaper: q.paperItemId !== null,
-          ...(q.linkedLectureIds ? { linkedLectureIds: readLinked(q.linkedLectureIds) } : {}),
-        };
-      }),
+      questions: l.questions.map(phoneQuestion),
       nextSitting,
       drillScore: rowOf.get(l.id)?.lastScore ?? null,
       sittingCount: rowOf.get(l.id)?.sittings ?? 0,
@@ -246,5 +267,13 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
       return options.length > m.answer ? [{ ...m, options }] : [];
     }),
     cards: phoneCards,
+    cases: cases.flatMap((c) => {
+      const byId = new Map(c.questions.map((q) => [q.id, q]));
+      const stages = readStages(c.stages).flatMap((s) => {
+        const q = byId.get(s.questionId);
+        return q ? [{ lectureId: q.lectureId, kind: s.kind, ask: s.ask, reveal: s.reveal, question: phoneQuestion(q) }] : [];
+      });
+      return stages.length ? [{ id: c.id, courseId: c.courseId, title: c.title, presentation: c.presentation, stages }] : [];
+    }),
   };
 }

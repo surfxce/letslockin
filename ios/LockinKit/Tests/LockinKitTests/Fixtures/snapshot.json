@@ -170,5 +170,71 @@
       "version": 0,
       "createdAt": "2026-10-20T00:00:00.000Z"
     }
+  ],
+  "cases": [
+    {
+      "id": "ccase000000000000000000001",
+      "courseId": "ccourse0000000000000000001",
+      "title": "Cola-coloured urine after a sore throat",
+      "presentation": "A 19-year-old man has cola-coloured urine two days after a sore throat.",
+      "stages": [
+        {
+          "lectureId": "clecture000000000000000001",
+          "kind": "history",
+          "ask": "What would you ask him?",
+          "reveal": "It has happened twice before, each time with a cold.",
+          "question": {
+            "id": "cstage0000000000000000001",
+            "stem": "**Clinical case.** A 19-year-old man has cola-coloured urine two days after a sore throat.\n\n**Stage 1 of 2 — History.** What would you ask him?",
+            "type": "LAQ",
+            "modelAnswer": "Asks about timing after infection.",
+            "criteria": [
+              {
+                "point": "Asks about timing after infection",
+                "marks": 6
+              },
+              {
+                "point": "Explains why",
+                "marks": 4
+              }
+            ],
+            "markVars": {
+              "questionStem": "**Clinical case.** A 19-year-old man has cola-coloured urine two days after a sore throat.\n\n**Stage 1 of 2 — History.** What would you ask him?",
+              "rubric": "{\n  \"modelAnswer\": \"Asks about timing after infection.\"\n}",
+              "concepts": "- cconcept000000000000000001 :: Gd-IgA1 — galactose-deficient IgA1"
+            },
+            "fromPaper": false
+          }
+        },
+        {
+          "lectureId": "clecture000000000000000001",
+          "kind": "diagnosis",
+          "ask": "What's the most likely diagnosis?",
+          "reveal": "Biopsy shows mesangial IgA deposits: IgA nephropathy.",
+          "question": {
+            "id": "cstage0000000000000000002",
+            "stem": "**Clinical case.** A 19-year-old man has cola-coloured urine two days after a sore throat.\n\n**History:** It has happened twice before, each time with a cold.\n\n**Stage 2 of 2 — Diagnosis.** What's the most likely diagnosis?",
+            "type": "LAQ",
+            "modelAnswer": "Names IgA nephropathy.",
+            "criteria": [
+              {
+                "point": "Names IgA nephropathy",
+                "marks": 6
+              },
+              {
+                "point": "Explains why",
+                "marks": 4
+              }
+            ],
+            "markVars": {
+              "questionStem": "**Clinical case.** A 19-year-old man has cola-coloured urine two days after a sore throat.\n\n**History:** It has happened twice before, each time with a cold.\n\n**Stage 2 of 2 — Diagnosis.** What's the most likely diagnosis?",
+              "rubric": "{\n  \"modelAnswer\": \"Names IgA nephropathy.\"\n}",
+              "concepts": "- cconcept000000000000000001 :: Gd-IgA1 — galactose-deficient IgA1"
+            },
+            "fromPaper": false
+          }
+        }
+      ]
+    }
   ]
 }

@@ -31,7 +31,7 @@ export interface SittingOutcome {
   note: string | null;
 }
 
-export async function ingestSitting(sitting: PhoneSitting, now = new Date(), source: "APP" | "EXAM" | "VIVA" = "APP"): Promise<SittingOutcome> {
+export async function ingestSitting(sitting: PhoneSitting, now = new Date(), source: "APP" | "EXAM" | "VIVA" | "CASE" = "APP"): Promise<SittingOutcome> {
   const outcome: SittingOutcome = { id: sitting.id, marked: 0, queued: 0, note: null };
   if (await prisma.attempt.findUnique({ where: { id: sitting.id }, select: { id: true } })) {
     return { ...outcome, note: "already received" };
@@ -157,7 +157,9 @@ export async function ingestReviews(reviews: PhoneReview[], now = new Date()): P
  */
 export async function ingestViva(viva: PhoneViva, now = new Date()): Promise<{ id: string; note: string | null }> {
   if (await prisma.viva.findUnique({ where: { id: viva.id }, select: { id: true } })) return { id: viva.id, note: "already received" };
-  for (const s of viva.sittings) await ingestSitting(s, now, "VIVA");
+  // A case run on the phone files its answers as a case's; one deleted since, as a viva's record.
+  const caseId = viva.caseId && (await prisma.clinicalCase.findUnique({ where: { id: viva.caseId }, select: { id: true } })) ? viva.caseId : null;
+  for (const s of viva.sittings) await ingestSitting(s, now, viva.caseId ? "CASE" : "VIVA");
   const responseIds = viva.plan.flatMap((p) => (p.responseId ? [p.responseId] : []));
   const kept = new Set((await prisma.response.findMany({ where: { id: { in: responseIds } }, select: { id: true } })).map((r) => r.id));
   const plan = viva.plan.map((p) => ({
@@ -173,6 +175,7 @@ export async function ingestViva(viva: PhoneViva, now = new Date()): Promise<{ i
       turns: JSON.stringify(viva.turns),
       current: plan.length,
       waitingOn: "done",
+      caseId,
       createdAt: when(viva.startedAt, now),
       finishedAt: when(viva.submittedAt, now),
     },

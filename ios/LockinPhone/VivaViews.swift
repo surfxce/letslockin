@@ -245,10 +245,20 @@ struct VivaRoomView: View {
         return words.filter { seen.insert($0.lowercased()).inserted }
     }
 
+    /// Reads out what the examiner has just said — all of it, when a case's findings and
+    /// its next question come together.
     private func speakNew(_ draft: VivaDraft) {
         defer { spoken = draft.turns.count }
         guard readAloud, draft.turns.count > spoken, let last = draft.turns.last, last.role == "examiner" else { return }
-        model.reader.say(last.text)
+        let fresh = draft.turns.suffix(from: min(spoken, draft.turns.count))
+        let from = fresh.lastIndex { $0.role == "student" }.map { $0 + 1 } ?? fresh.startIndex
+        model.reader.say(draft.turns[from...].map(\.text).joined(separator: " "))
+    }
+
+    private func heading(_ draft: VivaDraft) -> String {
+        let n = min(draft.current + 1, draft.plan.count)
+        guard draft.caseId != nil else { return "Question \(n) of \(draft.plan.count)" }
+        return "Stage \(n) of \(draft.plan.count)" + (draft.step.map { " · \(stageLabel($0.kind))" } ?? "")
     }
 
     private func room(_ draft: VivaDraft) -> some View {
@@ -335,7 +345,7 @@ struct VivaRoomView: View {
                 answer = [before.trimmingCharacters(in: .whitespacesAndNewlines), heard].filter { !$0.isEmpty }.joined(separator: " ")
             }
         }
-        .navigationTitle("Question \(min(draft.current + 1, draft.plan.count)) of \(draft.plan.count)")
+        .navigationTitle(heading(draft))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -354,7 +364,7 @@ struct VivaRoomView: View {
                 }
             }
         }
-        .confirmationDialog("End the viva now?", isPresented: $confirmingEnd, titleVisibility: .visible) {
+        .confirmationDialog(draft.caseId == nil ? "End the viva now?" : "End the case now?", isPresented: $confirmingEnd, titleVisibility: .visible) {
             Button("End and mark what I answered") {
                 dictation.stop()
                 model.reader.stop()
@@ -379,8 +389,11 @@ struct VivaResultView: View {
             List {
                 ForEach(Array(viva.plan.enumerated()), id: \.offset) { index, item in
                     let mark = mark(of: item, in: viva)
+                    let stage = caseStage(item, in: viva)
                     Section {
-                        if let question = model.question(item.questionId) {
+                        if let stage {
+                            Text(stage.ask).font(.body.weight(.medium))
+                        } else if let question = model.question(item.questionId) {
                             Text(question.stem).font(.body.weight(.medium))
                         }
                         ForEach(Array(viva.turns.filter { $0.questionId == item.questionId }.dropFirst().enumerated()), id: \.offset) { _, line in
@@ -390,7 +403,7 @@ struct VivaResultView: View {
                         }
                     } header: {
                         HStack {
-                            Text("Question \(index + 1)")
+                            Text(verbatim: header(index, stage: stage, isCase: viva.caseId != nil))
                             Spacer()
                             if let mark {
                                 Text("\(formatMark(mark)) / 10").monospacedDigit()
@@ -408,11 +421,61 @@ struct VivaResultView: View {
         }
     }
 
+    private func caseStage(_ item: VivaPlanItem, in viva: PhoneViva) -> PhoneCaseStage? {
+        guard let caseId = viva.caseId, let found = model.clinicalCase(caseId) else { return nil }
+        return found.stages.first(where: { $0.question.id == item.questionId })
+    }
+
+    private func header(_ index: Int, stage: PhoneCaseStage?, isCase: Bool) -> String {
+        guard isCase else { return "Question \(index + 1)" }
+        guard let stage else { return "Stage \(index + 1)" }
+        return "Stage \(index + 1) · \(stageLabel(stage.kind))"
+    }
+
     private func mark(of item: VivaPlanItem, in viva: PhoneViva) -> Double? {
         guard let responseId = item.responseId,
               let sitting = viva.sittings.first(where: { s in s.responses.contains { $0.id == responseId } })
         else { return nil }
         if sitting.responses.first(where: { $0.id == responseId })?.answerText.isEmpty == true { return 0 }
         return model.sittings(for: sitting.lectureId).first { $0.id == sitting.id }?.answers.first { $0.id == responseId }?.mark
+    }
+}
+
+/// A clinical case: what it is, and a button to start it — or the run already open.
+struct CaseStartView: View {
+    @Environment(AppModel.self) private var model
+    let caseId: String
+    @State private var started = false
+
+    var body: some View {
+        if started || model.vivaDraft?.caseId == caseId {
+            VivaRoomView()
+        } else if let found = model.clinicalCase(caseId) {
+            Form {
+                Section {
+                    Text(found.title).font(.headline)
+                    Text(found.stages.map { stageLabel($0.kind) }.joined(separator: " → "))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("The examiner presents the patient, then asks you a stage at a time, telling you what each stage found before the next. Answer out loud or type; each stage is marked like an LAQ.")
+                }
+                Section {
+                    Button {
+                        if model.startCase(caseId) { started = true }
+                    } label: {
+                        Label("Start the case", systemImage: "stethoscope").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } footer: {
+                    Text(model.vivaDraft == nil ? model.examinerNote : "This replaces the viva you haven't finished. \(model.examinerNote)")
+                }
+            }
+            .navigationTitle("Clinical case")
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            ContentUnavailableView("This case isn't here any more", systemImage: "stethoscope",
+                                   description: Text("It was deleted on your computer."))
+        }
     }
 }

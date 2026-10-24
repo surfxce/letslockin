@@ -38,6 +38,8 @@ enum Route: Hashable {
     case vivaSetup
     case vivaRoom
     case vivaResult(String)
+    /// A clinical case, to start (or carry on with) as a viva.
+    case caseRun(String)
 }
 
 struct RootView: View {
@@ -97,6 +99,7 @@ struct RouteDestination: ViewModifier {
             case .vivaSetup: VivaSetupView()
             case .vivaRoom: VivaRoomView()
             case .vivaResult(let id): VivaResultView(vivaId: id)
+            case .caseRun(let id): CaseStartView(caseId: id)
             }
         }
     }

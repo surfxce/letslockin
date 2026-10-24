@@ -427,7 +427,8 @@ final class AppModel {
     private func markResponses(of sitting: PhoneSitting) async -> [(String, Result<Marking, Error>)] {
         guard let template = snapshot?.marking, let lecture = lecture(sitting.lectureId) else { return [] }
         let jobs: [(responseId: String, question: Question, answer: String)] = sitting.responses.compactMap { r in
-            guard !r.answerText.isEmpty, r.marking == nil, let q = lecture.questions.first(where: { $0.id == r.questionId }) else { return nil }
+            guard !r.answerText.isEmpty, r.marking == nil,
+                  let q = lecture.questions.first(where: { $0.id == r.questionId }) ?? question(r.questionId) else { return nil }
             return (r.id, q, r.answerText)
         }
         guard !jobs.isEmpty else { return [] }
@@ -530,7 +531,27 @@ final class AppModel {
 
     // MARK: - Viva
 
-    func question(_ id: String) -> Question? { snapshot?.lectures.lazy.flatMap(\.questions).first { $0.id == id } }
+    /// A lecture's question, or a clinical case's stage.
+    func question(_ id: String) -> Question? {
+        snapshot?.lectures.lazy.flatMap(\.questions).first(where: { $0.id == id })
+            ?? snapshot?.cases?.lazy.flatMap(\.stages).first(where: { $0.question.id == id })?.question
+    }
+
+    /// Clinical cases written on the computer, newest first.
+    var cases: [PhoneCase] { snapshot?.cases ?? [] }
+
+    func clinicalCase(_ id: String) -> PhoneCase? { cases.first { $0.id == id } }
+
+    /// Starts a run of a case (replacing a viva not finished). False when it has no stages.
+    @discardableResult
+    func startCase(_ id: String) -> Bool {
+        guard let draft = clinicalCase(id)?.makeRun() else { return false }
+        vivaDraft = draft
+        vivaNote = nil
+        relayDownFor = nil
+        saveVivaDraft()
+        return true
+    }
 
     func pastViva(_ id: String) -> PhoneViva? { vivaHistory.first { $0.id == id } }
 

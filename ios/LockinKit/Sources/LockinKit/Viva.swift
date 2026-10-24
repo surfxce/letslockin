@@ -55,6 +55,8 @@ public struct PhoneViva: Codable, Hashable, Identifiable, Sendable {
     public var plan: [VivaPlanItem]
     public var turns: [VivaLine]
     public var sittings: [PhoneSitting]
+    /// Set when it ran a clinical case.
+    public var caseId: String? = nil
 }
 
 /// A viva being held on the phone, kept as it goes (as lib/viva/service.ts runs one).
@@ -68,8 +70,14 @@ public struct VivaDraft: Codable, Hashable, Identifiable, Sendable {
     public var current: Int
     /// Follow-ups asked on the current question.
     public var probes: Int
+    /// Set when it runs a clinical case: its stages, in plan order.
+    public var caseId: String? = nil
+    public var steps: [CaseStep]? = nil
 
     public var item: VivaPlanItem? { current < plan.count ? plan[current] : nil }
+
+    /// The stage being asked, when it runs a case.
+    public var step: CaseStep? { item.flatMap { item in steps?.first { $0.questionId == item.questionId } } }
     public var isOver: Bool { current >= plan.count }
 
     /// One question's exchange so far, the question itself first.
@@ -99,18 +107,28 @@ public struct VivaDraft: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
-    /// Closes the current question and puts the next, or ends the viva.
+    /// Closes the current question and puts the next, or ends the viva. A case says what
+    /// the stage found first, then asks the next stage.
     public mutating func moveOn(closing: String, stem: (String) -> String?, at now: Date = Date()) {
         guard let item else { return }
         let line = closing.trimmingCharacters(in: .whitespacesAndNewlines)
         if !line.isEmpty { turns.append(VivaLine(role: "examiner", text: line, questionId: item.questionId, at: now)) }
+        if let reveal = step?.reveal, !reveal.isEmpty {
+            turns.append(VivaLine(role: "examiner", text: reveal, questionId: item.questionId, at: now))
+        }
         current += 1
         probes = 0
         if let next = self.item {
-            let text = stem(next.questionId).map { "Next question. \($0)" } ?? "Next question. (This question is no longer on the computer — say anything to move on.)"
+            let text: String
+            if let steps {
+                text = steps.first { $0.questionId == next.questionId }?.ask ?? "(This stage is no longer on the computer — say anything to move on.)"
+            } else {
+                text = stem(next.questionId).map { "Next question. \($0)" } ?? "Next question. (This question is no longer on the computer — say anything to move on.)"
+            }
             turns.append(VivaLine(role: "examiner", text: text, questionId: next.questionId, at: now))
         } else {
-            turns.append(VivaLine(role: "examiner", text: "That's the end of the viva. Thank you — your answers will be marked.", questionId: "", at: now))
+            let end = steps == nil ? "That's the end of the viva." : "That's the end of the case."
+            turns.append(VivaLine(role: "examiner", text: "\(end) Thank you — your answers will be marked.", questionId: "", at: now))
         }
     }
 
@@ -142,7 +160,7 @@ public struct VivaDraft: Codable, Hashable, Identifiable, Sendable {
             }
             sittings.append(PhoneSitting(id: LockinID.make(prefix: "s"), lectureId: lectureId, startedAt: startedAt, submittedAt: now, responses: responses))
         }
-        return PhoneViva(id: id, title: title, startedAt: startedAt, submittedAt: now, plan: plan, turns: turns, sittings: sittings)
+        return PhoneViva(id: id, title: title, startedAt: startedAt, submittedAt: now, plan: plan, turns: turns, sittings: sittings, caseId: caseId)
     }
 }
 

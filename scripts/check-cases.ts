@@ -24,6 +24,7 @@ async function main() {
   const { questionNumbers } = await import("../lib/views");
   const { buildSnapshot } = await import("../lib/phone/snapshot");
   const { weakSpots } = await import("../lib/lessons/service");
+  const { ingestViva } = await import("../lib/phone/ingest");
   const provider = new FakeProvider(0);
   try {
     await applyMigrations();
@@ -147,6 +148,31 @@ async function main() {
     assert.equal(row.last?.done, true);
     assert.equal(row.lectures.join("|"), "IgA nephropathy|Nephritic syndrome");
     assert.deepEqual(row.stages, ["history", "investigations", "diagnosis"]);
+
+    // On the phone: the case comes with its stages as questions to ask and mark, and a
+    // run handed back is filed as a case's.
+    const phoneCase = (await buildSnapshot()).cases?.find((c) => c.id === caseId);
+    assert.deepEqual(phoneCase?.stages.map((s) => s.kind), ["history", "investigations", "diagnosis"]);
+    assert.equal(phoneCase?.stages[0].question.id, stages[0].questionId);
+    assert.match(phoneCase!.stages[2].question.markVars.questionStem, /Stage 3 of 3 — Diagnosis/);
+    const at = new Date().toISOString();
+    await ingestViva({
+      id: "phone-case-run-0001",
+      title: written.title,
+      startedAt: at,
+      submittedAt: at,
+      caseId,
+      plan: [{ questionId: stages[0].questionId, lectureId: ids[0], responseId: "phone-case-answer-0001" }],
+      turns: [
+        { role: "examiner", text: "Presented.", questionId: stages[0].questionId, at },
+        { role: "student", text: "When it began.", questionId: stages[0].questionId, at },
+      ],
+      sittings: [
+        { id: "phone-case-sitting-0001", lectureId: ids[0], startedAt: at, submittedAt: at, responses: [{ id: "phone-case-answer-0001", questionId: stages[0].questionId, answerText: "When it began." }] },
+      ],
+    });
+    assert.equal((await prisma.attempt.findUniqueOrThrow({ where: { id: "phone-case-sitting-0001" } })).source, "CASE");
+    assert.equal((await prisma.viva.findUniqueOrThrow({ where: { id: "phone-case-run-0001" } })).caseId, caseId);
 
     // Deleted: its stages go with it; the run's record stays, nameless.
     await deleteCase(caseId);

@@ -28,8 +28,9 @@ struct ExamTab: View {
                 }
                 Section {
                     if let viva = model.vivaDraft {
+                        let unit = viva.caseId == nil ? "question" : "stage"
                         NavigationLink(value: Route.vivaRoom) {
-                            Label("Continue \(viva.title) · question \(min(viva.current + 1, viva.plan.count)) of \(viva.plan.count)",
+                            Label("Continue \(viva.title) · \(unit) \(min(viva.current + 1, viva.plan.count)) of \(viva.plan.count)",
                                   systemImage: "mic.circle")
                         }
                     }
@@ -49,6 +50,22 @@ struct ExamTab: View {
                 } footer: {
                     Text("An oral exam: answer out loud, and the examiner follows up on what you left out. Marked like any sitting.")
                 }
+                Section {
+                    ForEach(model.cases) { found in
+                        NavigationLink(value: Route.caseRun(found.id)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(found.title)
+                                Text(caseDetail(found)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Clinical cases")
+                } footer: {
+                    Text(model.cases.isEmpty
+                         ? "OSCE-style cases, run like a viva a stage at a time. Write them on your computer, under Viva → Clinical cases, then sync."
+                         : "A patient, a stage at a time — history, examination, investigations, diagnosis, management — with what each found told before the next.")
+                }
                 if !model.examHistory.isEmpty {
                     Section("Past exams") {
                         ForEach(model.examHistory) { exam in
@@ -65,6 +82,10 @@ struct ExamTab: View {
             .lockinRoutes()
         }
     }
+}
+
+private func caseDetail(_ found: PhoneCase) -> String {
+    found.stages.map { stageLabel($0.kind) }.joined(separator: " · ")
 }
 
 private struct ExamRow: View {

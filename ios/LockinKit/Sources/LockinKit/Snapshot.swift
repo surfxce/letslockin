@@ -14,6 +14,8 @@ public struct Snapshot: Codable, Hashable, Sendable {
     /// How this phone may have a handwritten answer typed out itself, by a model that
     /// sees pictures; nil to ask the computer.
     public var handwriting: MarkingTemplate?
+    /// Clinical cases to run as a viva; nil from computers before cases.
+    public var cases: [PhoneCase]?
     public var courses: [Course]
     public var lectures: [Lecture]
     public var sittings: [Sitting]
@@ -23,7 +25,7 @@ public struct Snapshot: Codable, Hashable, Sendable {
 
     public init(v: Int = 1, computer: String, generatedAt: Date, marking: MarkingTemplate?, computerMarker: String?,
                 courses: [Course], lectures: [Lecture], sittings: [Sitting], cards: [Card], mcqs: [Mcq]? = nil, viva: MarkingTemplate? = nil,
-                handwriting: MarkingTemplate? = nil) {
+                handwriting: MarkingTemplate? = nil, cases: [PhoneCase]? = nil) {
         self.v = v
         self.computer = computer
         self.generatedAt = generatedAt
@@ -36,6 +38,7 @@ public struct Snapshot: Codable, Hashable, Sendable {
         self.mcqs = mcqs
         self.viva = viva
         self.handwriting = handwriting
+        self.cases = cases
     }
 }
 

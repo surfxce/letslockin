@@ -12,6 +12,22 @@ const When = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "a date");
 // ---------------------------------------------------------------------------
 // Computer → phone
 
+/** A question as the phone asks and marks it. */
+const PhoneQuestionSchema = z.object({
+  id: Id,
+  stem: z.string(),
+  type: z.string(),
+  modelAnswer: z.string().nullable(),
+  criteria: z.array(z.object({ point: z.string(), marks: z.number().nullable() })),
+  /** The marking prompt's variables, all but the answer. */
+  markVars: z.object({ questionStem: z.string(), rubric: z.string(), concepts: z.string() }),
+  /** From a past paper: asked only when the paper is sat, so never in the phone's exams. */
+  fromPaper: z.boolean(),
+  /** Links lectures: every lecture it needs, this one first. Asked only in exams that
+   *  include them all, never in this lecture's sittings. */
+  linkedLectureIds: z.array(z.string()).optional(),
+});
+
 const FeedbackItem = z.object({ kind: z.string(), text: z.string() });
 
 export const PhoneSnapshotSchema = z.object({
@@ -69,22 +85,7 @@ export const PhoneSnapshotSchema = z.object({
       summaryModel: z.string().nullable(),
       /** Every picture the summary and cards show: "<n>" or "<n>?crop=x,y,w,h". */
       images: z.array(z.string()),
-      questions: z.array(
-        z.object({
-          id: Id,
-          stem: z.string(),
-          type: z.string(),
-          modelAnswer: z.string().nullable(),
-          criteria: z.array(z.object({ point: z.string(), marks: z.number().nullable() })),
-          /** The marking prompt's variables, all but the answer. */
-          markVars: z.object({ questionStem: z.string(), rubric: z.string(), concepts: z.string() }),
-          /** From a past paper: asked only when the paper is sat, so never in the phone's exams. */
-          fromPaper: z.boolean(),
-          /** Links lectures: every lecture it needs, this one first. Asked only in exams that
-           *  include them all, never in this lecture's sittings. */
-          linkedLectureIds: z.array(z.string()).optional(),
-        }),
-      ),
+      questions: z.array(PhoneQuestionSchema),
       /** The questions a sitting would ask now, as the computer picks them. */
       nextSitting: z.array(Id),
       /** As the lecture table shows them: the drill score, sittings done, next one due. */
@@ -140,6 +141,19 @@ export const PhoneSnapshotSchema = z.object({
       createdAt: When,
     }),
   ),
+  /** Clinical cases, to run as a viva: each stage's question rides with it, not in its
+   *  lecture's questions, so a phone that doesn't know cases never asks one. */
+  cases: z
+    .array(
+      z.object({
+        id: Id,
+        courseId: Id,
+        title: z.string(),
+        presentation: z.string(),
+        stages: z.array(z.object({ lectureId: Id, kind: z.string(), ask: z.string(), reveal: z.string(), question: PhoneQuestionSchema })),
+      }),
+    )
+    .optional(),
 });
 export type PhoneSnapshot = z.infer<typeof PhoneSnapshotSchema>;
 
@@ -215,6 +229,8 @@ export const PhoneVivaSchema = z.object({
     .array(z.object({ role: z.enum(["examiner", "student"]), text: z.string().max(20_000), questionId: z.string().max(64), at: When }))
     .max(400),
   sittings: z.array(PhoneSittingSchema).max(40),
+  /** Set when it ran a clinical case: its answers are a case's, not a viva's. */
+  caseId: Id.nullable().optional(),
 });
 export type PhoneViva = z.infer<typeof PhoneVivaSchema>;
 
