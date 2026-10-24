@@ -1,0 +1,164 @@
+import { AutoFlashcardsToggle } from "@/app/ak/DeckControls";
+import Link from "next/link";
+
+import { AppUpdate } from "@/app/settings/AppUpdate";
+import { PhoneLink } from "@/app/settings/PhoneLink";
+import { phoneStatus } from "@/app/settings/phone-actions";
+import { CloudSettings } from "@/app/settings/CloudSettings";
+import { RecordingSettings } from "@/app/settings/Recordings";
+import { VoicePicker } from "@/app/settings/VoicePicker";
+import { LaqSettings, ModePicker, NotifyToggle } from "@/app/settings/controls";
+import { Tag } from "@/app/ui/bits";
+import { Icon } from "@/app/ui/Icon";
+import { ModelPicker } from "@/app/ui/ModelPicker";
+import { prisma } from "@/lib/db";
+import { plural, tagTone } from "@/lib/format";
+import { detectAntigravity, detectCli, detectCodex } from "@/lib/llm/detect";
+import { findModel } from "@/lib/llm/catalog";
+import { API_SERVICES, CLOUD_ENGINE_LABEL, CLOUD_MODEL_LABEL, usesAi } from "@/lib/modes";
+import { modelsPayload } from "@/lib/payloads";
+import { geminiListener, listenerLabel } from "@/lib/recordings/gemini";
+import { whisperHelper } from "@/lib/recordings/helper";
+import { naturalStatus } from "@/lib/voice/natural";
+import { getApiKey, getSettings, readHeartbeat } from "@/lib/settings";
+
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const [settings, cli, codex, agy, apiKey, beat, models, courses, gemini] = await Promise.all([
+    getSettings(),
+    detectCli(),
+    detectCodex(),
+    detectAntigravity(),
+    getApiKey(),
+    readHeartbeat(),
+    modelsPayload(),
+    prisma.course.findMany({ orderBy: { createdAt: "asc" }, include: { _count: { select: { lectures: true } } } }),
+    geminiListener().catch(() => null),
+  ]);
+  const linked = findModel(models.active);
+  // The fallback is the model chosen for local mode, else any that is downloaded.
+  const offline = linked ?? models.installed.map((m) => findModel(m.id)).find(Boolean) ?? null;
+  // What the chosen cloud AI is, for the Automatic choice and the worker line.
+  const engine = (() => {
+    const label = CLOUD_ENGINE_LABEL[settings.cloudEngine];
+    switch (settings.cloudEngine) {
+      case "codex":
+        return { label, ready: codex.found, detail: codex.found ? settings.codexModel || null : "not found" };
+      case "antigravity":
+        return { label, ready: agy.found, detail: agy.found ? settings.agyModel || null : "not found" };
+      case "api": {
+        const anthropic = settings.apiService === "anthropic";
+        const ready = (!!apiKey || settings.apiService === "custom") && (anthropic || !!settings.apiModel);
+        const service = API_SERVICES[settings.apiService].label;
+        const model = anthropic ? CLOUD_MODEL_LABEL[settings.cloudModel] : settings.apiModel;
+        return { label: service, ready, detail: ready ? model : "needs a key and a model" };
+      }
+      default:
+        return { label, ready: cli.found, detail: cli.found ? CLOUD_MODEL_LABEL[settings.cloudModel] : "not found" };
+    }
+  })();
+  const worker = settings.mode === "local" ? (linked?.name ?? "no model yet") : `${engine.label}${engine.detail && engine.ready ? ` · ${engine.detail}` : ""}`;
+
+  return (
+    <main className="page narrow">
+      <h1 className="page-title">Settings</h1>
+      <p className="page-sub">
+        Your lectures, answers and cards stay on this computer. <a href="#intro">See how Lockin works again</a>.
+      </p>
+
+      <h2 id="phone">iPhone</h2>
+      <PhoneLink initial={await phoneStatus()} />
+
+      <h2>Summaries and LAQs</h2>
+      <ModePicker mode={settings.mode} engine={engine} localModel={linked?.name ?? null} />
+      {settings.mode === "auto" && (
+        <CloudSettings
+          engine={settings.cloudEngine}
+          cloudModel={settings.cloudModel}
+          fallbackLocal={settings.fallbackLocal}
+          offlineModel={offline?.name ?? null}
+          codexModel={settings.codexModel}
+          agyModel={settings.agyModel}
+          apiService={settings.apiService}
+          apiBaseUrl={settings.apiBaseUrl}
+          apiModel={settings.apiModel}
+          apiVision={settings.apiVision}
+          apiKeySaved={apiKey ? `…${apiKey.slice(-4)}` : null}
+          tools={{ claude: cli, codex, antigravity: agy }}
+        />
+      )}
+      {usesAi(settings.mode) && (
+        <div className="setting">
+          <div>
+            <div className="st">AI</div>
+            <div className="sd">
+              {beat?.alive
+                ? `Working with ${worker}.`
+                : "Not running, so nothing is being prepared or marked. It starts with the Lockin app."}
+            </div>
+          </div>
+          <Tag tone={beat?.alive ? "green" : "orange"}>{beat?.alive ? "Running" : "Stopped"}</Tag>
+        </div>
+      )}
+
+      <h2 id="laqs">LAQs</h2>
+      <LaqSettings
+        laqsPerHour={settings.laqsPerHour}
+        sittingPerHour={settings.sittingPerHour}
+        laqStyle={settings.laqStyle}
+      />
+
+      <h2 id="recordings">Lecture recordings</h2>
+      <RecordingSettings model={settings.whisperModel} gemini={gemini ? listenerLabel(gemini) : null} helper={!!whisperHelper()} />
+
+      <h2 id="voice">Viva voice</h2>
+      <VoicePicker initial={{ voice: settings.vivaVoice, model: settings.voiceModel, style: settings.voiceStyle }} status={naturalStatus()} />
+
+      <h2 id="ak">AK · Anki Killer</h2>
+      <AutoFlashcardsToggle enabled={settings.autoFlashcards} />
+
+      <h2 id="local">Offline AI on this computer</h2>
+      <p className="muted small" style={{ marginTop: -4 }}>
+        Download a model once and Lockin works without the internet. The middle one suits this computer best.
+      </p>
+      <ModelPicker initial={models} showInstalled />
+
+      <AppUpdate />
+
+      <h2>Getting started</h2>
+      <div className="setting">
+        <div>
+          <div className="st">Onboarding</div>
+          <div className="sd">The short tour from the first time you opened Lockin.</div>
+        </div>
+        <a href="#intro" className="btn">
+          <Icon name="refresh" size={14} /> Repeat onboarding
+        </a>
+      </div>
+
+      <h2>Reminders</h2>
+      <NotifyToggle enabled={settings.notify} />
+
+      <h2>Courses</h2>
+      <div className="files">
+        {courses.map((c) => (
+          <div key={c.id} className="file" style={{ alignItems: "center" }}>
+            <Tag tone={tagTone(c.code)}>{c.code}</Tag>
+            <span style={{ flex: 1 }}>
+              {c.title} <span className="small muted">· {plural(c._count.lectures, "lecture")}</span>
+            </span>
+            <Link href={`/courses/${c.id}/settings`} className="btn sm">
+              <Icon name="gear" size={13} /> Edit
+            </Link>
+          </div>
+        ))}
+      </div>
+      <p>
+        <Link href="/courses/new" className="btn">
+          <Icon name="plus" /> New course
+        </Link>
+      </p>
+    </main>
+  );
+}

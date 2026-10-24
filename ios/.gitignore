@@ -1,0 +1,9 @@
+# Made by `xcodegen` from project.yml.
+/LockinPhone.xcodeproj
+/LockinPhone/Info.plist
+# SwiftPM and Xcode build output.
+/LockinKit/.build
+/LockinKit/.swiftpm
+/build
+xcuserdata/
+DerivedData/

@@ -1,36 +1,317 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lockin
 
-## Getting Started
+Lectures in, exam practice out. Lockin turns each lecture's transcript and slides into a
+summary and long-answer questions (LAQs), marks your closed-book answers against a fixed
+marking guide, scores each sitting with the geometric mean, and tells you when each lecture
+is due again.
 
-First, run the development server:
+## How it works
+
+1. **Add lectures.** Point a course at the folder your files are in, then choose how they
+   become lectures:
+   - **Sorted already** — files named by lecture are grouped from their names, locally, in a
+     second: lecture numbers (L7, Lecture 07, Week 3 Lecture 2), codes (A4), dates, module
+     folders or shared names. A file for several lectures (`A4-A5 slides`, `L4-5`,
+     `Lectures 4 & 5`) goes into each of them.
+   - **Sort with AI** — for a messy folder: Claude Haiku (or your offline model) reads the
+     start of every file — a transcript's opening, each slide's first line — and works out
+     which go together, which deck two lectures share, and what is not a lecture at all.
+
+   Either way the list is shown to check and edit before anything is imported: untick a
+   lecture, take a file out of one with its ×, retitle. Past papers and course admin are set
+   aside. Files already in the course are recognised; new ones are added to the lecture they
+   belong to rather than making a second copy of it. Or add one lecture by dropping in files
+   or pasting the transcript.
+2. **Summary and LAQs**, one lecture at a time, in one of three modes (Settings):
+   - **Automatic** — the worker runs a cloud AI, chosen in Settings → Cloud AI:
+     **Claude Code** (Sonnet by default; Opus or Haiku), **ChatGPT Codex** (the `codex` CLI,
+     with a ChatGPT plan), **Google Antigravity** (the `agy` CLI, or the Gemini CLI it
+     replaced), or **an API key** — Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, or any
+     service that speaks OpenAI's chat format, such as Ollama. *Test it* sends one tiny
+     question to check it is set up. A lecture is read once to write its title, summary and
+     concepts, then its LAQs are written; the next lecture starts only when that one is done.
+     The top bar always says what it is on and for how long, each lecture page shows its
+     stages with start times, and the ⓘ by its number says which model wrote what. If the
+     cloud AI fails (signed out, over a limit, offline) and an offline model is downloaded,
+     that model does the job instead.
+   - **On this computer** — the same, on an open model downloaded to this computer, so it
+     works with no internet and no account. Slower; see [Offline AI](#offline-ai).
+   - **Copy & paste** — no AI runs locally. Each lecture has *Copy prompt* buttons for any AI
+     chat (the prompt carries the transcript) and boxes that turn the pasted reply into a
+     formatted summary, LAQ cards, or coloured scores, with a live preview before saving.
+
+   **Slides are read as pictures, and shown in summaries.** Every cloud AI sees the slides —
+   Claude and Gemini open the PDF decks, Codex and image-capable API models are shown each
+   page as a picture — so text inside images, diagrams, graphs and
+   photos is read, not lost. Where a slide's figure helps, the summary shows it — the model
+   writes `![what it shows](slide:12)` and Lockin puts the slide's picture there, drawn from
+   the PDF the first time it is viewed. As it reads, Claude writes a note on each slide; the
+   steps that write and mark LAQs, which only read text, use those notes. A deck shared by
+   two lectures is copied into each, and each lecture covers only the part its transcript
+   does. In copy & paste mode the prompt asks you to attach the PDF (there is a download
+   button) and asks for the same slide pictures. Offline, see below. PowerPoint files give
+   their text but not pictures — export them as PDF for that.
+3. **Module aims are left out.** Slides that are a module's aims or learning objectives are
+   dropped before any model sees them, and the prompts tell the model to ignore aims read
+   aloud, housekeeping and acknowledgements. Each lecture page lists what was left out, folded
+   to one line: hover a part to see what it said, click it to put it back in the summary.
+4. **Practise closed book.** *Start LAQs* asks two questions per lecture hour (Settings → LAQs
+   changes how many are written and asked, and their style: mixed, a short scenario, or
+   straight to the point), weakest concepts first. Answers save as you type, and a sitting
+   left unsubmitted is picked up again. They are marked against the guide frozen when the
+   question was written. A sitting's score is the geometric mean of its marks, so one weak
+   answer drags it down. Each marked LAQ links to a Markdown sheet of notes to copy down:
+   what was wrong (✗), partly right (~) and missed (+). Follow-up sittings focus weak
+   concepts; the lecture's drill score uses the latest mark for each concept, with a
+   superscript showing how many times you have drilled after the first sitting.
+5. **Come back when due.** Score 7+ and the gap grows (1 → 3 → 7 → 14 → 30 days); 5–7 holds;
+   under 5 it is back tomorrow; everything lands before the exam date. Due lectures show at
+   the top of the home page and as a badge, and as notifications if they are turned on.
+
+**Exam mode.** The **Exam** tab sets a mixed paper from across your lectures: tick whole
+courses, modules or single lectures, choose how many multiple-choice and long-answer
+questions, and time it if you like. Questions are spread across the lectures chosen, ones you
+haven't seen first — or, with *Weak areas first*, the lectures with the lowest drill scores
+and the questions you did worst on. Multiple choice comes first and is marked at once, with
+an explanation for each; long answers are marked like any sitting and count towards each
+lecture's drill score. A timer counts down, and past the limit it counts on in red rather
+than taking the paper away. Answers save as you go, so an exam can be left and finished
+later. The multiple-choice questions — five a lecture — are written alongside its LAQs and
+stay hidden everywhere except exams; *Write MCQs for them* adds them to lectures prepared
+before this existed. In copy & paste mode exams are long answers only.
+
+**AK, the flashcards.** Each lecture can have a generated deck, cards you make yourself, or
+both: *Write cards* (Markdown, with bold, italics, lists and pictures — paste one straight
+in), *Cover-up cards from a picture* (draw a box over each label of a diagram or slide and
+each box becomes a card, Anki's image occlusion: hide all and guess one, or hide one), and
+*Import a CSV* (spreadsheets, or Anki's *Notes in Plain Text* export, HTML and cloze
+deletions included; re-importing a file adds nothing twice). Any picture can be drawn on
+first — circle it, box it, point at it, cover part of it up. Cards and their pictures sync to
+the iPhone app.
+
+**Today.** The **Today** tab (and the top of the home page) plans the day to fit the time you
+have: AK cards that are due, LAQs that are due — courses with a sooner exam first, then the
+longest overdue — a weak lecture to drill, some new cards, and a practice exam in the weeks
+before an exam. What doesn't fit is listed under *If you have more time*.
+
+**Progress.** How ready you are for each course if the exam were today (your latest drill
+score on each lecture, undrilled ones counting as zero), every sitting's score over time,
+every concept coloured by its latest mark, and a map of how your lectures relate: lectures
+are linked by the distinctive words they share, so revising one points you to its
+neighbours.
+
+**Mistakes become cards.** A marked sitting or exam offers to turn what you missed or got
+wrong into AK cards — written as proper questions by the AI, or as they stand without one —
+and wrong multiple choice becomes a card with its options. **AK** also reviews everything
+due at once (or a course, or a tag), runs a *Hard cards* session of the ones you keep
+forgetting, flags problem cards, lets you suspend and tag cards, and imports Anki decks
+(*.apkg*, pictures and tags included).
+
+**Past papers.** Add a real past paper on the Exam tab: it's split into questions, each
+matched to the lecture it tests and given a marking guide from that lecture, then sat timed
+and marked like your LAQs. Its questions stay out of normal sittings until you sit it.
+
+**Questions that link lectures.** On the Exam tab, *Write them* pairs each course's lectures
+that share the most (as the Progress map does) and writes a couple of long answers for each
+pair that need both lectures to answer well. They're filed under the later lecture, never
+asked in its own sittings, and come last in any exam that includes every lecture they need.
+
+**Viva.** The **Viva** tab is an oral exam: the AI examiner asks one of your LAQs (read
+aloud), listens to your answer, follows up — at most twice — on anything it left out, and
+moves on. Answer out loud or type; a spoken answer is turned into text you can correct
+before sending, by Gemini when it's your AI, otherwise by Whisper on the Mac — which
+hears it while you speak, so your words appear as you go (the last few still settling)
+and only the final second or two is left to hear when you stop. Each
+question's exchange is marked like a sitting answer and counts towards its lecture's drill
+score. The iPhone app holds vivas too, with Apple's on-device speech recognition. The
+examiner speaks in a Qwen3-TTS voice, run on the Mac (TTSKit, in the Mac app): in
+Settings → Viva voice, download the 1.7B CustomVoice model (about 2.2 GB, the most
+natural, and it follows a speaking style you describe) or the quicker 0.6B (about 1 GB),
+and pick one of its nine voices. The Mac's own voices are never used.
+
+**Clinical cases.** Beside Viva, *Clinical cases* are OSCE-style: tick a lecture, or up
+to four that belong together, and the AI writes a patient around them. The examiner
+presents the patient, then asks a stage at a time — what you'd ask, what you'd look for,
+which investigations, the diagnosis, the management — following up like a viva and
+telling you what each stage found before the next. Each stage is marked like an LAQ, so
+what you miss feeds weak spots and mini-lessons; stages are never asked anywhere else.
+Cases sync to the iPhone too, under Exam → Clinical cases.
+
+**Handwritten answers.** Exams on paper? Write the answer by hand, then *Add photos of a
+handwritten answer* under its box (in a sitting or an exam). Your AI — Claude, Gemini,
+ChatGPT, not the computer's text recognition — types it out as written, without fixing
+anything, and the words it wasn't sure of are listed to check before you submit. On the
+iPhone, *Wrote it on paper?* scans the pages with the camera. Photos are deleted once read.
+
+**Mini-lessons.** When the marker says you've missed or got the same concept wrong in two
+or more answers, Lockin writes a short lesson on just that — a few paragraphs from the
+lecture aimed at what went wrong, and three quick questions to check yourself — and puts it
+in Today. *Keep these as AK cards* adds the questions to the lecture's deck. Progress lists
+your weak spots.
+
+**Lecture recordings.** Add a lecture's audio or video (*.mp4 .m4a .mp3 .mov*…) on its page,
+with a new lecture, or in a folder import, and it's transcribed before the lecture is
+prepared. When Gemini is your AI (an API key or Antigravity), the sound goes straight to
+Gemini, which listens and writes the transcript. Otherwise Whisper transcribes it on the Mac
+— free and offline — and your AI then reads the transcript beside the slides' words and
+corrects the technical terms Whisper misheard. Videos are cut down to their sound (about
+15 MB an hour). Settings → Lecture recordings chooses Whisper's accurate or fast model.
+
+**Reading a summary.** The round **?** in the corner asks a question answered from the
+summary, and adds the answer under a heading of your choice. Select any text to have it
+**broken down**, then *Add to glossary*: the words are underlined wherever they appear and
+show the explanation on hover. **Edit** switches the summary to an editor — formatted, or as
+Markdown — with headings and dot points at three levels (Tab and Shift+Tab move a point).
+Lockin remembers how far down each summary you had read. Hover a slide picture and press
+**Crop** to keep just the part that matters.
+
+**Exporting.** *Export PDF* — on a course, on a module's group in the lecture table, or on a
+lecture — opens a preview of the summaries as a document: a title page with contents, then
+each lecture on new pages with its slide pictures (crops and all), formatting and glossary.
+Choose the whole course, a module, or tick particular lectures; leave out pictures, the
+glossary or the title page; A4 or Letter. In the desktop app *Save as PDF* writes the file
+itself, with page numbers and a bookmark for each lecture; in a browser it opens the print
+window, where *Save as PDF* is one of the printers.
+
+The home page is a database of every lecture: sort by date, weakest first or due soonest,
+group by module (with each module's average) or status, and search.
+
+## Running it
+
+**Download the Electron app for Mac:** [Lockin.dmg](https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg)
+(Apple Silicon), built by GitHub from the latest code. The Swift rewrite is shelved. Open it, drag Lockin into
+Applications. It isn't signed by Apple, so the first time macOS says it can't verify it:
+choose System Settings → Privacy & Security → *Open Anyway*, or run once in Terminal
+`xattr -dr com.apple.quarantine /Applications/Lockin.app`. After that, **Settings → Updates** keeps it current: each build also publishes
+a few-MB update of Lockin's own code, which installs with one click and a restart (kept in
+the app's data folder; the app bundle itself is never changed). Only a build that needs a
+newer Electron or new libraries asks for the full .dmg again. To rebuild it from a
+terminal on a Mac, run `npm run dmg`.
+
+**Desktop app from this folder** (starts the server, the worker and migrations for you;
+reminders arrive even with the window closed, and the dock shows how many lectures are due):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run desktop      # or `npm run dmg` to build a macOS installer
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm run desktop` runs the app straight from this folder; nothing is installed. To have
+Lockin in Applications, run `npm run dmg`, open the `.dmg` it puts in `release/` and drag Lockin
+into Applications. It is not signed, so the first time, right-click it and choose
+*Open*. The installed app keeps its own data in `~/Library/Application Support/Lockin`
+(database, uploaded files, downloaded models), apart from this folder's — to bring your
+lectures across, quit it and copy `prisma/lockin.db` there as `lockin.db`, along with
+the `materials` folder. `npm run dmg` rebuilds the SQLite driver for Electron; run
+`npm run rebuild:node` before using `npm run desktop` or `npm run dev` again.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**In a browser**, two terminals:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env
+npm install && npm run db:migrate
+npm run dev          # http://localhost:3000
+npm run worker       # the AI queue and model downloads — not needed in copy & paste mode
+```
 
-## Learn More
+Claude Code needs its CLI: `npm i -g @anthropic-ai/claude-code`, then run `claude` once to
+sign in; Codex needs `npm i -g @openai/codex` and `codex login`; Antigravity needs its CLI
+from antigravity.google/cli and one run of `agy`. Settings picks the model; `LOCKIN_SORT_MODEL`
+(default `haiku`) is the one that sorts folders, and `LOCKIN_EFFORT` (default `medium`) how
+hard Claude Code thinks when preparing and marking. Claude is given one tool,
+reading files, and only in the folder of the lecture's slides. To try the app without model
+calls, run the worker with `LOCKIN_PROVIDER=fake`.
 
-To learn more about Next.js, take a look at the following resources:
+## On your iPhone
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`ios/` is a companion iPhone app for studying on the go: summaries with their slides, LAQ
+sittings and AK reviews, synced straight with this computer over Wi-Fi. Pair it in
+Settings → iPhone with a QR code; there's no account and no cloud. With an API key, the
+phone marks answers, asks the viva examiner and reads handwriting itself; with Claude Code, Codex,
+Antigravity or an offline model, the computer marks them at the next sync, and a viva's
+examiner and handwriting go to the computer over Wi-Fi. *Listen* reads a summary aloud, a
+section at a time, with the screen locked. See [ios/README.md](ios/README.md) for pairing, and
+for installing it on your own phone from Xcode with a free Apple ID.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Offline AI
 
-## Deploy on Vercel
+Choosing *On this computer* (in the tour, or Settings → Offline AI) shows three models
+picked for this computer from its memory and processor cores:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Performance | Recommended | Quality |
+| --- | --- | --- |
+| One size smaller: faster | The largest that runs comfortably | One size larger: better, slower |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The ladder, smallest first: Qwen 3.5 0.8B, Gemma 4 E2B, E4B, 12B, 26B (a mixture of experts,
+quick for its size) and 31B — all Q4_K_M GGUF files from Hugging Face, 0.6–19 GB. The
+recommendation is the largest model whose memory need fits; on a PC without Apple Silicon
+and with fewer than 8 cores it drops a size, because everything then runs on the processor
+(`lib/llm/catalog.ts`, tested in `catalog.test.ts`).
+
+Downloading runs in the worker, beside the queue, and survives restarts (it resumes the
+partial file). When it finishes the model is linked: it becomes the one Lockin uses and the
+mode switches to *On this computer* — nothing else to set. Lectures queued before then
+wait rather than fail.
+
+**On Apple Silicon, models run on MLX.** The desktop app ships a small Swift engine
+(`swift/LockinEngine`) that runs models with Apple's MLX — faster there than llama.cpp,
+and one loaded copy both looks at the slides and writes the summary. Downloads on such a
+Mac are the models' MLX versions (from mlx-community); a model downloaded earlier has
+*Switch to MLX* in Settings. Replies are held to the same JSON schemas either way.
+
+Elsewhere, models run through [node-llama-cpp](https://node-llama-cpp.withcat.ai), on the GPU where
+there is one (Metal on Apple Silicon, CUDA or Vulkan on a PC) and the processor otherwise.
+Output is constrained by a JSON-schema grammar, so a small model cannot return malformed
+JSON, out-of-range marks or concept ids that do not exist. A transcript too long for the
+model's context is read in parts and condensed first; the lecture page says which part it
+is on.
+
+**Gemma 4 sees the slides.** Gemma 4 takes images, but node-llama-cpp, which runs it, has
+no way to pass one in. So downloading a Gemma model also fetches its vision part (the
+"mmproj" file, from Hugging Face) and llama.cpp's own server (from its GitHub releases, or
+the `llama-server` already on PATH, e.g. `brew install llama.cpp`). Before the summary is
+written, that server is shown each slide and writes down every word on it and what each
+figure shows; those notes go into the text the summary is written from, and are kept for
+writing and marking LAQs. A model downloaded before this has a *Let it see slides* button in
+Settings.
+
+If that isn't there or fails, slides that are pictures have their words read by text
+recognition instead (tesseract.js, with its English data bundled), kept in the deck's text
+where Details & files shows it for correcting.
+
+- Models are saved in `models/` beside the source, or in the desktop app's data folder
+  (`~/Library/Application Support/Lockin/models` on a Mac). Settings lists them, with
+  *Use* and *Delete*.
+- `LOCKIN_MODEL_MIRROR=https://host/path` downloads `<mirror>/<model id>.gguf` instead
+  of from Hugging Face — for a campus copy, or a network that blocks it.
+
+## Working on it
+
+```bash
+npm test             # vitest: grouping, aims filter, paste parsers, scheduling, scoring, model picks, slides
+npm run lint
+npx tsc --noEmit
+npm run smoke        # one real model call through the CLI
+```
+
+| Where | What |
+| --- | --- |
+| `app/` | Pages and server actions. `app/ui/` holds the shared client components. |
+| `lib/group.ts` | Local folder → lectures grouping, and turning an AI's grouping (`lib/sortfiles.ts` builds what it reads) into the same list. |
+| `lib/slides.ts`, `lib/sources.ts` | A lecture's decks, slide numbering across them, slide pictures drawn on demand; the text every prompt is built from. |
+| `lib/ocr.ts`, `lib/slidetext.ts` | Reading the words on picture-only slides, for models that can't see. |
+| `lib/runtime-import.ts` | Loading packages that must not be bundled — native binaries, and ESM that finds its own files. |
+| `lib/parse/aims.ts` | The module-aims filter. |
+| `lib/paste.ts`, `lib/offline.ts` | Copy-and-paste mode: what is pasted back, and the prompts that ask for it. They change together; `lib/offline.test.ts` holds them to it. |
+| `lib/pipeline.ts`, `worker/` | The steps the worker runs, and the queue that runs them one at a time. |
+| `lib/engines/` | Geometric mean, concept mastery, question allocation, the review schedule. |
+| `lib/llm/` | The only place a model is called: `cli.ts` (Claude Code), `local.ts` (a downloaded model), `fake.ts`. `prompts/` holds the versioned prompts both use. |
+| `lib/llm/catalog.ts`, `lib/models.ts` | The offline models on offer and the pick for this computer; which are downloaded, and downloads in progress. |
+| `electron/` | The desktop shell and its notifications. |
+
+Migrations are applied by `prisma migrate dev` in development and by `lib/migrate.ts` inside
+the packaged app. The latter runs each migration in a transaction, where SQLite ignores the
+`PRAGMA foreign_keys=OFF` that Prisma puts around a table rebuild — so dropping a referenced
+table would cascade-delete its children. `lib/migrate.ts` turns foreign keys off for the
+whole run to prevent that; even so, prefer adding columns in place over rebuilding a table
+(see `prisma/migrations/*_lecture_by_lecture`).

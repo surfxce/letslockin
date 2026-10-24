@@ -23,6 +23,10 @@ describe("priority", () => {
   it("prefers the more examinable of two equally weak concepts", () => {
     expect(priority(c("hot", 4, 1))).toBeGreaterThan(priority(c("cold", 4, 0)));
   });
+
+  it("prioritises a demonstrated weakness over an untested concept", () => {
+    expect(priority({ ...c("weak", 0), seen: true })).toBeGreaterThan(priority(c("untested", 0)));
+  });
 });
 
 describe("allocate", () => {

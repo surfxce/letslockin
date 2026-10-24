@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated and built output.
+    "lib/generated/**",
+    "dist/**",
+    "release/**",
+    "swift/**/.build*/**",
   ]),
 ]);
 

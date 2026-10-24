@@ -2,12 +2,11 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { checksum, guessKind, measureHours, parseMaterial } from "@/lib/parse";
-import type { ManifestEntry } from "@/lib/llm/provider";
+import { isRecording, MAX_RECORDING_BYTES, RECORDING_EXTS } from "@/lib/recordings/media";
 
-const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx"]);
+const SUPPORTED = new Set([".txt", ".md", ".vtt", ".srt", ".pdf", ".pptx", ...RECORDING_EXTS]);
 const MAX_FILES = 120;
 const MAX_BYTES = 80 * 1024 * 1024;
-const EXCERPT_CHARS = 1400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "__pycache__", "materials"]);
 
 export interface ScannedFile {
@@ -18,6 +17,8 @@ export interface ScannedFile {
   bytes: number;
   kindGuess: string;
   text: string;
+  /** Pages or slides, for a deck. */
+  pages: number | null;
   measuredHours: number | null;
   warnings: string[];
   checksum: string;
@@ -68,6 +69,27 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   const files: ScannedFile[] = [];
   for (const absolutePath of found) {
     const st = await stat(absolutePath);
+    // A recording is transcribed once it's imported; it's never read in here.
+    if (isRecording(absolutePath)) {
+      if (st.size > MAX_RECORDING_BYTES) {
+        skipped.push({ path: path.relative(root, absolutePath), why: "a recording larger than 6GB" });
+        continue;
+      }
+      files.push({
+        absolutePath,
+        relativePath: path.relative(root, absolutePath),
+        filename: path.basename(absolutePath),
+        modifiedOn: st.mtime,
+        bytes: st.size,
+        kindGuess: "RECORDING",
+        text: "",
+        pages: null,
+        measuredHours: null,
+        warnings: [],
+        checksum: `recording-${st.size}`,
+      });
+      continue;
+    }
     if (st.size > MAX_BYTES) {
       skipped.push({ path: path.relative(root, absolutePath), why: "larger than 80MB" });
       continue;
@@ -75,7 +97,9 @@ export async function scanFolder(root: string): Promise<ScanResult> {
     const buffer = await readFile(absolutePath);
     try {
       const parsed = await parseMaterial(path.basename(absolutePath), buffer);
-      if (!parsed.text.trim()) {
+      // A deck of pictures has no text but is still worth importing: Claude reads its
+      // pages as images, and offline its words are read with text recognition.
+      if (!parsed.text.trim() && !parsed.pages) {
         skipped.push({ path: path.relative(root, absolutePath), why: "no extractable text" });
         continue;
       }
@@ -87,6 +111,7 @@ export async function scanFolder(root: string): Promise<ScanResult> {
         bytes: st.size,
         kindGuess: guessKind(absolutePath, parsed.text),
         text: parsed.text,
+        pages: parsed.pages ?? null,
         measuredHours: measureHours(parsed.text),
         warnings: parsed.warnings,
         checksum: checksum(buffer),
@@ -100,15 +125,4 @@ export async function scanFolder(root: string): Promise<ScanResult> {
   }
 
   return { files, skipped };
-}
-
-export function toManifest(files: ScannedFile[]): ManifestEntry[] {
-  return files.map((f, index) => ({
-    index,
-    filename: f.relativePath,
-    modifiedOn: f.modifiedOn.toISOString().slice(0, 10),
-    kindGuess: f.kindGuess,
-    measuredHours: f.measuredHours,
-    excerpt: f.text.slice(0, EXCERPT_CHARS),
-  }));
 }

@@ -1,0 +1,11 @@
+/* Handwritten answers: the photo button beside an answer, and the note once it's typed out. */
+.hw { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.hw .btn { color: var(--text-soft); }
+.hw-error { color: var(--s-red, var(--t-red)); max-width: 420px; }
+.hw-note { position: relative; margin-top: 8px; padding: 10px 34px 10px 12px; border-radius: 8px; background: var(--t-yellow-bg); color: var(--t-yellow); line-height: 1.5; }
+.hw-unclear { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.hw-unclear .muted { color: inherit; opacity: 0.75; }
+.hw-word { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 4px; padding: 0 6px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.hw-word:hover { background: rgba(0, 0, 0, 0.06); }
+.hw-close { position: absolute; top: 8px; right: 8px; border: 0; background: none; color: inherit; cursor: pointer; opacity: 0.7; padding: 2px; }
+.hw-close:hover { opacity: 1; }

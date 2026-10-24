@@ -1,0 +1,17 @@
+/* Mini-lessons */
+.lesson-gaps { margin: 18px 0 6px; padding: 12px 16px; border-radius: 10px; background: var(--bg-soft); }
+.lesson-gaps h2 { font-size: 14px; margin: 0 0 6px; }
+.lesson-gaps ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.lesson-gap { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 4px; }
+.lesson-gap.missed { background: var(--t-yellow-bg); color: var(--t-yellow); }
+.lesson-gap.wrong { background: var(--t-red-bg); color: var(--t-red); }
+.lesson-body { margin: 18px 0 26px; }
+.lesson-checks { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.lesson-checks li { padding-left: 4px; }
+.lesson-q { font-weight: 550; margin-bottom: 6px; line-height: 1.45; }
+.lesson-a { padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--bg-soft); border-radius: 0 8px 8px 0; font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; }
+.lesson-actions { margin-top: 20px; gap: 8px; flex-wrap: wrap; }
+.lesson-next { margin-top: 26px; }
+.lesson-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; }
+.lesson-list li { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.lesson-list li .small { flex: 1; min-width: 160px; }

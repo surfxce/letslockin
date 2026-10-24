@@ -1,0 +1,34 @@
+name: Swift app
+
+on:
+  push:
+    branches: [main, claude/blissful-carson-5hdqo3]
+    paths:
+      - "swift/**"
+      - "prisma/**"
+      - ".github/workflows/swift.yml"
+  pull_request:
+    paths:
+      - "swift/**"
+      - "prisma/**"
+      - ".github/workflows/swift.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: swift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: swift/Lockin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift build
+      - run: swift test

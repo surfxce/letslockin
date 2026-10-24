@@ -24,6 +24,7 @@ model Course {
   concepts  Concept[]
   materials Material[]
   papers    PastPaper[]
+  cases     ClinicalCase[]
 }
 
 /// A course's own division of its content — "Module 3: Gene expression". Optional,
@@ -51,6 +52,21 @@ model Lecture {
   deliveredOn   DateTime // weekday is derived from this, never stored
   durationHours Float    @default(1) // x2 = default question count
   summaryMd     String?
+  /// True while the title is a placeholder made from a filename. The first AI pass
+  /// (or a pasted summary with a heading) replaces it; editing it by hand clears this.
+  autoTitle     Boolean  @default(false)
+  /// JSON [{ what, where, about?, added? }]: module aims, learning objectives and admin
+  /// that were left out of the summary and questions, so the omission is visible, not
+  /// silent. `about` says what the part contained; `added` is set once the student has
+  /// put it back into the summary.
+  skipped       String?
+  /// JSON [{ slide, notes }]: what each slide shows — its words, including any inside
+  /// pictures, and what its figures depict — from a model that saw the slides. The
+  /// steps that only read text (writing LAQs) use these instead of the extracted text.
+  slideNotes    String?
+  /// Who wrote the summary, for display: "Claude Code · claude-sonnet-…", "Offline ·
+  /// Gemma 4 E4B", "Pasted from an AI chat". Null for summaries from before this was kept.
+  summaryModel  String?
   createdAt     DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -59,20 +75,48 @@ model Lecture {
   concepts  Concept[]
   questions Question[]
   attempts  Attempt[]
+  jobs      Job[]
+  glossary  GlossaryTerm[]
+  flashcards Flashcard[]
+  mcqs       Mcq[]
 
   @@index([courseId])
   @@index([moduleId])
+}
+
+/// A phrase the student picked out of a lecture's summary, with the short explanation
+/// they chose to keep. Underlined wherever it appears in that summary; hovering it
+/// shows the explanation.
+model GlossaryTerm {
+  id          String   @id @default(cuid())
+  lectureId   String
+  term        String
+  explanation String
+  createdAt   DateTime @default(now())
+
+  lecture Lecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([lectureId])
 }
 
 model Material {
   id            String   @id @default(cuid())
   courseId      String?
   lectureId     String?
-  kind          String // enum: TRANSCRIPT | SLIDES | FIGURE | PAST_PAPER
+  kind          String // enum: TRANSCRIPT | SLIDES | FIGURE | PAST_PAPER | RECORDING
   path          String // relative to materials/; the DB never stores blobs
   originalName  String
   extractedText String? // parsed once at ingest, hand-correctable
+  /// Pages or slides in a deck, including those with no text; null for other files.
+  pageCount     Int?
   checksum      String
+  /// A recording's length in seconds, once its sound has been read.
+  durationSec   Float?
+  /// Set on a transcript made from a recording: the recording's id.
+  sourceId      String?
+  /// How a transcript was made from a recording: "Gemini · gemini-2.5-flash",
+  /// "Whisper large-v3 turbo, checked by Claude Code · sonnet".
+  madeBy        String?
   createdAt     DateTime @default(now())
 
   course  Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -101,6 +145,7 @@ model Concept {
   gaps       Gap[]
   reviews    Review[]
   paperItems PaperItemConcept[]
+  lessons    Lesson[]
 
   @@index([courseId])
   @@index([lectureId])
@@ -113,13 +158,29 @@ model Question {
   type          String // enum: LAQ | SAQ
   rubric        String // JSON: model answer + mark allocation, frozen at generation
   promptVersion String
+  /// Who wrote it, for display, as Lecture.summaryModel.
+  model         String?
   createdAt     DateTime @default(now())
+  /// Set on a question from a past paper (the PaperItem's id). Those are asked only
+  /// when the paper is sat, never in the lecture's own sittings or mixed exams.
+  paperItemId   String?
+  /// Set on a question that spans several related lectures: JSON array of every
+  /// lecture's id, this one (`lectureId`, where its answers are filed) first. Asked in
+  /// exams only, never in one lecture's sittings.
+  linkedLectureIds String?
+  /// Set on a stage of a clinical case: asked only when that case is run, never in a
+  /// sitting or an exam. Its stem tells the case so far, so it is marked like any LAQ.
+  caseId           String?
 
-  lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
-  concepts  QuestionConcept[]
-  responses Response[]
+  lecture      Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  clinicalCase ClinicalCase?     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  concepts     QuestionConcept[]
+  responses    Response[]
+  examItems    ExamItem[]
 
   @@index([lectureId])
+  @@index([paperItemId])
+  @@index([caseId])
 }
 
 model QuestionConcept {
@@ -140,6 +201,7 @@ model Attempt {
   closedBook    Boolean   @default(true)
   geometricMean Float? // null until every response is marked
   completedAt   DateTime?
+  source        String    @default("APP") // enum: APP | PASTED (scores pasted from an AI chat) | EXAM (LAQs from an exam) | VIVA (spoken, in a viva)
 
   lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   responses Response[]
@@ -152,14 +214,20 @@ model Response {
   attemptId      String
   questionId     String
   answerText     String
+  /// What has been typed so far, saved as it is typed, until the sitting is submitted.
+  draftText      String?
   mark           Float? // 0-10
   rubricVersion  String?
   rawMarkingJson String?
   markedAt       DateTime?
+  /// When the student said they'd copied this answer's notes sheet (what was wrong and
+  /// missed) into their own notes. Null until then.
+  notesCopiedAt  DateTime?
 
-  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  gaps     Gap[]
+  attempt   Attempt    @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question  Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  gaps      Gap[]
+  examItems ExamItem[]
 
   @@index([attemptId])
   @@index([questionId])
@@ -237,17 +305,223 @@ model PaperItemConcept {
 
 model Job {
   id            String    @id @default(cuid())
-  kind          String // enum: SUMMARISE | EXTRACT_CONCEPTS | GENERATE | MARK | PARSE_PAPER | IDENTIFY
+  kind          String // enum: PREPARE | GENERATE | MARK | DOWNLOAD | SORT | ASK | FLASHCARDS | MCQS
   payload       String // JSON
+  /// The lecture this work is for, so "what is it doing right now" is a lookup
+  /// rather than a search through payloads. Deleting the lecture drops its jobs.
+  lectureId     String?
   status        String    @default("PENDING") // enum: PENDING | RUNNING | DONE | FAILED
+  /// Higher runs first. Marking jumps the queue: someone is waiting on it.
+  priority      Int       @default(0)
+  /// What the job is doing right now, e.g. "digest" or "questions".
+  stage         String?
+  /// JSON [{ stage, startedAt, finishedAt }] — the timeline the UI shows.
+  steps         String?
   attempts      Int       @default(0)
   error         String?
   result        String? // raw model output, kept so a bad mark is always traceable
   promptVersion String?
+  /// The model that did the work, for display, as Lecture.summaryModel.
+  model         String?
   durationMs    Int?
   createdAt     DateTime  @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
 
-  @@index([status, createdAt])
+  lecture Lecture? @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, createdAt])
+  @@index([lectureId])
+}
+
+/// App-wide preferences and the worker's heartbeat. Key/value, values are JSON.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// AK scheduling is independent of concept/LAQ reviews. Content is never regenerated
+// over existing cards, so a retry cannot erase someone's review history.
+model Flashcard {
+  id           String   @id @default(cuid())
+  lectureId    String
+  front        String
+  back         String
+  sourceKey    String
+  model        String?
+  promptVersion String?
+  state        String   @default("new")
+  dueAt        DateTime @default(now())
+  intervalDays Float    @default(0)
+  ease         Float    @default(2.5)
+  repetitions  Int      @default(0)
+  lapses       Int      @default(0)
+  version      Int      @default(0)
+  createdAt    DateTime @default(now())
+  /// Where the card came from: "ai" (a generated deck), "manual" (written by the
+  /// student), "csv" (imported), "anki" (an Anki package), "occlusion" (cover-up boxes
+  /// on a picture) or "mistake" (something missed or got wrong in a marked answer).
+  origin       String   @default("ai")
+  /// Left out of reviews until unsuspended.
+  suspended    Boolean  @default(false)
+  /// Space-separated tags, padded with a space each side (" renal drugs ") so one tag
+  /// can be matched whole; "" when there are none.
+  tags         String   @default("")
+  lecture      Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  reviews      FlashcardReview[]
+
+  @@unique([lectureId, sourceKey])
+  @@index([lectureId, dueAt])
+  @@index([state, dueAt])
+}
+
+model FlashcardReview {
+  id         String   @id @default(cuid())
+  cardId     String
+  version    Int
+  rating     Int
+  reviewedAt DateTime @default(now())
+  dueAt      DateTime
+  card       Flashcard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, version])
+  @@index([reviewedAt])
+}
+
+/// Multiple-choice questions, written with a lecture's LAQs and kept out of sight until
+/// exam mode: one best answer among four or five.
+model Mcq {
+  id            String   @id @default(cuid())
+  lectureId     String
+  stem          String
+  /// JSON array of the options, in the order shown.
+  options       String
+  /// Index into options of the correct one.
+  answer        Int
+  explanation   String
+  /// The concept it tests, when it maps to one on the lecture's list.
+  conceptId     String?
+  promptVersion String
+  model         String?
+  createdAt     DateTime @default(now())
+
+  lecture   Lecture    @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  examItems ExamItem[]
+
+  @@index([lectureId])
+}
+
+/// A practice exam across lectures: LAQs and MCQs from the lectures chosen.
+model Exam {
+  id           String    @id @default(cuid())
+  courseId     String?
+  title        String
+  /// JSON { courseId, lectureIds } — what it was drawn from.
+  scope        String
+  /// Minutes allowed; null for no limit.
+  timeLimitMin Int?
+  createdAt    DateTime  @default(now())
+  submittedAt  DateTime?
+
+  items ExamItem[]
+
+  @@index([createdAt])
+}
+
+model ExamItem {
+  id         String  @id @default(cuid())
+  examId     String
+  position   Int
+  kind       String // enum: MCQ | LAQ
+  mcqId      String?
+  /// The option chosen, for an MCQ.
+  choice     Int?
+  questionId String?
+  /// What has been typed for an LAQ, until the exam is handed in.
+  draftText  String?
+  /// The LAQ's answer once handed in: marked like any other.
+  responseId String?
+
+  exam     Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  mcq      Mcq?      @relation(fields: [mcqId], references: [id], onDelete: SetNull)
+  question Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  response Response? @relation(fields: [responseId], references: [id], onDelete: SetNull)
+
+  @@index([examId])
+}
+
+/// An oral exam: an AI examiner asks LAQs aloud, follows up on what an answer left out,
+/// and moves on. When it ends, each question's exchange becomes an answer in a sitting
+/// of its lecture (source VIVA) and is marked like any other.
+model Viva {
+  id         String    @id @default(cuid())
+  courseId   String?
+  title      String
+  /// JSON [{ questionId, lectureId, responseId? }]: the LAQs it asks, in order; the
+  /// response each became once it ended.
+  plan       String
+  /// JSON [{ role: "examiner" | "student", text, questionId, at }]: everything said.
+  turns      String    @default("[]")
+  /// Index into `plan` of the question being asked.
+  current    Int       @default(0)
+  /// Follow-ups asked on the current question.
+  probes     Int       @default(0)
+  /// Who speaks next: "student", "examiner" (the AI is thinking), or "done".
+  waitingOn  String    @default("student")
+  /// Set when it runs a clinical case: its stages are the plan, and between them the
+  /// examiner says what the stage found before asking the next.
+  caseId     String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([createdAt])
+}
+
+/// A clinical case, OSCE-style, written from one or more lectures: a patient presented,
+/// then asked about in stages — history, examination, investigations, diagnosis,
+/// management — each answered and marked like an LAQ, with what it found revealed
+/// before the next. Run as a viva (Viva.caseId).
+model ClinicalCase {
+  id            String   @id @default(cuid())
+  courseId      String
+  /// What it's about, without giving the diagnosis away: "Cola-coloured urine after a sore throat".
+  title         String
+  /// What the student is told first: who the patient is and why they've come.
+  presentation  String
+  /// JSON [{ questionId, kind, ask, reveal }], in order. `reveal` is what the examiner
+  /// says once the stage is answered: the findings, results or answer it leads to.
+  stages        String
+  /// JSON [lectureId]: the lectures it was written from.
+  lectureIds    String
+  promptVersion String
+  model         String?
+  createdAt     DateTime @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([courseId])
+}
+
+/// A mini-lesson on a concept that keeps coming up in marked answers as missed or wrong:
+/// a short explanation aimed at exactly that, and a few questions to check it stuck.
+model Lesson {
+  id            String    @id @default(cuid())
+  conceptId     String
+  lectureId     String?
+  /// Markdown.
+  explanation   String
+  /// JSON [{ question, answer }].
+  checks        String
+  /// Answers with a gap on the concept when it was written: another waits for more.
+  gapCount      Int
+  promptVersion String
+  model         String?
+  createdAt     DateTime  @default(now())
+  doneAt        DateTime?
+
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
 }

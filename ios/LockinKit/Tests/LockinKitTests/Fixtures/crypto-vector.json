@@ -1,0 +1,7 @@
+{
+  "keyBase64Url": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "nonceHex": "000102030405060708090a0b",
+  "aad": "lockin/1 request sync pairing-0001",
+  "plaintext": "{\"t\":1792000000000,\"r\":\"0123456789abcdef\",\"body\":{\"hello\":\"Lockin ✓\"}}",
+  "sealedHex": "000102030405060708090a0b3c20a239ffd4f522bf71a7bb81d9485db3e6ab168259655e0856d7b6295c36853929cf9ecca577fe56885d8fe7e3511ad42242e53fbacfb51dad085577809e879e1c24e640f35b1c0349e6e5cb0014af92b6b8174d49f46a"
+}

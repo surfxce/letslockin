@@ -1,0 +1,93 @@
+# Builds Lockin.dmg on a Mac (a .dmg can only be made on macOS) and publishes it as the
+# "Lockin for Mac" release, so the latest build is always one download away — and, with
+# lockin-update.tar.gz and update.json beside it, one click away in Settings → Updates:
+# https://github.com/surfxce/letslockin/releases/download/mac-latest/Lockin.dmg
+name: Mac app
+
+on:
+  push:
+    branches: [main, claude/blissful-carson-5hdqo3]
+    paths-ignore: ["**.md", "swift/Lockin/**", "ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-latest
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # MLX needs a current Xcode, and xcodebuild (not plain SwiftPM) to compile its
+      # Metal shaders. If the engine fails to build, the app still ships without it and
+      # runs offline models on llama.cpp.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build the MLX engine
+        id: engine
+        continue-on-error: true
+        working-directory: swift/LockinEngine
+        run: |
+          xcodebuild build -scheme LockinEngine -destination 'platform=macOS,arch=arm64' \
+            -configuration Release -derivedDataPath .build-xcode \
+            -skipMacroValidation -skipPackagePluginValidation
+          out=.build-xcode/Build/Products/Release
+          ls -la "$out"
+          mkdir -p ../../engine
+          bin=$(ls "$out"/lockin-engine "$out"/LockinEngine 2>/dev/null | head -1)
+          cp "$bin" ../../engine/lockin-engine
+          cp -R "$out"/*.bundle ../../engine/ 2>/dev/null || true
+          ls -la ../../engine
+      # The transcription helper: Whisper on Apple Silicon (WhisperKit, Core ML), plain
+      # SwiftPM. Without it, recordings are transcribed only when Gemini is the AI.
+      - name: Build the transcription helper
+        id: whisper
+        continue-on-error: true
+        working-directory: swift/LockinWhisper
+        run: |
+          swift build -c release --arch arm64 --product lockin-whisper
+          bin=$(swift build -c release --arch arm64 --show-bin-path)/lockin-whisper
+          ls -la "$bin"
+          mkdir -p ../../engine
+          cp "$bin" ../../engine/lockin-whisper
+          ../../engine/lockin-whisper version
+      - name: Build Lockin.dmg
+        run: npm run dmg -- --publish never
+        env:
+          DATABASE_URL: file:./prisma/build.db
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Pack the in-app update
+        run: node scripts/pack-update.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lockin-mac
+          path: |
+            release/Lockin.dmg
+            release/lockin-update.tar.gz
+            release/update.json
+          if-no-files-found: error
+
+      - name: Publish Electron as the Mac download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view mac-latest >/dev/null 2>&1; then
+            gh release upload mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json --clobber
+            gh release edit mac-latest --title "Lockin for Mac (Electron)" --notes "Electron build from ${GITHUB_SHA::7}. Open Lockin.dmg and drag Lockin into Applications. Settings → Updates installs later code updates."
+            gh release delete-asset mac-latest appcast.xml --yes || true
+          else
+            gh release create mac-latest release/Lockin.dmg release/lockin-update.tar.gz release/update.json \
+              --prerelease --target "$GITHUB_SHA" --title "Lockin for Mac (Electron)" \
+              --notes "Electron build from ${GITHUB_SHA::7}. Open Lockin.dmg and drag Lockin into Applications. Settings → Updates installs later code updates."
+          fi

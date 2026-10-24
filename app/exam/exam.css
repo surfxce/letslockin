@@ -1,0 +1,81 @@
+/* Exam mode: setup (exam-scope, exam-options), the sitting (exam-bar, exam-mcq) and results. */
+.exam-setup { display: flex; flex-direction: column; gap: 22px; margin-top: 18px; }
+.exam-scope-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.exam-scope-head h2 { margin: 0; }
+.exam-scope-head .spacer, .exam-bar .spacer, .exam-open .spacer { flex: 1; }
+.exam-course { border-top: 1px solid var(--rule); padding: 10px 0 6px; }
+.exam-course-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; cursor: pointer; font-size: 15px; }
+.exam-course-title { color: var(--text-soft); }
+.exam-module { padding: 4px 0 4px 26px; }
+.exam-module-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.exam-module-head > label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.exam-lectures { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 18px; padding: 6px 0 8px 26px; }
+.exam-lectures label { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; cursor: pointer; font-size: 14px; }
+.exam-lectures label .small { grid-column: 2; }
+.exam-lecture-title { min-width: 0; overflow-wrap: anywhere; }
+.exam-options { display: flex; flex-direction: column; gap: 16px; }
+.exam-option-grid { display: flex; flex-wrap: wrap; gap: 18px 32px; }
+.exam-option-grid > label, .exam-option-grid > div { display: flex; flex-direction: column; gap: 5px; }
+.exam-option-grid input[type="number"] { width: 90px; }
+.exam-label { font-size: 13px; color: var(--text-soft); font-weight: 500; gap: 6px; }
+.exam-focus { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.exam-focus legend { margin-bottom: 6px; padding: 0; }
+.exam-focus label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+.exam-missing { align-items: center; flex-wrap: wrap; margin: 0; }
+.exam-open { align-items: center; flex-wrap: wrap; }
+.exam-over, .exam-cross { color: var(--danger); }
+.exam-table td { vertical-align: middle; }
+
+/* The sitting */
+/* Below the app's own top bar, which is sticky too. */
+.exam-bar { position: sticky; top: 46px; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; margin-bottom: 8px; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.exam-timer { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; padding: 4px 10px; border-radius: 6px; background: var(--bg-soft); }
+.exam-timer.low { background: var(--t-orange-bg); color: var(--t-orange); }
+.exam-timer.over { background: var(--t-red-bg); color: var(--t-red); }
+.exam-section { margin: 28px 0 2px; }
+.exam-mcq { border: 0; padding: 0; margin: 22px 0; min-width: 0; }
+.exam-mcq legend { padding: 0; }
+.exam-options-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 6px; }
+.exam-options-list > label, .exam-options-list > div { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; border: 1px solid var(--rule-strong); border-radius: 8px; font-size: 15px; line-height: 1.45; }
+.exam-options-list > label { cursor: pointer; }
+.exam-options-list > label:hover { background: var(--hover); }
+.exam-options-list > label.on { border-color: var(--accent); background: var(--accent-soft); }
+.exam-options-list input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.exam-letter { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 650; background: var(--bg-soft); color: var(--text-soft); }
+.exam-options-list > label.on .exam-letter { background: var(--accent); color: #fff; }
+.exam-options-list > label:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Results */
+.exam-scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.exam-scores .sitting + .sitting { margin-top: 0; }
+.exam-breakdown { margin-bottom: 18px; }
+.exam-result .laq-num { display: flex; gap: 10px; flex-wrap: wrap; }
+.exam-result.right .laq-num { color: var(--t-green); }
+.exam-result.wrong .laq-num { color: var(--t-red); }
+.exam-from { color: var(--text-faint); font-weight: 450; text-transform: none; letter-spacing: 0; }
+.exam-options-list > div.correct { border-color: var(--s-green); background: var(--t-green-bg); }
+.exam-options-list > div.correct .exam-letter { background: var(--s-green); color: #fff; }
+.exam-options-list > div.chosen { border-color: var(--s-red); background: var(--t-red-bg); }
+.exam-options-list > div.chosen .exam-letter { background: var(--s-red); color: #fff; }
+.exam-tick { margin-left: auto; color: var(--t-green); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.exam-cross { margin-left: auto; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.exam-explain { font-size: 14px; color: var(--text-soft); margin: 6px 0 0; line-height: 1.55; }
+@media (max-width: 640px) {
+  .exam-module { padding-left: 12px; }
+  .exam-lectures { padding-left: 12px; grid-template-columns: 1fr; }
+}
+.exam-papers { margin-top: 36px; }
+.exam-paper-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.exam-paper { padding: 12px 16px; border: 1px solid var(--rule); border-radius: 10px; }
+.exam-paper-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.exam-paper-head .spacer { flex: 1; }
+.exam-paper p { margin: 6px 0 0; }
+.exam-paper-sit { margin-top: 8px; flex-wrap: wrap; gap: 8px; }
+
+/* Linking questions */
+.exam-linking { display: flex; gap: 8px; align-items: baseline; font-size: 14px; cursor: pointer; margin-bottom: 14px; }
+.exam-linking-list { margin-top: 36px; }
+.exam-linking-rows { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+.exam-linking-row { display: flex; gap: 10px; align-items: center; padding: 10px 14px; flex-wrap: wrap; }
+.exam-linking-row + .exam-linking-row { border-top: 1px solid var(--rule); }
+.exam-linking-error { color: var(--danger); }

@@ -1,181 +1,246 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AutoRefresh } from "@/app/AutoRefresh";
-import { submitAttempt } from "@/app/actions";
+import { saveAttemptScores, startAttempt } from "@/app/actions";
+import { AnswerForm } from "@/app/attempts/[id]/AnswerForm";
+import { NotesSheet } from "@/app/attempts/[id]/NotesSheet";
+import { DueTag, ScoreTag } from "@/app/ui/bits";
+import { CopyButton } from "@/app/ui/CopyButton";
+import { Icon } from "@/app/ui/Icon";
+import { PasteBox } from "@/app/ui/PasteBox";
+import { FeedbackLegend, Markdown, QuestionScore } from "@/app/ui/render";
 import { prisma } from "@/lib/db";
-import { roundMark } from "@/lib/engines/geomean";
+import { feedbackFor, readRubric } from "@/lib/feedback";
+import { clockTime, formatScore, scoreTone, shortDate } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
+import { lectureRows, questionNumbers } from "@/lib/views";
+import { usesAi } from "@/lib/modes";
+import { buildNotesSheet, notesFileName } from "@/lib/notes-sheet";
+import "@/app/ak/ak.css";
+import { MistakeCards } from "@/app/ak/MistakeCards";
+import { mistakesLeft } from "@/lib/flashcards/mistakes";
 
 export const dynamic = "force-dynamic";
-
-interface Marking {
-  criteria: Array<{ point: string; awarded: number; outOf: number; note: string | null }>;
-}
 
 export default async function AttemptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const attempt = await prisma.attempt.findUnique({
     where: { id },
     include: {
-      lecture: { include: { course: true } },
-      responses: {
-        orderBy: { id: "asc" },
-        include: {
-          question: true,
-          gaps: { include: { concept: true } },
-        },
-      },
+      lecture: { include: { course: { select: { code: true } } } },
+      responses: { include: { question: true, gaps: { include: { concept: { select: { name: true } } } } } },
     },
   });
   if (!attempt) notFound();
 
-  const answered = attempt.responses.some((r) => r.answerText.trim());
-  const marked = attempt.responses.filter((r) => r.mark !== null);
-  const awaiting = answered && marked.length < attempt.responses.filter((r) => r.answerText.trim()).length;
+  const numbers = await questionNumbers(attempt.lectureId);
+  const responses = [...attempt.responses].sort(
+    (a, b) => (numbers.get(a.questionId) ?? 0) - (numbers.get(b.questionId) ?? 0),
+  );
+  const answered = responses.some((r) => r.answerText.trim() || r.mark !== null);
 
-  // Closed book: the summary is unreachable from here until the answers are in.
-  if (!answered) return <Answering attempt={attempt} />;
+  const crumbs = (
+    <nav className="crumbs">
+      <Link href="/">Lectures</Link>
+      <span className="sep">/</span>
+      <Link href={`/?course=${attempt.lecture.courseId}`}>{attempt.lecture.course.code}</Link>
+      <span className="sep">/</span>
+      <Link href={`/lectures/${attempt.lectureId}?tab=scores`}>{attempt.lecture.title}</Link>
+    </nav>
+  );
+
+  // Closed book: nothing about the lecture is reachable from here until answers are in.
+  if (!answered) {
+    return (
+      <main className="page narrow">
+        {crumbs}
+        <h1 className="page-title">{attempt.lecture.title}</h1>
+        <p className="page-sub">
+          Closed book — no summary, no notes. Retrieving it from memory is the part that works; reading it back only
+          feels like it does. Marking credits the substance, not the grammar.
+        </p>
+        <AnswerForm
+          attemptId={attempt.id}
+          questions={responses.map((r) => ({
+            responseId: r.id,
+            questionId: r.questionId,
+            number: numbers.get(r.questionId) ?? 0,
+            stem: r.question.stem,
+            draft: r.draftText,
+          }))}
+        />
+      </main>
+    );
+  }
+
+  const markedIds = responses.filter((r) => r.mark !== null).map((r) => r.id);
+  const [settings, [row], left, gapCount] = await Promise.all([
+    getSettings(),
+    lectureRows({ ids: [attempt.lectureId] }),
+    mistakesLeft(markedIds),
+    prisma.gap.count({ where: { responseId: { in: markedIds } } }),
+  ]);
+  const unmarked = responses.filter((r) => r.mark === null);
+  const needsPaste = unmarked.length > 0 && settings.mode === "manual";
+  const rows = responses.map((r) => ({ r, fb: feedbackFor(r), rubric: readRubric(r.question.rubric) }));
+  // What to write down, straight from the marking: no extra AI call.
+  const notes = buildNotesSheet({
+    lectureTitle: attempt.lecture.title,
+    sittingDate: attempt.sittingDate,
+    responses: rows.map(({ r, fb, rubric }) => ({
+      number: numbers.get(r.questionId) ?? 0,
+      stem: r.question.stem,
+      mark: r.mark,
+      items: fb.items,
+      gaps: r.gaps.map((g) => ({ type: g.type, text: g.text, concept: g.concept.name })),
+      blank: r.mark !== null && !r.answerText.trim(),
+      guide: rubric.criteria.map((c) => c.point),
+    })),
+  });
 
   return (
-    <>
-      <AutoRefresh active={awaiting} />
-      <p className="crumb">
-        <Link href="/">Courses</Link> /{" "}
-        <Link href={`/courses/${attempt.lecture.courseId}`}>{attempt.lecture.course.code}</Link> /{" "}
-        <Link href={`/lectures/${attempt.lectureId}`}>{attempt.lecture.title}</Link> / attempt
-      </p>
-      <h1>{attempt.lecture.title}</h1>
-      <p className="sub">
-        Attempt of {attempt.sittingDate.toLocaleDateString()} · {attempt.responses.length} question
-        {attempt.responses.length === 1 ? "" : "s"}
+    <main className="page narrow">
+      {crumbs}
+      <h1 className="page-title">{attempt.lecture.title}</h1>
+      <p className="page-sub">
+        Sitting of {shortDate(attempt.sittingDate)}, {clockTime(attempt.sittingDate)}
       </p>
 
       {attempt.geometricMean !== null ? (
-        <div className="panel score">
-          <div>
-            <p className="label">Geometric mean</p>
-            <p className="big">{roundMark(attempt.geometricMean, 2)}</p>
+        <div className="sitting" style={{ marginBottom: 22 }}>
+          <div className="sitting-head">
+            <span className={`big-score t-${scoreTone(attempt.geometricMean)}`}>
+              {formatScore(attempt.geometricMean)}
+              <small>/10</small>
+            </span>
+            <div style={{ flex: 1 }}>
+              <div className="when">Geometric mean of {responses.length} answers</div>
+              <div className="sub">
+                {responses.map((r) => formatScore(r.mark ?? 0)).join(" × ")}, then the {responses.length === 2 ? "square" : `${responses.length}th`} root. One
+                weak answer pulls the whole sitting down — as it would in the exam.
+              </div>
+            </div>
           </div>
-          <p className="workings">
-            {marked.map((r) => roundMark(r.mark!, 1)).join(" × ")} , to the power of 1/
-            {marked.length}. A zero anywhere zeroes the sitting — which is the point:
-            averaging 0 and 10 flatters an answer that would have scored nothing.
-          </p>
+          {row && (
+            <div className="row small muted" style={{ marginTop: 12, gap: 8 }}>
+              <span>Drill score:</span>
+              <ScoreTag score={row.lastScore} prev={row.prevScore} drillCount={row.drillCount} />
+              <Icon name="bell" size={14} /> Next sitting: <DueTag dueAt={row.dueAt} />
+            </div>
+          )}
+        </div>
+      ) : needsPaste ? (
+        <div className="soft-card" style={{ marginBottom: 22 }}>
+          <h3 style={{ marginTop: 0 }}>Get it marked</h3>
+          <div className="how">
+            <div className="s">
+              <b>1</b> Copy the marking prompt — your answers and each marking guide are in it.
+            </div>
+            <div className="s">
+              <b>2</b> Paste it into any AI chat.
+            </div>
+            <div className="s">
+              <b>3</b> Paste the marking it writes back here.
+            </div>
+          </div>
+          <div className="stack">
+            <div className="row">
+              <CopyButton url={`/api/attempts/${attempt.id}/prompt`} label="Copy marking prompt" className="btn primary" />
+            </div>
+            <PasteBox kind="scores" action={saveAttemptScores} hidden={{ attemptId: attempt.id }} saveLabel="Save marks" />
+          </div>
         </div>
       ) : (
-        <div className="note">
-          <p>
-            {awaiting
-              ? "Marking. Each answer is compared against the rubric frozen when the question was written, so the same answer scores the same every time."
-              : "Not all questions were answered, so there is no geometric mean for this sitting."}
-          </p>
+        <div className="progress" style={{ marginBottom: 22 }}>
+          <div className="progress-head">
+            <span className="dot pulse" style={{ color: "var(--accent)" }} />
+            Marking {unmarked.length} answer{unmarked.length === 1 ? "" : "s"} against the marking guide
+            <span className="small muted" style={{ fontWeight: 400 }}>
+              · marking goes ahead of anything else queued
+            </span>
+          </div>
         </div>
       )}
 
-      {attempt.responses.map((r, i) => {
-        const marking: Marking | null = r.rawMarkingJson ? JSON.parse(r.rawMarkingJson) : null;
-        return (
-          <div key={r.id} className="panel" style={{ marginTop: 18 }}>
-            <div className="qhead">
-              <span className="label">Question {i + 1}</span>
-              {r.mark !== null && <span className="mark">{roundMark(r.mark, 1)}/10</span>}
-            </div>
-            <p style={{ fontWeight: 500, marginTop: 6 }}>{r.question.stem}</p>
+      <NotesSheet
+        sheet={notes}
+        pending={unmarked.length}
+        manual={!usesAi(settings.mode)}
+        fileName={notesFileName(attempt.lecture.title, attempt.sittingDate)}
+        copy={{
+          responseIds: responses.filter((r) => r.mark !== null).map((r) => r.id),
+          // Copied once every marked answer's notes are; a newly marked one asks again.
+          at: copiedAt(responses),
+        }}
+      />
 
-            <details open>
-              <summary className="label" style={{ cursor: "pointer", margin: "14px 0 6px" }}>
-                What you wrote
+      <MistakeCards attemptId={attempt.id} left={left} made={gapCount - left} />
+
+      <FeedbackLegend />
+      <div className="q-scores" style={{ borderTop: 0 }}>
+        {rows.map(({ r, fb, rubric }) => (
+          <div key={r.id} className="sitting" style={{ marginBottom: 14 }}>
+            <QuestionScore
+              label={r.question.paperItemId ? "Paper" : r.question.linkedLectureIds ? "Linking" : `LAQ ${numbers.get(r.questionId) ?? "?"}`}
+              mark={r.mark}
+              raw={fb.raw ?? undefined}
+              feedback={fb.items}
+              pending={r.mark === null && usesAi(settings.mode)}
+            />
+            {r.mark !== null && (
+              <Link href={`/attempts/${attempt.id}/notes/${r.id}`} className="btn sm" style={{ marginTop: 10 }}>
+                {r.notesCopiedAt ? "✓ Notes copied down" : "Notes to copy down →"}
+              </Link>
+            )}
+            <details style={{ marginTop: 10 }}>
+              <summary className="small muted" style={{ cursor: "pointer" }}>
+                Question, your answer{rubric.criteria.length ? " and the marking guide" : ""}
               </summary>
-              <pre className="raw">{r.answerText || "(left blank)"}</pre>
+              <Markdown md={r.question.stem} className="laq-stem" />
+              <pre className="model-answer" style={{ fontFamily: "var(--sans)" }}>
+                {r.answerText || "(left blank)"}
+              </pre>
+              {rubric.criteria.length > 0 && (
+                <ul className="criteria">
+                  {rubric.criteria.map((c, i) => (
+                    <li key={i}>
+                      <span className="mk">{c.marks ?? "·"}</span>
+                      <span>{c.point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </details>
-
-            {marking && (
-              <>
-                <p className="label" style={{ margin: "16px 0 6px" }}>Rubric</p>
-                <div className="criteria">
-                  {marking.criteria.map((c, n) => (
-                    <div key={n} className={`crit ${c.awarded >= c.outOf ? "got" : "lost"}`}>
-                      <span className="num">
-                        {c.awarded}/{c.outOf}
-                      </span>
-                      <span>
-                        {c.point}
-                        {c.note && <em className="cnote"> — {c.note}</em>}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {r.gaps.length > 0 && (
-              <>
-                <p className="label" style={{ margin: "16px 0 6px" }}>
-                  For the binder — {r.gaps.length} to write down
-                </p>
-                <div className="concepts">
-                  {r.gaps.map((g) => (
-                    <div key={g.id} className="concept">
-                      <span className={`chip ${g.type === "WRONG" ? "fail" : ""}`}>{g.type}</span>{" "}
-                      <span className="cdef" style={{ color: "var(--ink)" }}>{g.text}</span>
-                      <div className="cref">{g.concept.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      {attempt.geometricMean !== null && (
+        <div className="soft-card" style={{ marginTop: 22 }}>
+          <h2 style={{ marginTop: 0 }}>Keep drilling</h2>
+          <p className="small muted">The next sitting favours concepts your latest answers show are still weak. The drill score updates as you improve them.</p>
+          <div className="row">
+            <form action={startAttempt}>
+              <input type="hidden" name="lectureId" value={attempt.lectureId} />
+              <button type="submit" className="btn primary">Drill weak areas again</button>
+            </form>
+            {usesAi(settings.mode) && <Link href={`/lectures/${attempt.lectureId}?tab=laqs`} className="btn">Write new weak-area LAQs</Link>}
+          </div>
+        </div>
+      )}
 
       <p style={{ marginTop: 24 }}>
-        <Link href={`/lectures/${attempt.lectureId}`}>Back to the lecture</Link>
+        <Link href={`/lectures/${attempt.lectureId}?tab=scores`} className="link">
+          Back to {attempt.lecture.title}
+        </Link>
       </p>
-    </>
+    </main>
   );
 }
 
-function Answering({
-  attempt,
-}: {
-  attempt: {
-    id: string;
-    lectureId: string;
-    lecture: { title: string };
-    responses: Array<{ id: string; question: { stem: string } }>;
-  };
-}) {
-  return (
-    <>
-      <h1>{attempt.lecture.title}</h1>
-      <p className="sub">
-        Closed book. The summary, the concepts and the transcript are all out of reach until
-        you submit — retrieving it from memory is the part that works, and reading it back is
-        the part that only feels like it does.
-      </p>
-      <div className="note">
-        <p>
-          Dot points are fine. So is dictation — tap the mic on your keyboard and talk. Marking
-          credits the substance, not the grammar.
-        </p>
-      </div>
-
-      <form action={submitAttempt}>
-        <input type="hidden" name="attemptId" value={attempt.id} />
-        {attempt.responses.map((r, i) => (
-          <div key={r.id} className="panel" style={{ marginBottom: 18 }}>
-            <span className="label">Question {i + 1}</span>
-            <p style={{ fontWeight: 500, margin: "6px 0 12px" }}>{r.question.stem}</p>
-            <textarea
-              name={`answer.${r.id}`}
-              rows={10}
-              style={{ width: "100%" }}
-              placeholder="Answer from memory…"
-            />
-          </div>
-        ))}
-        <button type="submit">Submit for marking</button>
-      </form>
-    </>
-  );
+/** When a sitting's notes were copied down: the latest, once every marked answer's are. */
+function copiedAt(responses: Array<{ mark: number | null; notesCopiedAt: Date | null }>): string | null {
+  const marked = responses.filter((r) => r.mark !== null);
+  if (!marked.length || marked.some((r) => !r.notesCopiedAt)) return null;
+  return new Date(Math.max(...marked.map((r) => r.notesCopiedAt!.getTime()))).toISOString();
 }

@@ -9,10 +9,11 @@ import { prisma } from "@/lib/db";
 
 async function main() {
   const { applied, alreadyCurrent } = await applyMigrations();
+  const where = process.env.DATABASE_URL ?? databaseFile();
   console.log(
     applied.length === 0
-      ? `database current at ${databaseFile()} (${alreadyCurrent} migrations)`
-      : `applied ${applied.length} migration(s): ${applied.join(", ")}`,
+      ? `database current at ${where} (${alreadyCurrent} migrations)`
+      : `applied ${applied.length} migration(s) to ${where}: ${applied.join(", ")}`,
   );
 }
 

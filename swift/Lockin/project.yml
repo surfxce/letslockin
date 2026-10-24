@@ -1,0 +1,70 @@
+name: Lockin
+options:
+  bundleIdPrefix: app
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+packages:
+  LockinCore:
+    path: .
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
+targets:
+  Lockin:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/Lockin
+      # Bundled whole, where LockinPaths finds them: Resources/prompts, Resources/migrations.
+      - path: ../../prompts
+        type: folder
+        buildPhase: resources
+      - path: ../../prisma/migrations
+        type: folder
+        buildPhase: resources
+      - path: ../../build/icon.icns
+        buildPhase: resources
+    dependencies:
+      - package: LockinCore
+        product: LockinCore
+      - package: Sparkle
+        product: Sparkle
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleName: Lockin
+        CFBundleDisplayName: Lockin
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconFile: icon.icns
+        LSApplicationCategoryType: public.app-category.education
+        NSHumanReadableCopyright: Sandes Welagedara
+        LSMinimumSystemVersion: "14.0"
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+        # Updates (Sparkle). The appcast is published by .github/workflows/swift-dmg.yml
+        # beside the .dmg on the mac-latest release; the key pairs with the private one
+        # kept out of the repository (docs/parity-checklist.md tells the whole story).
+        SUFeedURL: https://github.com/surfxce/letslockin/releases/download/mac-latest/appcast.xml
+        SUPublicEDKey: kA6p5kjRb4I3FqOd8v9uEXsWaRZuhUpM/MfqmTF6VRU=
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lockin
+        PRODUCT_NAME: Lockin
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_IDENTITY: "-"
+schemes:
+  # Without an explicit scheme, Xcode auto-generates one for the package's "Lockin"
+  # executable product, which shadows the app target and builds a bare binary instead
+  # of Lockin.app.
+  Lockin:
+    build:
+      targets:
+        Lockin: all
+    run:
+      config: Debug

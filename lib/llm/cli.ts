@@ -1,32 +1,50 @@
+import { FlashcardSetSchema, flashcardVars, type FlashcardsInput } from "@/lib/flashcards/schema";
+import { McqSetSchema, mcqVars, type McqInput } from "@/lib/mcq/schema";
+import { MistakeCardsSchema, mistakeVars, type MistakeInput } from "@/lib/flashcards/mistakes";
+import { PaperGuidesSchema, paperGuideVars, type PaperGuideInput } from "@/lib/papers/schema";
+import { mixedVars, type MixedInput } from "@/lib/mixed/schema";
+import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
+import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
+import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
+import { HandwritingSchema, handwritingVars, type HandwritingInput } from "@/lib/handwriting/schema";
+import { CaseSchema, caseVars, type CaseInput } from "@/lib/cases/schema";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ZodType } from "zod";
 
-import { promptsDir } from "@/lib/paths";
-
+import { CloudError } from "@/lib/llm/base";
+import { JobCancelled, killOnCancel } from "@/lib/llm/cancel";
 import {
-  ConceptListSchema,
-  LectureIdentificationSchema,
+  askVars,
+  digestVars,
+  generateVars,
+  markVars,
+  paperVars,
+  renderPrompt,
+  sortVars,
+  type PromptName,
+} from "@/lib/llm/prompts";
+import {
+  AnswerSchema,
+  DigestSchema,
+  FolderSortSchema,
   MarkingSchema,
   PaperItemsSchema,
   QuestionSetSchema,
-  SummarySchema,
 } from "@/lib/llm/schemas";
 import type {
-  ConceptRef,
-  IdentifyLecturesInput,
-  ExtractConceptsInput,
+  AskInput,
+  DigestInput,
   GenerateQuestionsInput,
   LlmProvider,
   MarkInput,
   ParsePastPaperInput,
-  SummariseInput,
+  SortFilesInput,
 } from "@/lib/llm/provider";
 
 
-
-export class ClaudeCliError extends Error {
+export class ClaudeCliError extends CloudError {
   constructor(
     message: string,
     readonly detail?: { stderr?: string; stdout?: string; code?: number | null },
@@ -40,6 +58,16 @@ export interface ClaudeCliConfig {
   /** Path to the standalone CLI. The desktop app ships its own copy that is not on PATH. */
   binary: string;
   model: string;
+  /** For sorting a folder: a quick look at file openings, so a small fast model. */
+  sortModel: string;
+  /** For questions asked from a lecture page while the student waits: quick, but
+   *  answering about the content, so not the smallest model. */
+  askModel: string;
+  /** How hard the model thinks before preparing or marking a lecture (Claude Code's
+   *  --effort). Left to the CLI, a big model thinks at length about work that is
+   *  mostly careful reading and writing, and a lecture takes minutes longer. Null
+   *  leaves it to the CLI's own default. */
+  effort: string | null;
   timeoutMs: number;
   /** Extra flags, space-separated, from LOCKIN_CLI_FLAGS. Lets flag drift be fixed
    *  without a code change. */
@@ -49,36 +77,65 @@ export interface ClaudeCliConfig {
 export function cliConfigFromEnv(): ClaudeCliConfig {
   return {
     binary: process.env.LOCKIN_CLAUDE_BIN ?? "claude",
-    model: process.env.LOCKIN_MODEL ?? "claude-opus-5",
-    timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 300_000),
+    // Settings choose the model (lib/llm/index.ts); this is only the fallback.
+    model: process.env.LOCKIN_MODEL ?? "sonnet",
+    sortModel: process.env.LOCKIN_SORT_MODEL ?? "haiku",
+    askModel: process.env.LOCKIN_ASK_MODEL ?? "sonnet",
+    effort: process.env.LOCKIN_EFFORT === "default" ? null : (process.env.LOCKIN_EFFORT ?? "medium"),
+    // One digest call now does what three used to, so a double lecture needs room.
+    timeoutMs: Number(process.env.LOCKIN_CLI_TIMEOUT_MS ?? 600_000),
     extraArgs: (process.env.LOCKIN_CLI_FLAGS ?? "").split(" ").filter(Boolean),
   };
 }
 
-/** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). */
-function runClaude(prompt: string, cfg: ClaudeCliConfig): Promise<string> {
+export interface RunOptions {
+  model?: string;
+  /** Folders the model may read files from — the slide decks, which it reads as pages
+   *  it can see. Reading is the only tool it ever gets, and only for these. */
+  readDirs?: string[];
+  /** --effort for this call: "low" for quick sorting and questions. */
+  effort?: string | null;
+}
+
+/** Runs `claude -p` with the prompt on stdin (transcripts blow past ARG_MAX). Gives back
+ *  the reply, and the model that actually wrote it when the CLI says. */
+function runClaude(
+  prompt: string,
+  cfg: ClaudeCliConfig,
+  opts: RunOptions = {},
+): Promise<{ text: string; model: string | null }> {
+  const reads = opts.readDirs?.length ? opts.readDirs : null;
+  const effort = opts.effort === undefined ? cfg.effort : opts.effort;
   const args = [
     "-p",
     "--output-format",
     "json",
     "--model",
-    cfg.model,
-    // Every input is inlined in the prompt, so the model has no reason to touch
-    // the filesystem, and a deterministic prompt is a cacheable one. --allowed-tools
-    // is variadic, so an empty string is not a safe way to say "none" — deny instead.
+    opts.model ?? cfg.model,
+    ...(effort ? ["--effort", effort] : []),
+    // Text is inlined in the prompt; the only thing worth opening is a slide deck, so
+    // Read is allowed only when there is one, and only in its folder. --allowed-tools
+    // and --add-dir are variadic, so each is followed by another flag, and "none" is
+    // said by denying rather than by an empty list.
+    ...(reads ? ["--allowed-tools", "Read", "--add-dir", ...reads] : []),
     "--disallowed-tools",
-    "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task",
+    `Bash,${reads ? "" : "Read,"}Write,Edit,Glob,Grep,WebFetch,WebSearch,Task`,
     ...cfg.extraArgs,
   ];
 
   return new Promise((resolve, reject) => {
-    const child = spawn(cfg.binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+    // Run from a neutral directory. From the repo, the CLI would load this project's
+    // CLAUDE.md, settings and hooks into every call — tokens and startup time spent
+    // on context the prompt does not need.
+    const child = spawn(cfg.binary, args, { stdio: ["pipe", "pipe", "pipe"], cwd: tmpdir() });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new ClaudeCliError(`claude timed out after ${cfg.timeoutMs}ms`));
     }, cfg.timeoutMs);
+    const unhook = killOnCancel(child, () => reject(new JobCancelled()));
+    child.on("close", unhook);
 
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));
@@ -97,7 +154,7 @@ function runClaude(prompt: string, cfg: ClaudeCliConfig): Promise<string> {
         // Parse before checking the exit code: the CLI still prints a result
         // envelope on failure, and its message ("Not logged in", a rate limit,
         // a refusal) is far more useful than the status.
-        resolve(unwrapEnvelope(stdout));
+        resolve({ text: unwrapEnvelope(stdout), model: modelOf(stdout) });
       } catch (err) {
         if (code !== 0 && !(err instanceof ClaudeCliError && /claude reported/.test(err.message))) {
           reject(
@@ -146,6 +203,22 @@ export function unwrapEnvelope(stdout: string): string {
   return trimmed;
 }
 
+/**
+ * The model that did most of the writing, from the envelope's per-model usage. A call
+ * can touch more than one (a small model for housekeeping), so the one that wrote the
+ * most output is the one that answered.
+ */
+export function modelOf(stdout: string): string | null {
+  try {
+    const usage = (JSON.parse(stdout.trim()) as { modelUsage?: Record<string, { outputTokens?: number }> }).modelUsage;
+    if (!usage || typeof usage !== "object") return null;
+    const ranked = Object.entries(usage).sort((a, b) => (b[1]?.outputTokens ?? 0) - (a[1]?.outputTokens ?? 0));
+    return ranked[0]?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Pulls the JSON body out of a reply that may be fenced or prefaced with prose. */
 export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*\n([\s\S]*?)\n?```/);
@@ -164,59 +237,31 @@ export function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-async function loadPrompt(name: string): Promise<{ text: string; version: string }> {
-  // prompts/<name>.<semver>.md — the version is stamped onto every row the reply produces.
-  const { readdir } = await import("node:fs/promises");
-  const files = await readdir(promptsDir());
-  const matches = files
-    .filter((f) => f.startsWith(`${name}.`) && f.endsWith(".md"))
-    .sort((a, b) => compareSemver(versionOf(name, b), versionOf(name, a)));
-  if (matches.length === 0) throw new ClaudeCliError(`no prompt file for "${name}" in ${promptsDir()}`);
-  const file = matches[0];
-  return {
-    text: await readFile(path.join(promptsDir(), file), "utf8"),
-    version: versionOf(name, file),
-  };
-}
-
-function versionOf(name: string, file: string): string {
-  return file.slice(name.length + 1, -".md".length);
-}
-
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-function fill(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
-}
-
-function conceptTable(concepts: ConceptRef[]): string {
-  if (concepts.length === 0) return "(none yet)";
-  return concepts.map((c) => `- ${c.id} :: ${c.name} — ${c.definition}`).join("\n");
-}
-
 export class ClaudeCliProvider implements LlmProvider {
   readonly name = "claude-code-cli";
+  readonly seesSlides = true;
   /** Set to the prompt version used by the most recent call, for stamping rows. */
   lastPromptVersion = "";
+  lastModel: string;
 
-  constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {}
+  constructor(private readonly cfg: ClaudeCliConfig = cliConfigFromEnv()) {
+    this.lastModel = `Claude Code · ${cfg.model}`;
+  }
 
-  private async call<T>(promptName: string, vars: Record<string, string>, schema: ZodType<T>) {
-    const { text, version } = await loadPrompt(promptName);
-    this.lastPromptVersion = `${promptName}@${version}`;
-    const prompt = fill(text, vars);
+  private async call<T>(
+    promptName: PromptName,
+    vars: Record<string, string>,
+    schema: ZodType<T>,
+    opts: RunOptions & { append?: string } = {},
+  ) {
+    const rendered = await renderPrompt(promptName, vars);
+    const prompt = rendered.text + (opts.append ?? "");
+    this.lastPromptVersion = rendered.version;
 
     const attempt = async (extra = "") => {
-      const reply = await runClaude(prompt + extra, this.cfg);
-      return schema.parse(extractJson(reply));
+      const reply = await runClaude(prompt + extra, this.cfg, opts);
+      this.lastModel = `Claude Code · ${reply.model ?? opts.model ?? this.cfg.model}`;
+      return schema.parse(extractJson(reply.text));
     };
 
     try {
@@ -231,95 +276,99 @@ export class ClaudeCliProvider implements LlmProvider {
     }
   }
 
-  summarise(input: SummariseInput) {
-    return this.call(
-      "summarise",
-      {
-        lectureTitle: input.lectureTitle,
-        durationHours: String(input.durationHours),
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-      },
-      SummarySchema,
-    );
+  /**
+   * With PDF slides, Claude reads the decks itself, as pages it can see: text inside
+   * pictures, diagrams and photos never reaches the extracted text. It writes notes
+   * on each slide as it goes, for the later steps that only read text.
+   */
+  digest(input: DigestInput) {
+    const pdfs = input.slides?.decks.filter((d) => d.pdf && d.pages > 0) ?? [];
+    if (pdfs.length === 0) return this.call("digest-lecture", digestVars(input), DigestSchema);
+    const list = pdfs
+      .map((d) => `- ${d.file} — ${d.pages} page${d.pages === 1 ? "" : "s"}, slides ${d.first}–${d.first + d.pages - 1}`)
+      .join("\n");
+    const append =
+      `\n\n---\n\nThe slide decks are attached as PDF files you can open with the Read tool. The slide text ` +
+      `above was extracted from them and misses everything inside pictures, diagrams, tables and photos, so ` +
+      `look at every page yourself before writing anything — up to 20 pages per Read call (pages "1-20", then ` +
+      `"21-40", and so on):\n\n${list}\n\nSlides are numbered across the decks as listed: use those numbers for ` +
+      `slide pictures and slideNotes. Read nothing else. Then reply with the JSON described above.`;
+    return this.call("digest-lecture", digestVars(input, { visual: true }), DigestSchema, {
+      readDirs: [...new Set(pdfs.map((d) => path.dirname(d.file)))],
+      append,
+    });
   }
 
-  extractConcepts(input: ExtractConceptsInput) {
-    return this.call(
-      "extract-concepts",
-      {
-        lectureTitle: input.lectureTitle,
-        durationHours: String(input.durationHours),
-        lowerBound: String(Math.round(8 * input.durationHours)),
-        upperBound: String(Math.round(20 * input.durationHours)),
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-        existingConcepts: conceptTable(input.existingConcepts),
-      },
-      ConceptListSchema,
-    );
+  generateFlashcards(input: FlashcardsInput) {
+    return this.call("generate-flashcards", flashcardVars(input), FlashcardSetSchema);
+  }
+
+  generateMcqs(input: McqInput) {
+    return this.call("generate-mcqs", mcqVars(input), McqSetSchema);
+  }
+
+  writeMistakeCards(input: MistakeInput) {
+    return this.call("mistake-cards", mistakeVars(input), MistakeCardsSchema);
+  }
+
+  writePaperGuides(input: PaperGuideInput) {
+    return this.call("paper-guides", paperGuideVars(input), PaperGuidesSchema);
   }
 
   generateQuestions(input: GenerateQuestionsInput) {
-    const allocation = input.allocation
-      .filter((a) => a.count > 0)
-      .map((a) => `- ${a.conceptId}: ${a.count}`)
-      .join("\n");
-    return this.call(
-      "generate-questions",
-      {
-        lectureTitle: input.lectureTitle,
-        type: input.type,
-        transcript: input.transcript,
-        slidesText: input.slidesText ?? "(no slides supplied)",
-        concepts: conceptTable(input.concepts),
-        allocation: allocation || "(none)",
-        total: String(input.allocation.reduce((n, a) => n + a.count, 0)),
-      },
-      QuestionSetSchema,
-    );
+    return this.call("generate-questions", generateVars(input), QuestionSetSchema);
+  }
+
+  writeMixedQuestions(input: MixedInput) {
+    return this.call("mixed-questions", mixedVars(input), QuestionSetSchema);
+  }
+
+  fixTranscript(input: FixInput) {
+    return this.call("fix-transcript", fixVars(input), FixesSchema);
+  }
+
+  vivaTurn(input: VivaTurnInput) {
+    return this.call("viva-turn", vivaVars(input), VivaMoveSchema);
+  }
+
+  writeLesson(input: LessonInput) {
+    return this.call("write-lesson", lessonVars(input), LessonSchema);
+  }
+
+  writeCase(input: CaseInput) {
+    return this.call("write-case", caseVars(input), CaseSchema);
+  }
+
+  /** Claude opens the photos itself, with Read, from their folder and nowhere else. */
+  readHandwriting(input: HandwritingInput) {
+    const list = input.pages.map((f, i) => `- Page ${i + 1}: ${f}`).join("\n");
+    const append =
+      `\n\n---\n\nThe photos are image files you can open with the Read tool, in page order:\n\n${list}\n\n` +
+      `Look at every one. Read nothing else. Then reply with the JSON described above.`;
+    return this.call("read-handwriting", handwritingVars(input), HandwritingSchema, {
+      readDirs: [...new Set(input.pages.map((f) => path.dirname(f)))],
+      append,
+    });
   }
 
   mark(input: MarkInput) {
-    return this.call(
-      "mark",
-      {
-        questionStem: input.questionStem,
-        rubric: JSON.stringify(input.rubric, null, 2),
-        answerText: input.answerText,
-        concepts: conceptTable(input.concepts),
-      },
-      MarkingSchema,
-    );
-  }
-
-  identifyLectures(input: IdentifyLecturesInput) {
-    const manifest = input.files
-      .map(
-        (f) =>
-          `### [${f.index}] ${f.filename}\n` +
-          `modified: ${f.modifiedOn} · looks like: ${f.kindGuess}` +
-          (f.measuredHours ? ` · transcript runs ${f.measuredHours}h` : "") +
-          `\n\n${f.excerpt}`,
-      )
-      .join("\n\n");
-    return this.call(
-      "identify-lectures",
-      {
-        manifest,
-        existingModules:
-          input.existingModules.map((m) => `- ${m.id} :: ${m.title}`).join("\n") ||
-          "(none yet)",
-      },
-      LectureIdentificationSchema,
-    );
+    return this.call("mark", markVars(input), MarkingSchema);
   }
 
   parsePastPaper(input: ParsePastPaperInput) {
-    return this.call(
-      "parse-past-paper",
-      { paperText: input.paperText, concepts: conceptTable(input.concepts) },
-      PaperItemsSchema,
-    );
+    return this.call("parse-past-paper", paperVars(input), PaperItemsSchema);
+  }
+
+  sortFiles(input: SortFilesInput) {
+    return this.call("sort-files", sortVars(input), FolderSortSchema, { model: this.cfg.sortModel, effort: "low" });
+  }
+
+  ask(input: AskInput) {
+    const { prompt, vars } = askVars(input);
+    // Someone chose Haiku to be quick: questions stay on it too.
+    return this.call(prompt, vars, AnswerSchema, {
+      model: this.cfg.model === "haiku" ? "haiku" : this.cfg.askModel,
+      effort: "low",
+    });
   }
 }
