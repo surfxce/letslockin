@@ -643,7 +643,10 @@ async function askOne(): Promise<boolean> {
       const payload = JSON.parse(job.payload) as HandwritingPayload;
       try {
         if (!provider) throw new Error("no AI is set up to read handwriting — choose one in Settings");
-        const { result, used } = await withFallback(provider, (p) => runHandwriting(payload, p));
+        // No falling back to the offline model: it can't read handwriting, and saying so
+        // would hide why the cloud AI failed.
+        const result = await runHandwriting(payload, provider);
+        const used = provider;
         await prisma.job.update({
           where: { id: job.id },
           data: {
