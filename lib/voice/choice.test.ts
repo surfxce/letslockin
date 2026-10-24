@@ -18,6 +18,7 @@ describe("viva voice", () => {
     expect(readModel("anything")).toBe("1.7b");
     expect(readStyle("  Brisk  and\nformal ")).toBe("Brisk and formal");
     expect(readStyle("")).toBe(DEFAULT_STYLE);
+    expect(readStyle("Calm, clear and friendly, like a kind examiner, at an unhurried pace.")).toBe(DEFAULT_STYLE);
   });
 
   it("says a line with the chosen model, else whichever is downloaded", () => {

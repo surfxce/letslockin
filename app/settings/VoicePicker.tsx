@@ -7,7 +7,8 @@ import { QWEN_MODELS, QWEN_VOICES, readStyle, readVoice, usableModel, type QwenM
 import { say, stopSaying } from "@/lib/voice/say";
 import type { NaturalStatus } from "@/lib/voice/natural";
 
-const SAMPLE = "Explain how galactose-deficient IgA1 leads to mesangial injury, and what you'd expect to see in the urine.";
+/** Something any examiner might ask, whatever the subject. */
+const SAMPLE = "Take me through your reasoning. What's the central idea here, and how would you explain it to someone hearing it for the first time?";
 
 /** Who reads the viva examiner's lines: a Qwen3-TTS voice, which model, and how it speaks. */
 export function VoicePicker({

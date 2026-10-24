@@ -300,12 +300,12 @@ func speakServer(_ models: URL, _ variant: TTSModelVariant) async throws {
                               tokenizerFolder: tokenizer, verbose: false, logLevel: .error, download: false)
     let tts: TTSKit
     do {
-        tts = try await TTSKit(config)
+        tts = try await SteadyTTS(config)
     } catch {
         throw Failure("The natural voice couldn't load: \(error.localizedDescription)")
     }
     // A first, short line warms it up, so the examiner's first question isn't slow.
-    _ = try? await tts.generate(text: "Ready.", speaker: .aiden, language: .english)
+    _ = try? await tts.generate(text: "Ready.", speaker: .aiden, language: .english, options: steadyOptions())
     progress("load", 1)
     emit(["ready": true])
     let out = FileManager.default.temporaryDirectory.appendingPathComponent("lockin-voice", isDirectory: true)
@@ -315,7 +315,7 @@ func speakServer(_ models: URL, _ variant: TTSModelVariant) async throws {
               let id = request["id"] as? String, let text = request["text"] as? String
         else { continue }
         let speaker = Qwen3Speaker(rawValue: (request["voice"] as? String) ?? "aiden") ?? .aiden
-        var options = GenerationOptions()
+        var options = steadyOptions()
         if variant.supportsVoiceDirection, let style = request["instruction"] as? String, !style.isEmpty {
             options.instruction = String(style.prefix(300))
         }
@@ -353,7 +353,7 @@ do {
         guard let models = option(args, "--models") else { throw Failure("speak needs --models") }
         try await speakServer(URL(fileURLWithPath: models), voiceVariant(args))
     case "version":
-        emit(["version": 3, "voice": true, "variants": ["0.6b", "1.7b"]])
+        emit(["version": 4, "voice": true, "variants": ["0.6b", "1.7b"], "steady": true])
     default:
         throw Failure("usage: lockin-whisper audio <recording> <out-dir> | transcribe <recording> --model <variant> --models <dir>")
     }

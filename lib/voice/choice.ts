@@ -30,7 +30,9 @@ export const QWEN_MODELS = [
 ] as const;
 export type QwenModel = (typeof QWEN_MODELS)[number]["id"];
 
-export const DEFAULT_STYLE = "Calm, clear and friendly, like a kind examiner, at an unhurried pace.";
+export const DEFAULT_STYLE = "Calm, clear and friendly, like a kind examiner, at a natural conversational pace.";
+/** The first default, whose "unhurried" made the 1.7B drag lines out until they were cut off. */
+const OLD_DEFAULT_STYLE = "Calm, clear and friendly, like a kind examiner, at an unhurried pace.";
 
 export function readVoice(raw: unknown): QwenVoice {
   // Before only Qwen was offered, choices were stored as "natural:<id>", "system:…" or "auto".
@@ -44,7 +46,7 @@ export function readModel(raw: unknown): QwenModel {
 
 export function readStyle(raw: unknown): string {
   const style = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, 300) : "";
-  return style || DEFAULT_STYLE;
+  return style && style !== OLD_DEFAULT_STYLE ? style : DEFAULT_STYLE;
 }
 
 /**
