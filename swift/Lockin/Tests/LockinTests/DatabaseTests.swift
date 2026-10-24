@@ -211,7 +211,16 @@ final class DatabaseTests: XCTestCase {
                 conn,
                 sql: #"SELECT "migration_name" FROM "_prisma_migrations" ORDER BY "migration_name" ASC"#
             )
-            XCTAssertEqual(applied, LockinDatabase.embeddedMigrations.map(\.name))
+            // Every migration shipped, built in or in prisma/migrations, as the migrator
+            // applies them: the Electron app keeps adding migrations the built-in list lacks.
+            var expected = Set(LockinDatabase.embeddedMigrations.map(\.name))
+            if let dir = LockinPaths.migrationsDirectory,
+               let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
+                for name in names where FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).appendingPathComponent("migration.sql").path) {
+                    expected.insert(name)
+                }
+            }
+            XCTAssertEqual(applied, expected.sorted())
         }
     }
 
