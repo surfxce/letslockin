@@ -40,6 +40,7 @@ import type { VivaTurnInput } from "@/lib/viva/schema";
 import { recoverViva, runVivaTurn } from "@/lib/viva/service";
 import { forgetPhotos, runHandwriting, sweepPhotos, type HandwritingPayload } from "@/lib/handwriting/service";
 import { writeLesson } from "@/lib/lessons/service";
+import { writeCase } from "@/lib/cases/service";
 import { splitPaper } from "@/lib/papers/service";
 import { digestLecture, markResponse, writeQuestions } from "@/lib/pipeline";
 import { getSettings, HEARTBEAT_KEY, readHeartbeat } from "@/lib/settings";
@@ -155,6 +156,12 @@ const handlers: Record<Exclude<JobKind, "DOWNLOAD" | "SORT" | "ASK" | "TRANSCRIB
   MARK: async (payload, jobId, provider) => {
     await enterStage(jobId, "marking");
     return markResponse(String(payload.responseId), provider);
+  },
+
+  /** A clinical case from a few lectures, its stages saved as questions of their own. */
+  CASE: async (payload, jobId, provider) => {
+    await enterStage(jobId, "case");
+    return writeCase((payload.lectureIds as unknown[]).map(String), provider);
   },
 
   /** A short lesson on a concept that keeps coming up missed or wrong. */

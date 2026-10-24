@@ -75,9 +75,12 @@ export function VivaRoom({
   speech,
   voice,
   natural,
+  stageLabels,
 }: {
   vivaId: string;
   title: string;
+  /** A clinical case: what each stage is about ("History", "Investigations"…). */
+  stageLabels?: string[];
   initial: State;
   speech: string | null;
   /** Who reads the examiner's lines (Settings → Viva voice). */
@@ -112,13 +115,16 @@ export function VivaRoom({
     };
   }, []);
 
-  // Each new line from the examiner is read out, once.
+  // Each new line from the examiner is read out, once — all of them when several come at
+  // once, as a case's findings and then its next question do.
   useEffect(() => {
     const last = state.turns.length - 1;
     const turn = state.turns[last];
     if (last > spoken.current && turn?.role === "examiner") {
+      const fresh = state.turns.slice(spoken.current + 1);
+      const from = fresh.findLastIndex((t) => t.role === "student") + 1;
       spoken.current = last;
-      if (readAloud) speak(turn.text);
+      if (readAloud) speak(fresh.slice(from).map((t) => t.text).join(" "));
     }
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [state.turns, readAloud, speak]);
@@ -227,7 +233,13 @@ export function VivaRoom({
           <h1 className="page-title" style={{ margin: 0 }}>
             {title}
           </h1>
-          <div className="small muted">{done ? "Finished" : `Question ${number} of ${state.total}`}</div>
+          <div className="small muted">
+            {done
+              ? "Finished"
+              : stageLabels
+                ? `Stage ${number} of ${state.total}${stageLabels[number - 1] ? ` · ${stageLabels[number - 1]}` : ""}`
+                : `Question ${number} of ${state.total}`}
+          </div>
         </div>
         <span className="spacer" />
         <button
@@ -253,13 +265,13 @@ export function VivaRoom({
             type="button"
             className="btn sm quiet"
             onClick={async () => {
-              if (!confirm("End the viva now? What you've answered is marked.")) return;
+              if (!confirm(`End the ${stageLabels ? "case" : "viva"} now? What you've answered is marked.`)) return;
               await stopViva(vivaId, state.waitingOn === "student" ? answer : "");
               setAnswer("");
               await refresh();
             }}
           >
-            End viva
+            {stageLabels ? "End case" : "End viva"}
           </button>
         )}
       </div>

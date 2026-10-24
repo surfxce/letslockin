@@ -7,6 +7,7 @@ import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
 import type { HandwritingRead } from "@/lib/handwriting/schema";
+import { CaseSchema, caseVars, STAGE_KINDS, type CaseInput } from "@/lib/cases/schema";
 import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 
@@ -524,6 +525,48 @@ export class LocalProvider implements LlmProvider {
       zod: LessonSchema,
       maxTokens: 1800,
       temperature: 0.4,
+    });
+  }
+
+  async writeCase(input: CaseInput) {
+    const lectures = caseVars(input).lectures;
+    const ids = input.lectures.flatMap((l) => l.concepts.map((c) => c.id));
+    return this.run({
+      prompt: "write-case",
+      vars: (text) => ({ ...caseVars(input), lectures: text }),
+      transcript: lectures,
+      schema: {
+        type: "object",
+        properties: {
+          title: text(120),
+          presentation: text(1200),
+          stages: {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: {
+              type: "object",
+              properties: {
+                kind: { enum: [...STAGE_KINDS] },
+                ask: text(400),
+                reveal: text(900),
+                conceptIds: { type: "array", minItems: 1, maxItems: 4, items: idOf(ids) },
+                rubric: {
+                  type: "object",
+                  properties: {
+                    modelAnswer: text(1500),
+                    criteria: { type: "array", minItems: 2, maxItems: 6, items: { type: "object", properties: { point: text(300), marks: WHOLE_MARKS } } },
+                    totalMarks: { const: 10 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      zod: CaseSchema,
+      maxTokens: 4500,
+      temperature: 0.6,
     });
   }
 

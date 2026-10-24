@@ -7,6 +7,7 @@ import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
 import { HandwritingSchema, handwritingVars, photosNote, type HandwritingInput } from "@/lib/handwriting/schema";
+import { CaseSchema, caseVars, type CaseInput } from "@/lib/cases/schema";
 import type { ZodType } from "zod";
 
 import {
@@ -149,6 +150,10 @@ export abstract class PromptProvider implements LlmProvider {
 
   writeLesson(input: LessonInput) {
     return this.call("write-lesson", lessonVars(input), LessonSchema, { task: "flashcards" });
+  }
+
+  writeCase(input: CaseInput) {
+    return this.call("write-case", caseVars(input), CaseSchema, { task: "questions" });
   }
 
   readHandwriting(input: HandwritingInput) {

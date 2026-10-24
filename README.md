@@ -126,6 +126,13 @@ examiner speaks in the best voice installed (Premium and Enhanced first, never t
 novelty voices), or pick one in Settings → Viva voice — where a natural neural voice can
 also be downloaded once (about 1 GB, macOS 15 or later, in the Mac app).
 
+**Clinical cases.** Beside Viva, *Clinical cases* are OSCE-style: tick a lecture, or up
+to four that belong together, and the AI writes a patient around them. The examiner
+presents the patient, then asks a stage at a time — what you'd ask, what you'd look for,
+which investigations, the diagnosis, the management — following up like a viva and
+telling you what each stage found before the next. Each stage is marked like an LAQ, so
+what you miss feeds weak spots and mini-lessons; stages are never asked anywhere else.
+
 **Handwritten answers.** Exams on paper? Write the answer by hand, then *Add photos of a
 handwritten answer* under its box (in a sitting or an exam). Your AI — Claude, Gemini,
 ChatGPT, not the computer's text recognition — types it out as written, without fixing

@@ -8,6 +8,7 @@ import { usesAi } from "@/lib/modes";
 import { scoreAttemptIfMarked } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
 import { lectureRows } from "@/lib/views";
+import { caseStages } from "@/lib/cases/service";
 import {
   MAX_PROBES,
   readPlan,
@@ -86,9 +87,14 @@ async function advance(viva: VivaRow, turns: VivaTurn[], closing: string) {
   const plan = readPlan(viva.plan);
   const current = plan[viva.current];
   if (closing.trim()) turns.push({ role: "examiner", text: closing.trim(), questionId: current?.questionId ?? "", at: now() });
+  // A case tells what each stage found before asking the next.
+  const stages = viva.caseId ? await caseStages(viva.caseId) : null;
+  const reveal = stages?.find((s) => s.questionId === current?.questionId)?.reveal;
+  if (reveal && current) turns.push({ role: "examiner", text: reveal, questionId: current.questionId, at: now() });
   const next = plan[viva.current + 1];
   if (!next) {
-    turns.push({ role: "examiner", text: "That's the end of the viva. Thank you — your answers are being marked.", questionId: "", at: now() });
+    const last = stages ? "That's the end of the case. Thank you — your answers are being marked." : "That's the end of the viva. Thank you — your answers are being marked.";
+    turns.push({ role: "examiner", text: last, questionId: "", at: now() });
     await prisma.viva.update({
       where: { id: viva.id },
       data: { turns: JSON.stringify(turns), current: plan.length, probes: 0, waitingOn: "done", finishedAt: new Date() },
@@ -97,7 +103,8 @@ async function advance(viva: VivaRow, turns: VivaTurn[], closing: string) {
     return;
   }
   const question = await prisma.question.findUnique({ where: { id: next.questionId }, select: { stem: true } });
-  turns.push({ role: "examiner", text: `Next question. ${question?.stem ?? "(This question was deleted — say anything to move on.)"}`, questionId: next.questionId, at: now() });
+  const ask = stages ? stages.find((s) => s.questionId === next.questionId)?.ask : question && `Next question. ${question.stem}`;
+  turns.push({ role: "examiner", text: question && ask ? ask : "(This question was deleted — say anything to move on.)", questionId: next.questionId, at: now() });
   await prisma.viva.update({
     where: { id: viva.id },
     data: { turns: JSON.stringify(turns), current: viva.current + 1, probes: 0, waitingOn: "student" },
@@ -210,7 +217,7 @@ async function handIn(vivaId: string) {
   const byLecture = new Map<string, VivaPlanItem[]>();
   for (const item of plan) if (alive.has(item.questionId)) byLecture.set(item.lectureId, [...(byLecture.get(item.lectureId) ?? []), item]);
   for (const [lectureId, items] of byLecture) {
-    const attempt = await prisma.attempt.create({ data: { lectureId, source: "VIVA", sittingDate: viva.createdAt } });
+    const attempt = await prisma.attempt.create({ data: { lectureId, source: viva.caseId ? "CASE" : "VIVA", sittingDate: viva.createdAt } });
     attempts.push(attempt.id);
     for (const item of items) {
       const text = vivaAnswerText(turns.filter((t) => t.questionId === item.questionId));

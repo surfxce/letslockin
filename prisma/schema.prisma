@@ -24,6 +24,7 @@ model Course {
   concepts  Concept[]
   materials Material[]
   papers    PastPaper[]
+  cases     ClinicalCase[]
 }
 
 /// A course's own division of its content — "Module 3: Gene expression". Optional,
@@ -167,14 +168,19 @@ model Question {
   /// lecture's id, this one (`lectureId`, where its answers are filed) first. Asked in
   /// exams only, never in one lecture's sittings.
   linkedLectureIds String?
+  /// Set on a stage of a clinical case: asked only when that case is run, never in a
+  /// sitting or an exam. Its stem tells the case so far, so it is marked like any LAQ.
+  caseId           String?
 
-  lecture   Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
-  concepts  QuestionConcept[]
-  responses Response[]
-  examItems ExamItem[]
+  lecture      Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  clinicalCase ClinicalCase?     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  concepts     QuestionConcept[]
+  responses    Response[]
+  examItems    ExamItem[]
 
   @@index([lectureId])
   @@index([paperItemId])
+  @@index([caseId])
 }
 
 model QuestionConcept {
@@ -463,10 +469,39 @@ model Viva {
   probes     Int       @default(0)
   /// Who speaks next: "student", "examiner" (the AI is thinking), or "done".
   waitingOn  String    @default("student")
+  /// Set when it runs a clinical case: its stages are the plan, and between them the
+  /// examiner says what the stage found before asking the next.
+  caseId     String?
   createdAt  DateTime  @default(now())
   finishedAt DateTime?
 
   @@index([createdAt])
+}
+
+/// A clinical case, OSCE-style, written from one or more lectures: a patient presented,
+/// then asked about in stages — history, examination, investigations, diagnosis,
+/// management — each answered and marked like an LAQ, with what it found revealed
+/// before the next. Run as a viva (Viva.caseId).
+model ClinicalCase {
+  id            String   @id @default(cuid())
+  courseId      String
+  /// What it's about, without giving the diagnosis away: "Cola-coloured urine after a sore throat".
+  title         String
+  /// What the student is told first: who the patient is and why they've come.
+  presentation  String
+  /// JSON [{ questionId, kind, ask, reveal }], in order. `reveal` is what the examiner
+  /// says once the stage is answered: the findings, results or answer it leads to.
+  stages        String
+  /// JSON [lectureId]: the lectures it was written from.
+  lectureIds    String
+  promptVersion String
+  model         String?
+  createdAt     DateTime @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([courseId])
 }
 
 /// A mini-lesson on a concept that keeps coming up in marked answers as missed or wrong:

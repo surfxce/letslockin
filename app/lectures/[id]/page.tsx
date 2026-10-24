@@ -706,12 +706,14 @@ function ScoresTab({ lecture, numbers }: { lecture: LecturePageData; numbers: Ma
                           ? "Answered in an exam"
                           : a.source === "VIVA"
                             ? "Answered out loud in a viva"
-                            : "Answered closed book in Lockin"}{" "}
+                            : a.source === "CASE"
+                              ? "Answered in a clinical case"
+                              : "Answered closed book in Lockin"}{" "}
                       ·{" "}
                       {plural(a.responses.length, "LAQ")}
                     </div>
                   </div>
-                  {(a.source === "APP" || ((a.source === "EXAM" || a.source === "VIVA") && answered)) && (
+                  {(a.source === "APP" || ((a.source === "EXAM" || a.source === "VIVA" || a.source === "CASE") && answered)) && (
                     <Link href={`/attempts/${a.id}`} className="btn sm">
                       {answered ? "Open" : "Continue"}
                     </Link>

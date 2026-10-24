@@ -19,7 +19,7 @@ const BUSY_POLL_MS = 2500;
 const IDLE_POLL_MS = 20_000;
 const HIDDEN_POLL_MS = 60_000;
 
-const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer", MCQS: "Exam MCQs", PAPER: "Past paper", MIXED: "Linking questions", TRANSCRIBE: "Transcribe", LESSON: "Mini-lesson" };
+const KIND_LABEL: Record<string, string> = { PREPARE: "Prepare", GENERATE: "New LAQs", MARK: "Mark answer", MCQS: "Exam MCQs", PAPER: "Past paper", MIXED: "Linking questions", TRANSCRIBE: "Transcribe", LESSON: "Mini-lesson", CASE: "Clinical case" };
 
 /**
  * The top-bar status: what the AI is doing right now and since when, what is
@@ -100,7 +100,7 @@ export function StatusBar({ initial }: { initial: StatusPayload }) {
         <>
           <span className="dot pulse" />
           <span className="label">
-            {running.stageLabel ?? KIND_LABEL[running.kind]} · {running.lectureTitle ?? (running.kind === "PAPER" ? "past paper" : running.kind === "MIXED" ? "related lectures" : "lecture")}
+            {running.stageLabel ?? KIND_LABEL[running.kind]} · {running.lectureTitle ?? (running.kind === "PAPER" ? "past paper" : running.kind === "MIXED" ? "related lectures" : running.kind === "CASE" ? "lectures" : "lecture")}
           </span>
           {since && <span className="nowrap">{duration(now - new Date(since).getTime())}</span>}
           {queued.length > 0 && <span className="nowrap">· {queued.length} waiting</span>}

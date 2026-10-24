@@ -54,6 +54,8 @@ export async function buildSnapshot(): Promise<PhoneSnapshot> {
         summaryModel: true,
         module: { select: { title: true } },
         questions: {
+          // A clinical case's stages are asked only in the case, on the computer.
+          where: { caseId: null },
           orderBy: { createdAt: "asc" },
           select: {
             id: true,

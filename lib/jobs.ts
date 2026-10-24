@@ -2,9 +2,9 @@ import { prisma } from "@/lib/db";
 import { readHeartbeat } from "@/lib/settings";
 import { STAGES, type JobKind, type Stage } from "@/lib/types";
 
-/** Marking jumps the queue: someone is sitting there waiting for their score. Lessons
- *  wait for everything else: nobody asked for one. */
-export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10, DOWNLOAD: 0, SORT: 0, ASK: 0, FLASHCARDS: 0, MCQS: 0, PAPER: 0, MIXED: 0, TRANSCRIBE: 0, VIVA: 0, LESSON: -5, HANDWRITING: 0 } as const satisfies Record<
+/** Marking jumps the queue: someone is sitting there waiting for their score. A case
+ *  asked for comes before other writing; lessons wait for everything: nobody asked. */
+export const PRIORITY = { PREPARE: 0, GENERATE: 0, MARK: 10, DOWNLOAD: 0, SORT: 0, ASK: 0, FLASHCARDS: 0, MCQS: 0, PAPER: 0, MIXED: 0, TRANSCRIBE: 0, VIVA: 0, LESSON: -5, HANDWRITING: 0, CASE: 5 } as const satisfies Record<
   JobKind,
   number
 >;
@@ -77,7 +77,7 @@ export async function clearQueue(lectureId?: string) {
  */
 export async function cancelJob(jobId: string) {
   await prisma.job.updateMany({
-    where: { id: jobId, status: { in: ["PENDING", "RUNNING"] }, kind: { in: ["PREPARE", "GENERATE", "MARK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE", "LESSON"] } },
+    where: { id: jobId, status: { in: ["PENDING", "RUNNING"] }, kind: { in: ["PREPARE", "GENERATE", "MARK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE", "LESSON", "CASE"] } },
     data: { status: "FAILED", error: "Cancelled", finishedAt: new Date() },
   });
 }

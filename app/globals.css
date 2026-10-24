@@ -224,6 +224,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width
 .views { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; overflow-x: auto; scrollbar-width: none; }
 .views a, .views button.view { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px 8px; font-size: 14px; color: var(--text-soft); border: 0; background: none; font: inherit; cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .views a:hover, .views button.view:hover { color: var(--text); }
+.views + .page-title { margin-top: 22px; }
 .views a.on { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
 .toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px 0 8px; }
 .toolbar .spacer { flex: 1; }

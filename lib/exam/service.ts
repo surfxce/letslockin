@@ -118,7 +118,8 @@ export async function createExam(opts: ExamOptions): Promise<string> {
       : [],
     laqCount
       ? prisma.question.findMany({
-          where: { lectureId: { in: ids }, paperItemId: null },
+          // Linking questions too; a case's stages only ever come up in the case.
+          where: { lectureId: { in: ids }, paperItemId: null, caseId: null },
           select: {
             id: true,
             lectureId: true,

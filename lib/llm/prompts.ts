@@ -66,6 +66,7 @@ export type PromptName =
   | "viva-turn"
   | "write-lesson"
   | "read-handwriting"
+  | "write-case"
   | "mark"
   | "parse-past-paper"
   | "sort-files"

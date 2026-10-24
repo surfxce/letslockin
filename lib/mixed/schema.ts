@@ -31,8 +31,9 @@ export function mixedVars(input: MixedInput, lectures = mixedLectures(input)): R
   };
 }
 
-/** A lecture's own questions: not from a past paper, and not linking it to other lectures. */
-export const OWN_QUESTIONS = { paperItemId: null, linkedLectureIds: null } as const;
+/** A lecture's own questions: not from a past paper, not linking it to other lectures,
+ *  and not a stage of a clinical case. */
+export const OWN_QUESTIONS = { paperItemId: null, linkedLectureIds: null, caseId: null } as const;
 
 /** Every lecture a linking question needs, the one it is filed under first. */
 export function readLinked(json: string | null | undefined): string[] {

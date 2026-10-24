@@ -27,8 +27,9 @@ export type GapType = (typeof GAP_TYPES)[number];
  * beside ASK: someone is waiting to hear it. LESSON writes a short lesson on a concept
  * that keeps being missed, behind everything else in the queue. HANDWRITING types out
  * photos of a handwritten answer, in the quick lane: the student is waiting to check it.
+ * CASE writes a clinical case from a few lectures, ahead of the queue's other writing.
  */
-export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE", "VIVA", "LESSON", "HANDWRITING"] as const;
+export const JOB_KINDS = ["PREPARE", "GENERATE", "MARK", "DOWNLOAD", "SORT", "ASK", "FLASHCARDS", "MCQS", "PAPER", "MIXED", "TRANSCRIBE", "VIVA", "LESSON", "HANDWRITING", "CASE"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export const JOB_STATUSES = ["PENDING", "RUNNING", "DONE", "FAILED"] as const;
@@ -47,9 +48,10 @@ export const STAGES = {
   paper: "Reading a past paper",
   mixed: "Writing questions that link lectures",
   lesson: "Writing a mini-lesson",
+  case: "Writing a clinical case",
   download: "Downloading model",
 } as const;
 export type Stage = keyof typeof STAGES;
 
-export const ATTEMPT_SOURCES = ["APP", "PASTED", "EXAM", "VIVA"] as const;
+export const ATTEMPT_SOURCES = ["APP", "PASTED", "EXAM", "VIVA", "CASE"] as const;
 export type AttemptSource = (typeof ATTEMPT_SOURCES)[number];

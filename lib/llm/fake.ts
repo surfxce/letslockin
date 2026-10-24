@@ -8,6 +8,7 @@ import type { FixInput, Fixes } from "@/lib/recordings/schema";
 import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
 import type { LessonDraft, LessonInput } from "@/lib/lessons/schema";
 import type { HandwritingInput, HandwritingRead } from "@/lib/handwriting/schema";
+import type { CaseDraft, CaseInput } from "@/lib/cases/schema";
 import { JobCancelled, jobSignal } from "@/lib/llm/cancel";
 import { groupFiles } from "@/lib/group";
 import type {
@@ -224,6 +225,31 @@ export class FakeProvider implements LlmProvider {
         { question: `What is ${input.conceptName}?`, answer: input.conceptDefinition },
         { question: `Why does ${input.conceptName} matter in ${input.lectureTitle}?`, answer: "It explains the mechanism." },
         { question: `What did you keep missing about ${input.conceptName}?`, answer: first },
+      ],
+    };
+  }
+
+  async writeCase(input: CaseInput): Promise<CaseDraft> {
+    await this.wait();
+    this.lastPromptVersion = "write-case@fake";
+    const lecture = input.lectures[0];
+    const concept = lecture?.concepts[0];
+    const rubric = (point: string) => ({
+      modelAnswer: `${point}, as ${lecture?.title ?? "the lecture"} explains.`,
+      criteria: [
+        { point, marks: 6 },
+        { point: `Links it to ${concept?.name ?? "the mechanism"}`, marks: 4 },
+      ],
+      totalMarks: 10 as const,
+    });
+    const n = input.avoid.length + 1;
+    return {
+      title: `Patient ${n}: a problem from ${lecture?.title ?? "the lecture"}`,
+      presentation: `A 24-year-old student comes to clinic with symptoms that started three days ago (case ${n}).`,
+      stages: [
+        { kind: "history", ask: "What would you ask her?", reveal: "She had a sore throat two days before the symptoms began.", conceptIds: concept ? [concept.id] : [], rubric: rubric("Asks about recent infection") },
+        { kind: "investigations", ask: "Which investigations would you request?", reveal: "Urine dipstick shows blood ++, protein +.", conceptIds: concept ? [concept.id] : [], rubric: rubric("Requests a urine dipstick") },
+        { kind: "diagnosis", ask: "What is the most likely diagnosis, and why?", reveal: `It's ${concept?.name ?? "the condition"} — ${concept?.definition ?? ""}`.trim(), conceptIds: concept ? [concept.id] : [], rubric: rubric(`Names ${concept?.name ?? "the diagnosis"}`) },
       ],
     };
   }

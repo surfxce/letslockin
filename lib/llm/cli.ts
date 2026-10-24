@@ -7,6 +7,7 @@ import { FixesSchema, fixVars, type FixInput } from "@/lib/recordings/schema";
 import { VivaMoveSchema, vivaVars, type VivaTurnInput } from "@/lib/viva/schema";
 import { LessonSchema, lessonVars, type LessonInput } from "@/lib/lessons/schema";
 import { HandwritingSchema, handwritingVars, type HandwritingInput } from "@/lib/handwriting/schema";
+import { CaseSchema, caseVars, type CaseInput } from "@/lib/cases/schema";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -332,6 +333,10 @@ export class ClaudeCliProvider implements LlmProvider {
 
   writeLesson(input: LessonInput) {
     return this.call("write-lesson", lessonVars(input), LessonSchema);
+  }
+
+  writeCase(input: CaseInput) {
+    return this.call("write-case", caseVars(input), CaseSchema);
   }
 
   /** Claude opens the photos itself, with Read, from their folder and nowhere else. */

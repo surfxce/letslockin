@@ -7,6 +7,7 @@ import type { FixInput, Fixes } from "@/lib/recordings/schema";
 import type { VivaMove, VivaTurnInput } from "@/lib/viva/schema";
 import type { LessonDraft, LessonInput } from "@/lib/lessons/schema";
 import type { HandwritingInput, HandwritingRead } from "@/lib/handwriting/schema";
+import type { CaseDraft, CaseInput } from "@/lib/cases/schema";
 import type { Answer, Digest, FolderSort, Marking, PaperItems, QuestionSet } from "@/lib/llm/schemas";
 import type { LaqStyle } from "@/lib/modes";
 
@@ -159,6 +160,8 @@ export interface LlmProvider {
   vivaTurn(input: VivaTurnInput): Promise<VivaMove>;
   /** A mini-lesson on a concept that keeps being missed or got wrong. */
   writeLesson(input: LessonInput): Promise<LessonDraft>;
+  /** A clinical case from one or more lectures, OSCE-style: a patient and its stages. */
+  writeCase(input: CaseInput): Promise<CaseDraft>;
   /** Types out a handwritten answer from photos of it, as written. Needs an AI that
    *  sees pictures; one that can't says so. */
   readHandwriting(input: HandwritingInput): Promise<HandwritingRead>;

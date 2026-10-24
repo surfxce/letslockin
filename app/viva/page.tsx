@@ -30,11 +30,18 @@ export default async function VivaPage({ searchParams }: { searchParams: Promise
     (await prisma.response.findMany({ where: { id: { in: responseIds } }, select: { id: true, mark: true } })).map((r) => [r.id, r.mark]),
   );
   const ai = usesAi(settings.mode);
-  const open = vivas.filter((v) => v.waitingOn !== "done");
-  const done = vivas.filter((v) => v.waitingOn === "done");
+  // Clinical cases are run as vivas, and listed with the cases.
+  const open = vivas.filter((v) => !v.caseId && v.waitingOn !== "done");
+  const done = vivas.filter((v) => !v.caseId && v.waitingOn === "done");
 
   return (
     <main className="page">
+      <div className="views">
+        <Link href="/viva" className="on">
+          Viva
+        </Link>
+        <Link href="/cases">Clinical cases</Link>
+      </div>
       <h1 className="page-title">Viva</h1>
       <p className="page-sub">
         An oral exam. The examiner asks one of your LAQs, listens to your answer and follows up on anything you left out — then moves on.

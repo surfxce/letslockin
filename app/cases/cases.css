@@ -1,0 +1,15 @@
+/* Clinical cases */
+.case-writer { margin-top: 6px; }
+.case-writer select { max-width: 100%; }
+.case-lectures { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 16px; }
+.case-lectures label { display: flex; align-items: baseline; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
+.case-writing { margin-top: 12px; }
+.case-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.case-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow); }
+.case-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.case-top b { font-size: 15px; line-height: 1.35; }
+.case-stages { display: flex; flex-wrap: wrap; gap: 4px; color: var(--text-soft); }
+.case-stages span { padding: 1px 7px; border-radius: 4px; background: var(--bg-soft); }
+.case-stages span + span::before { content: none; }
+.case-actions { margin-top: 6px; gap: 6px; }
+.case-actions form { display: contents; }

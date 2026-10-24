@@ -13,6 +13,8 @@ import { speechVia } from "@/lib/viva/listen";
 import { readChoice } from "@/lib/voice/choice";
 import { naturalVoiceReady } from "@/lib/voice/natural";
 import { readPlan, readTurns } from "@/lib/viva/schema";
+import { caseStages } from "@/lib/cases/service";
+import { STAGE_LABEL } from "@/lib/cases/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +24,13 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
   if (!viva) notFound();
   const plan = readPlan(viva.plan);
   const turns = readTurns(viva.turns);
+  // A clinical case names its stages; one deleted since is just "Stage n".
+  const stages = viva.caseId ? await caseStages(viva.caseId) : null;
+  const stageOf = new Map((stages ?? []).map((s) => [s.questionId, STAGE_LABEL[s.kind]]));
+  const stageLabels = stages ? plan.map((p) => stageOf.get(p.questionId) ?? "") : undefined;
   const crumbs = (
     <nav className="crumbs">
-      <Link href="/viva">Viva</Link>
+      <Link href={stages ? "/cases" : "/viva"}>{stages ? "Clinical cases" : "Viva"}</Link>
       <span className="sep">/</span>
       <span>{viva.title}</span>
     </nav>
@@ -41,6 +47,7 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
           speech={await speechVia()}
           voice={readChoice((await getSettings()).vivaVoice)}
           natural={naturalVoiceReady()}
+          stageLabels={stageLabels}
         />
       </main>
     );
@@ -86,9 +93,9 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
         return (
           <section key={item.questionId} className="viva-result">
             <div className="row" style={{ gap: 8 }}>
-              <b>Question {i + 1}</b>
+              <b>{stageLabels ? `Stage ${i + 1}${stageLabels[i] ? ` · ${stageLabels[i]}` : ""}` : `Question ${i + 1}`}</b>
               <span className="small muted">
-                {q ? `${q.lecture.course.code} · ${q.lecture.title}` : "This question has since been deleted"}
+                {q ? `${q.lecture.course.code} · ${q.lecture.title}` : stages ? "This case has since been deleted" : "This question has since been deleted"}
               </span>
               <span className="spacer" />
               {r ? (
@@ -117,8 +124,8 @@ export default async function VivaSittingPage({ params }: { params: Promise<{ id
         );
       })}
       <div className="row" style={{ marginTop: 24 }}>
-        <Link href="/viva" className="btn primary">
-          Another viva
+        <Link href={stages ? "/cases" : "/viva"} className="btn primary">
+          {stages ? "Another case" : "Another viva"}
         </Link>
       </div>
     </main>
